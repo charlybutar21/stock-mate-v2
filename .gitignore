@@ -1,0 +1,9 @@
+node_modules
+dist
+.wrangler
+coverage
+.idea
+.env
+.env.*
+!.env.example
+*.local

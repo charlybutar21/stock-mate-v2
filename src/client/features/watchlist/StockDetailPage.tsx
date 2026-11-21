@@ -1,0 +1,553 @@
+import {
+  ArrowLeft,
+  Calculator,
+  CheckCircle2,
+  Clock,
+  Info,
+  Pencil,
+  RefreshCw,
+  RotateCcw,
+  Save,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router';
+import {
+  calculateValuation,
+  type DerQualityFlag,
+  type RoeQualityFlag,
+} from '@/shared/domain';
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  Input,
+  Skeleton,
+  type BadgeTone,
+} from '@/client/components/ui/primitives';
+import { useI18n } from '@/client/i18n/useI18n';
+import {
+  formatIdr,
+  formatMultiple,
+  formatPercent,
+  formatShortDate,
+} from '@/client/lib/formatters';
+import { FairValueRangeBar } from './FairValueRangeBar';
+import { StockFormModal } from './StockFormModal';
+import { statusTone } from './WatchlistPage';
+import { useFetchIdxQuote, useUpdateWatchlistItem, useWatchlistItem } from './useWatchlist';
+
+function roeTone(flag: RoeQualityFlag): BadgeTone {
+  if (flag === 'STRONG') return 'positive';
+  if (flag === 'MODERATE') return 'warning';
+  if (flag === 'WEAK') return 'negative';
+  return 'neutral';
+}
+
+function derTone(flag: DerQualityFlag): BadgeTone {
+  if (flag === 'NOT_APPLICABLE_BANKING') return 'info';
+  if (flag === 'HEALTHY') return 'positive';
+  if (flag === 'MODERATE') return 'warning';
+  if (flag === 'HIGH_LEVERAGE') return 'negative';
+  return 'neutral';
+}
+
+export function StockDetailPage() {
+  const { id } = useParams();
+  const { t, lang } = useI18n();
+  const { data: item, isLoading, isError } = useWatchlistItem(id);
+  const updateMutation = useUpdateWatchlistItem();
+  const fetchQuoteMutation = useFetchIdxQuote();
+
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  const handleSyncData = async () => {
+    if (!item) return;
+    setSyncNotice(null);
+    try {
+      const quote = await fetchQuoteMutation.mutateAsync(item.ticker);
+      await updateMutation.mutateAsync({
+        id: item.id,
+        payload: {
+          currentPrice: quote.currentPrice,
+          fundamentals: {
+            periodLabel: quote.periodLabel,
+            eps: quote.fundamentals.eps,
+            bvps: quote.fundamentals.bvps,
+            dps: quote.fundamentals.dps,
+            roePct: quote.fundamentals.roePct,
+            der: quote.fundamentals.der,
+            epsGrowthPct: quote.fundamentals.epsGrowthPct,
+          },
+        },
+      });
+      setSyncNotice(t.watchlist.syncSuccess);
+      setTimeout(() => setSyncNotice(null), 3000);
+    } catch {
+      // Errors handled gracefully
+    }
+  };
+
+  // Interactive What-If draft overrides (null/undefined falls back to saved server value)
+  const [draft, setDraft] = useState<{
+    targetPer?: string;
+    targetPbv?: string;
+    discountRatePct?: string;
+    projectionYears?: string;
+    terminalGrowthPct?: string;
+    dividendGrowthPct?: string;
+  }>({});
+
+  const targetPer =
+    draft.targetPer ??
+    (item?.fundamentals.targetPer !== null && item?.fundamentals.targetPer !== undefined
+      ? String(item.fundamentals.targetPer)
+      : '');
+  const targetPbv =
+    draft.targetPbv ??
+    (item?.fundamentals.targetPbv !== null && item?.fundamentals.targetPbv !== undefined
+      ? String(item.fundamentals.targetPbv)
+      : '');
+  const discountRatePct =
+    draft.discountRatePct ?? (item ? String(item.fundamentals.discountRatePct) : '12');
+  const projectionYears =
+    draft.projectionYears ?? (item ? String(item.fundamentals.projectionYears) : '5');
+  const terminalGrowthPct =
+    draft.terminalGrowthPct ?? (item ? String(item.fundamentals.terminalGrowthPct) : '4');
+  const dividendGrowthPct =
+    draft.dividendGrowthPct ??
+    (item?.fundamentals.dividendGrowthPct !== null &&
+    item?.fundamentals.dividendGrowthPct !== undefined
+      ? String(item.fundamentals.dividendGrowthPct)
+      : '');
+
+  const setTargetPer = (v: string) => setDraft((d) => ({ ...d, targetPer: v }));
+  const setTargetPbv = (v: string) => setDraft((d) => ({ ...d, targetPbv: v }));
+  const setDiscountRatePct = (v: string) => setDraft((d) => ({ ...d, discountRatePct: v }));
+  const setProjectionYears = (v: string) => setDraft((d) => ({ ...d, projectionYears: v }));
+  const setTerminalGrowthPct = (v: string) => setDraft((d) => ({ ...d, terminalGrowthPct: v }));
+  const setDividendGrowthPct = (v: string) => setDraft((d) => ({ ...d, dividendGrowthPct: v }));
+
+  const liveValuation = useMemo(() => {
+    if (!item) return null;
+    const f = item.fundamentals;
+    return calculateValuation({
+      sector: item.sector,
+      currentPrice: item.currentPrice,
+      eps: f.eps,
+      bvps: f.bvps,
+      dps: f.dps,
+      roePct: f.roePct,
+      der: f.der,
+      epsGrowthPct: f.epsGrowthPct,
+      targetPer: targetPer.trim() ? Number(targetPer) : null,
+      targetPbv: targetPbv.trim() ? Number(targetPbv) : null,
+      discountRatePct: discountRatePct.trim() ? Number(discountRatePct) : f.discountRatePct,
+      projectionYears: projectionYears.trim()
+        ? Math.max(1, Math.min(15, Math.round(Number(projectionYears))))
+        : f.projectionYears,
+      terminalGrowthPct: terminalGrowthPct.trim()
+        ? Number(terminalGrowthPct)
+        : f.terminalGrowthPct,
+      dividendGrowthPct: dividendGrowthPct.trim() ? Number(dividendGrowthPct) : null,
+    });
+  }, [
+    item,
+    targetPer,
+    targetPbv,
+    discountRatePct,
+    projectionYears,
+    terminalGrowthPct,
+    dividendGrowthPct,
+  ]);
+
+  const resetWhatIf = () => {
+    setDraft({});
+    setSavedNotice(false);
+  };
+
+  const saveWhatIf = async () => {
+    if (!item) return;
+    setSavedNotice(false);
+    await updateMutation.mutateAsync({
+      id: item.id,
+      payload: {
+        fundamentals: {
+          targetPer: targetPer.trim() ? Number(targetPer) : null,
+          targetPbv: targetPbv.trim() ? Number(targetPbv) : null,
+          discountRatePct: Number(discountRatePct),
+          projectionYears: Math.round(Number(projectionYears)),
+          terminalGrowthPct: Number(terminalGrowthPct),
+          dividendGrowthPct: dividendGrowthPct.trim() ? Number(dividendGrowthPct) : null,
+        },
+      },
+    });
+    setDraft({});
+    setSavedNotice(true);
+    setTimeout(() => setSavedNotice(false), 3000);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-36 w-full" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !item || !liveValuation) {
+    return (
+      <Card className="p-8 text-center">
+        <p className="text-sm text-muted">{t.common.unexpectedError}</p>
+        <Link to="/watchlist" className="mt-4 inline-block text-sm font-medium text-brand-600">
+          {t.detail.backToWatchlist}
+        </Link>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Top breadcrumb & actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          to="/watchlist"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t.detail.backToWatchlist}
+        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {syncNotice && (
+            <Badge tone="positive">
+              <CheckCircle2 className="h-3 w-3" />
+              {syncNotice}
+            </Badge>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSyncData}
+            disabled={fetchQuoteMutation.isPending || updateMutation.isPending}
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${fetchQuoteMutation.isPending ? 'animate-spin' : ''}`}
+            />
+            {fetchQuoteMutation.isPending ? t.watchlist.syncingData : t.watchlist.syncDataBtn}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setEditModalOpen(true)}>
+            <Pencil className="h-3.5 w-3.5" />
+            {t.detail.editStock}
+          </Button>
+          <Link
+            to={`/simulator?stockId=${item.id}`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-600 px-3 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+          >
+            <Calculator className="h-3.5 w-3.5" />
+            {t.detail.openSimulator}
+          </Link>
+        </div>
+      </div>
+
+      {/* Header Card */}
+      <Card className="space-y-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-mono text-2xl font-bold tracking-tight text-ink">
+                {item.ticker}
+              </h1>
+              <Badge tone={statusTone(liveValuation.valuationStatus)}>
+                {t.valuationStatus[liveValuation.valuationStatus]}
+              </Badge>
+              {item.isStale && (
+                <Badge tone="warning">
+                  <Clock className="h-3 w-3" />
+                  {t.watchlist.staleBadge}
+                </Badge>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-muted">
+              {item.companyName} · {t.sectors[item.sector]}
+              {item.fundamentals.periodLabel ? ` · ${item.fundamentals.periodLabel}` : ''}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge tone={roeTone(liveValuation.qualityFlags.roeFlag)}>
+                {t.qualityFlags.roe[liveValuation.qualityFlags.roeFlag]}
+              </Badge>
+              <Badge tone={derTone(liveValuation.qualityFlags.derFlag)}>
+                {liveValuation.qualityFlags.derFlag === 'NOT_APPLICABLE_BANKING' && (
+                  <Info className="h-3 w-3" />
+                )}
+                {t.qualityFlags.der[liveValuation.qualityFlags.derFlag]}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-6 sm:text-right">
+            <div>
+              <div className="text-xs text-muted">{t.detail.currentPrice}</div>
+              <div className="font-mono text-xl font-bold text-ink tabular-nums">
+                {formatIdr(item.currentPrice)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted">{t.detail.marginOfSafety}</div>
+              <div
+                className={`font-mono text-xl font-bold tabular-nums ${
+                  liveValuation.mosPct === null
+                    ? 'text-muted'
+                    : liveValuation.mosPct >= 30
+                      ? 'text-positive-600'
+                      : liveValuation.mosPct >= 0
+                        ? 'text-warning-600'
+                        : 'text-negative-600'
+                }`}
+              >
+                {formatPercent(liveValuation.mosPct, true)}
+              </div>
+            </div>
+            {item.targetBuyPrice !== null && (
+              <div>
+                <div className="text-xs text-muted">{t.detail.targetBuy}</div>
+                <div className="font-mono text-xl font-semibold text-brand-700 tabular-nums">
+                  {formatIdr(item.targetBuyPrice)}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Fair Value Range Bar */}
+        <div className="border-t border-border pt-4">
+          <h2 className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">
+            {t.detail.fairValueRange}
+          </h2>
+          <FairValueRangeBar
+            conservative={liveValuation.fairValue.conservative}
+            moderate={liveValuation.fairValue.moderate}
+            optimistic={liveValuation.fairValue.optimistic}
+            currentPrice={item.currentPrice}
+          />
+        </div>
+      </Card>
+
+      {/* Actual Ratios Strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card className="p-4">
+          <div className="text-xs text-muted">{t.detail.per}</div>
+          <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
+            {formatMultiple(liveValuation.ratios.currentPer)}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted">{t.detail.pbv}</div>
+          <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
+            {formatMultiple(liveValuation.ratios.currentPbv)}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted">{t.detail.divYield}</div>
+          <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
+            {formatPercent(liveValuation.ratios.dividendYieldPct)}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted">{t.detail.peg}</div>
+          <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
+            {formatMultiple(liveValuation.ratios.pegRatio)}
+          </div>
+        </Card>
+      </div>
+
+      {/* 6 Method Cards */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-semibold text-ink">{t.detail.methodsTitle}</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {liveValuation.methods.map((m) => {
+            const isPrimaryBankPbv =
+              item.sector === 'FINANCIALS' && m.method === 'relativePbv';
+            const diffPct =
+              m.status === 'VALID' && m.fairValue !== null
+                ? ((m.fairValue - item.currentPrice) / m.fairValue) * 100
+                : null;
+            return (
+              <Card key={m.method} className="flex flex-col justify-between p-4">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-ink">
+                      {t.methods[m.method]}
+                    </span>
+                    {isPrimaryBankPbv && (
+                      <Badge tone="info">{t.detail.primaryBankRef}</Badge>
+                    )}
+                  </div>
+                  {m.status === 'VALID' ? (
+                    <div className="mt-2 flex items-baseline justify-between">
+                      <span className="font-mono text-xl font-bold text-ink tabular-nums">
+                        {formatIdr(m.fairValue)}
+                      </span>
+                      <span
+                        className={`font-mono text-xs font-semibold tabular-nums ${
+                          (diffPct ?? 0) >= 0 ? 'text-positive-600' : 'text-negative-600'
+                        }`}
+                      >
+                        {formatPercent(diffPct, true)} MoS
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <span className="font-mono text-lg font-semibold text-muted">
+                        {t.common.na}
+                      </span>
+                      {m.reasonCode && (
+                        <p className="mt-1 text-xs text-muted">
+                          {t.methodReasons[m.reasonCode]}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* What-If Tuning & Investment Thesis */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">{t.detail.whatIfTitle}</h2>
+              <p className="mt-0.5 text-xs text-muted">{t.detail.whatIfSubtitle}</p>
+            </div>
+            {savedNotice && (
+              <Badge tone="positive">
+                <CheckCircle2 className="h-3 w-3" />
+                {t.detail.savedNotice}
+              </Badge>
+            )}
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Field label={t.watchlist.form.targetPer} htmlFor="w-tper">
+              <Input
+                id="w-tper"
+                type="number"
+                min="0.1"
+                step="0.5"
+                value={targetPer}
+                onChange={(e) => setTargetPer(e.target.value)}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+            <Field label={t.watchlist.form.targetPbv} htmlFor="w-tpbv">
+              <Input
+                id="w-tpbv"
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={targetPbv}
+                onChange={(e) => setTargetPbv(e.target.value)}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+            <Field label={t.watchlist.form.discountRatePct} htmlFor="w-disc">
+              <Input
+                id="w-disc"
+                type="number"
+                min={1}
+                max={50}
+                step="0.5"
+                value={discountRatePct}
+                onChange={(e) => setDiscountRatePct(e.target.value)}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+            <Field label={t.watchlist.form.projectionYears} htmlFor="w-years">
+              <Input
+                id="w-years"
+                type="number"
+                min={1}
+                max={15}
+                step={1}
+                value={projectionYears}
+                onChange={(e) => setProjectionYears(e.target.value)}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+            <Field label={t.watchlist.form.terminalGrowthPct} htmlFor="w-term">
+              <Input
+                id="w-term"
+                type="number"
+                min={0}
+                max={15}
+                step="0.5"
+                value={terminalGrowthPct}
+                onChange={(e) => setTerminalGrowthPct(e.target.value)}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+            <Field label={t.watchlist.form.dividendGrowthPct} htmlFor="w-divg">
+              <Input
+                id="w-divg"
+                type="number"
+                min={0}
+                max={30}
+                step="0.5"
+                placeholder={String(liveValuation.assumptionsUsed.effectiveDividendGrowthPct)}
+                value={dividendGrowthPct}
+                onChange={(e) => setDividendGrowthPct(e.target.value)}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
+            <Button variant="secondary" size="sm" onClick={resetWhatIf}>
+              <RotateCcw className="h-3.5 w-3.5" />
+              {t.common.reset}
+            </Button>
+            <Button
+              size="sm"
+              onClick={saveWhatIf}
+              disabled={updateMutation.isPending}
+            >
+              <Save className="h-3.5 w-3.5" />
+              {updateMutation.isPending
+                ? t.detail.savingAssumptions
+                : t.detail.saveAssumptions}
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="flex flex-col justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">{t.detail.thesisTitle}</h2>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted">
+              {item.investmentThesis || t.detail.noThesis}
+            </p>
+          </div>
+          <div className="mt-4 border-t border-border pt-3 text-xs text-muted">
+            {t.detail.updatedAt}: {formatShortDate(item.updatedAt, lang)}
+          </div>
+        </Card>
+      </div>
+
+      <StockFormModal
+        open={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        editingItem={item}
+      />
+    </div>
+  );
+}
