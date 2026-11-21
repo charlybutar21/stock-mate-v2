@@ -50,7 +50,241 @@ Linked directly to your Watchlist stocks (client-side < 50ms recalculation via s
 
 ---
 
-## Tech Stack & Architecture
+## High-Level Architecture (HLA)
+
+Stock-Mate v2 uses a **Zero-Cost Edge Modular Monolith** architecture on **Cloudflare Workers + D1**. A single Vite build (`@cloudflare/vite-plugin`) outputs both the static React SPA and the Hono Worker API behind one origin, eliminating CORS complexity and enabling `HttpOnly; SameSite=Lax` cookie auth out of the box.
+
+```mermaid
+flowchart TB
+    subgraph Client["User Browser (React 19 + Vite + Tailwind CSS v4)"]
+        UI["UI Pages<br/>(Watchlist, Stock Detail, Simulator)"]
+        TQ["TanStack Query Cache<br/>(credentials: 'include')"]
+        SharedClient["Shared Pure Domain Engine<br/>(valuation.ts, simulator.ts, idx-rules.ts)"]
+        UI --> TQ
+        UI -->|"Real-time What-If & Simulator (<50ms)"| SharedClient
+    end
+
+    subgraph Edge["Cloudflare Edge (Single Origin: workers.dev)"]
+        Router{"Request Router<br/>(run_worker_first: /api/*)"}
+        Assets["Cloudflare Static Assets<br/>(SPA HTML/JS/CSS)"]
+
+        subgraph Worker["Hono API Worker (Stateless, 10ms CPU Budget)"]
+            MW["Global Middleware<br/>(Correlation ID, JSON Logger, RFC 7807)"]
+            AuthMod["Auth Module<br/>(PBKDF2-SHA256 + Cookie Session)"]
+            WatchMod["Watchlist Module<br/>(Single LEFT JOIN + Soft Delete)"]
+            MarketMod["Market Data Module<br/>(15m Quote Cache + 25m Crumb Cache)"]
+            SharedServer["Shared Pure Domain Engine<br/>(Single Source of Truth)"]
+
+            MW --> AuthMod
+            MW --> WatchMod
+            MW --> MarketMod
+            WatchMod --> SharedServer
+        end
+    end
+
+    subgraph Data["Data & External Services"]
+        D1[("Cloudflare D1 (SQLite - APAC)<br/>users · sessions · watchlist_items · stock_fundamentals")]
+        Yahoo["Yahoo Finance API (.JK)<br/>(Delayed Price & TTM Fundamentals)"]
+    end
+
+    TQ -->|"HTTPS + HttpOnly Cookie"| Router
+    Router -->|"Static Routes (/, /watchlist, /simulator)"| Assets
+    Router -->|"/api/v1/*"| MW
+    AuthMod --> D1
+    WatchMod --> D1
+    MarketMod -->|"Cache Miss Only"| Yahoo
+```
+
+### Key Architectural Decisions & Trade-Offs
+
+| Decision | Choice | Why & Trade-Off |
+| :--- | :--- | :--- |
+| **Deployment Topology** | Single-origin Cloudflare Worker + Static Assets | Eliminates CORS preflights, allows strict `SameSite=Lax` cookies, cold start ~10ms, **USD 0/month** on Free Tier. Trade-off: 10ms JS CPU limit per request. |
+| **Password Hashing** | Web Crypto `PBKDF2-SHA256` (100k iterations) | Runs in native C++ inside Cloudflare V8 (stays well within 10ms CPU limit), unlike pure-JS `bcrypt`/`argon2` which time out on Workers Free Tier. |
+| **Domain Logic Placement** | Pure TypeScript in `src/shared/domain/` | Zero framework imports; executed on both backend (canonical API response) and frontend (instant What-If & Simulator) so formulas never drift. |
+| **Database & Consistency** | Cloudflare D1 (SQLite) with ACID `db.batch()` | Strong consistency for user auth & watchlist mutations (`watchlist_items` + `stock_fundamentals` written atomically). Trade-off: Free Tier meters row scans → every query MUST use indexes (verified via `EXPLAIN QUERY PLAN`). |
+| **Market Data Caching** | Cache-Aside in Worker memory (15m quote / 25m crumb) | Keeps Auto-Add fast and avoids hammering Yahoo Finance. Trade-off: cache is per-isolate and data is delayed (~10–15m), mitigated by allowing full manual override. |
+
+---
+
+## Low-Level Design (LLD)
+
+### 1. Clean Architecture (Ports & Adapters) per Module
+
+Every backend module (`auth`, `watchlist`, `market-data`) follows strict inward dependency flow: **Infra → Application → Domain**.
+
+```mermaid
+flowchart LR
+    subgraph Inbound["Inbound Adapter (Infra)"]
+        Route["Hono Route Handler<br/>(auth-routes / watchlist-routes / market-data-routes)"]
+        Zod["Zod v4 Schema Validation<br/>(src/shared/contracts/)"]
+    end
+
+    subgraph App["Application Layer"]
+        UC["Use Cases<br/>(Register, Login, List, Create, Update, SoftDelete)"]
+    end
+
+    subgraph Domain["Domain Layer (Zero External Deps)"]
+        Port["Interfaces / Ports<br/>(AuthRepository, WatchlistRepository,<br/>PasswordHasher, IdxMarketDataProvider)"]
+        Math["Pure Domain Math<br/>(calculateValuation, simulateForwardAverageDown)"]
+    end
+
+    subgraph Outbound["Outbound Adapters (Infra)"]
+        D1Repo["Drizzle D1 Repositories<br/>(D1AuthRepository, D1WatchlistRepository)"]
+        Crypto["WebCryptoHasher<br/>(PBKDF2 + SHA-256)"]
+        YahooAdapter["YahooFinanceIdxProvider"]
+    end
+
+    Route --> Zod --> UC
+    UC --> Port
+    UC --> Math
+    D1Repo -.->|implements| Port
+    Crypto -.->|implements| Port
+    YahooAdapter -.->|implements| Port
+```
+
+---
+
+### 2. Database Schema (ERD) & Integer Scaling Conventions
+
+Cloudflare D1 (SQLite) has no native `DECIMAL` type. To guarantee **zero floating-point drift**, all monetary values, percentages, and multiples are stored as scaled `INTEGER`s and converted exclusively at the Repository/Use-Case boundary:
+
+- **Rupiah amounts** (`current_price`, `eps`, `bvps`, `dps`, `target_buy_price`): `1 : 1` integer Rupiah (e.g. `Rp 9.000` → `9000`).
+- **Percentages (Basis Points)** (`roe_bps`, `eps_growth_bps`, `discount_rate_bps`, `terminal_growth_bps`, `dividend_growth_bps`): `1% = 100 bps` (e.g. `15.50%` → `1550`).
+- **Multiples (`x100`)** (`der_x100`, `target_per_x100`, `target_pbv_x100`): `1.00x = 100` (e.g. `22.50x` → `2250`).
+- **Timestamps** (`created_at`, `updated_at`, `deleted_at`, `expires_at`): Unix epoch **milliseconds** (`INTEGER`) ↔ ISO-8601 UTC string in API JSON.
+
+```mermaid
+erDiagram
+    users ||--o{ sessions : "has active"
+    users ||--o{ watchlist_items : "owns"
+    watchlist_items ||--|| stock_fundamentals : "1:1 keystats"
+
+    users {
+        TEXT id PK
+        TEXT email UK "idx_users_email_active (deleted_at IS NULL)"
+        TEXT name
+        TEXT password_hash "pbkdf2_sha256$100000$salt$hash"
+        INTEGER created_at
+        INTEGER updated_at
+        INTEGER deleted_at "Soft delete"
+    }
+
+    sessions {
+        TEXT id PK
+        TEXT user_id FK "idx_sessions_user_id"
+        TEXT token_hash UK "SHA-256 hex of raw cookie"
+        INTEGER expires_at "idx_sessions_expires_at"
+        INTEGER created_at
+    }
+
+    watchlist_items {
+        TEXT id PK
+        TEXT user_id FK "idx_watchlist_user_active (user_id, updated_at DESC)"
+        TEXT ticker "uq_watchlist_user_ticker_active (deleted_at IS NULL)"
+        TEXT company_name
+        TEXT sector "11 IDX Sector Enum"
+        INTEGER current_price "CHECK >= 1 (BEI Sep 2026)"
+        INTEGER target_buy_price "Nullable, CHECK >= 1"
+        TEXT investment_thesis
+        INTEGER created_at
+        INTEGER updated_at
+        INTEGER deleted_at "Soft delete"
+    }
+
+    stock_fundamentals {
+        TEXT id PK
+        TEXT watchlist_item_id FK,UK "idx_fundamentals_watchlist_item_id"
+        TEXT period_label
+        INTEGER eps "Nullable (can be negative)"
+        INTEGER bvps "Nullable (can be negative)"
+        INTEGER dps "CHECK >= 0"
+        INTEGER roe_bps "1% = 100"
+        INTEGER der_x100 "1.00x = 100"
+        INTEGER eps_growth_bps "1% = 100"
+        INTEGER target_per_x100 "CHECK > 0"
+        INTEGER target_pbv_x100 "CHECK > 0"
+        INTEGER discount_rate_bps "Default 1200 (12%)"
+        INTEGER projection_years "Default 5"
+        INTEGER terminal_growth_bps "Default 400 (4%)"
+        INTEGER dividend_growth_bps "Nullable (auto fallback)"
+        INTEGER updated_at
+    }
+```
+
+> **Query Plan Guarantee:** `D1WatchlistRepository.listByUser` executes a **single `LEFT JOIN`** filtered by `user_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC`, verified in Vitest with `EXPLAIN QUERY PLAN` to use `idx_watchlist_user_active` + `idx_fundamentals_watchlist_item_id` (**0 full table scans, 0 N+1 queries**).
+
+---
+
+### 3. Sequence Flow: Authentication & Protected Requests
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant SPA as React SPA
+    participant API as Hono Worker
+    participant Crypto as WebCryptoHasher
+    participant D1 as Cloudflare D1
+
+    User->>SPA: Submit Email & Password
+    SPA->>API: POST /api/v1/auth/login
+    API->>D1: SELECT user WHERE email = ? AND deleted_at IS NULL
+    D1-->>API: UserEntity (password_hash)
+    API->>Crypto: verify(password, password_hash) [PBKDF2 100k + XOR compare]
+    Crypto-->>API: true
+    API->>Crypto: generateSessionToken() (32B) + sha256(token)
+    API->>D1: INSERT INTO sessions (token_hash, expires_at = +7d)
+    API-->>SPA: 200 OK + Set-Cookie: sm_session=<raw_hex>; HttpOnly; Secure; SameSite=Lax
+
+    Note over SPA,D1: Subsequent Protected API Call
+    SPA->>API: GET /api/v1/watchlist (Cookie: sm_session)
+    API->>Crypto: sha256(sm_session)
+    API->>D1: SELECT session INNER JOIN users WHERE token_hash = ? AND expires_at > now
+    D1-->>API: SessionWithUser
+    API->>D1: SELECT watchlist_items LEFT JOIN stock_fundamentals WHERE user_id = ? AND deleted_at IS NULL
+    D1-->>API: Joined rows
+    API-->>SPA: 200 OK { items: [...with computed ValuationSummary] }
+```
+
+---
+
+### 4. Sequence Flow: 1-Click Quick Auto-Add & Atomic Write
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant SPA as WatchlistPage
+    participant MarketAPI as GET /api/v1/market-data/idx/:ticker
+    participant Yahoo as Yahoo Finance (.JK)
+    participant WatchAPI as POST /api/v1/watchlist
+    participant D1 as Cloudflare D1
+
+    User->>SPA: Type "BBCA" & click Auto-Add
+    SPA->>MarketAPI: GET /api/v1/market-data/idx/BBCA
+    alt Quote in 15m Worker Cache
+        MarketAPI-->>SPA: 200 OK { quote } (Cache Hit <10ms)
+    else Cache Miss
+        MarketAPI->>Yahoo: Fetch crumb (cached 25m) + quoteSummary(BBCA.JK)
+        Yahoo-->>MarketAPI: Price, Sector, EPS, BVPS, DPS, ROE, DER, Growth
+        MarketAPI->>MarketAPI: Map sector + normalize DER/ROE + apply sector benchmark PER/PBV
+        MarketAPI-->>SPA: 200 OK { quote }
+    end
+    SPA->>WatchAPI: POST /api/v1/watchlist (quote payload)
+    WatchAPI->>D1: db.batch([INSERT watchlist_items, INSERT stock_fundamentals])
+    D1-->>WatchAPI: Committed atomically
+    WatchAPI-->>SPA: 201 Created { item + 6-method valuation }
+    SPA->>SPA: Invalidate TanStack Query & render BBCA row
+```
+
+---
+
+### 5. Error Handling & Observability Design
+- **RFC 7807 Problem Details:** Every `4xx`/`5xx` error is serialized by `src/server/shared/http/problem.ts` with `Content-Type: application/problem+json` containing `type`, `title`, `status`, `detail`, `instance`, `correlationId`, and optional field-level `errors` (flattened from Zod v4). Stack traces are never exposed.
+- **Structured Logging & PII Redaction:** Every `/api/*` request receives a `correlationId` (`x-correlation-id` header) and logs structured JSON (`method`, `path`, `status`, `durationMs`). The logger (`src/server/shared/logger.ts`) recursively redacts `password`, `password_hash`, `email`, `cookie`, `authorization`, and `token` keys.
+
+---
+
+## Tech Stack & Project Structure
 
 | Layer | Technology |
 | :--- | :--- |
@@ -61,8 +295,6 @@ Linked directly to your Watchlist stocks (client-side < 50ms recalculation via s
 | **Validation** | Zod v4 (`z.email()`, `z.flattenError()`) shared across server & client |
 | **Testing** | Vitest + V8 Coverage (100% coverage on `src/shared/domain/` + real SQLite API integration tests) |
 | **Observability** | Structured JSON logs with `correlationId` + PII redaction + RFC 7807 `application/problem+json` errors |
-
-### Project Structure
 
 ```text
 stock-mate-v2/
@@ -166,12 +398,10 @@ The workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs auto
    - Builds and deploys to Cloudflare Workers (`npm run deploy`)
    - Verifies production readiness via `GET /api/v1/health`
 
-### Enabling Automatic CD in GitHub
-Add the following **Repository Secrets** under **Settings → Secrets and variables → Actions**:
+### Required GitHub Repository Secrets
+Configure under **Settings → Secrets and variables → Actions**:
 - `CLOUDFLARE_API_TOKEN` — Cloudflare API token with **Workers Scripts: Edit** and **D1: Edit** permissions.
 - `CLOUDFLARE_ACCOUNT_ID` — Your Cloudflare Account ID.
-
-*(Without these secrets, CI verification still runs and passes cleanly, while the deploy step safely skips with a notice).*
 
 ### Manual Production Deploy
 ```bash
