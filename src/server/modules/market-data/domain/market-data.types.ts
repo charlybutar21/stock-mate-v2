@@ -27,7 +27,11 @@ export function mapYahooSectorToIdx(rawSector?: string | null, rawIndustry?: str
   const industry = (rawIndustry ?? '').toLowerCase();
 
   if (sector.includes('financial')) return 'FINANCIALS';
-  if (sector.includes('consumer defensive') || sector.includes('consumer staple')) {
+  if (
+    sector.includes('consumer non-cyclical') ||
+    sector.includes('consumer defensive') ||
+    sector.includes('consumer staple')
+  ) {
     return 'CONSUMER_NON_CYCLICALS';
   }
   if (sector.includes('consumer cyclical') || sector.includes('consumer discretionary')) {
@@ -37,8 +41,10 @@ export function mapYahooSectorToIdx(rawSector?: string | null, rawIndustry?: str
   if (sector.includes('basic material') || sector.includes('material')) return 'BASIC_MATERIALS';
   if (sector.includes('healthcare') || sector.includes('health care')) return 'HEALTHCARE';
   if (sector.includes('technology')) return 'TECHNOLOGY';
-  if (sector.includes('real estate')) return 'PROPERTY_REAL_ESTATE';
+  if (sector.includes('property') || sector.includes('real estate')) return 'PROPERTY_REAL_ESTATE';
   if (
+    sector.includes('transport') ||
+    sector.includes('logistic') ||
     industry.includes('shipping') ||
     industry.includes('airline') ||
     industry.includes('logistics') ||
@@ -47,7 +53,11 @@ export function mapYahooSectorToIdx(rawSector?: string | null, rawIndustry?: str
   ) {
     return 'TRANSPORTATION_LOGISTICS';
   }
-  if (sector.includes('communication') || sector.includes('utilities')) {
+  if (
+    sector.includes('infrastructure') ||
+    sector.includes('communication') ||
+    sector.includes('utilities')
+  ) {
     return 'INFRASTRUCTURE';
   }
   if (sector.includes('industrial')) return 'INDUSTRIALS';

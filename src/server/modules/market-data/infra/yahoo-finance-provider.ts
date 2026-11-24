@@ -45,6 +45,8 @@ interface YahooQuoteSummaryResponse {
       defaultKeyStatistics?: {
         trailingEps?: YahooRawField;
         bookValue?: YahooRawField;
+        netIncomeToCommon?: YahooRawField;
+        sharesOutstanding?: YahooRawField;
         earningsQuarterlyGrowth?: YahooRawField;
       };
       financialData?: {
@@ -191,15 +193,31 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
     const sector = mapYahooSectorToIdx(item.assetProfile?.sector, item.assetProfile?.industry);
     const benchmarks = SECTOR_BENCHMARK_MULTIPLES[sector];
 
-    const eps = toOptionalInt(item.defaultKeyStatistics?.trailingEps?.raw);
+    const rawRoe = item.financialData?.returnOnEquity?.raw;
+    const roePct =
+      rawRoe !== undefined && Number.isFinite(rawRoe) ? round2(rawRoe * 100) : null;
+
+    let eps = toOptionalInt(item.defaultKeyStatistics?.trailingEps?.raw);
+    const netIncome = item.defaultKeyStatistics?.netIncomeToCommon?.raw;
+    const sharesOut = item.defaultKeyStatistics?.sharesOutstanding?.raw;
+    if (
+      netIncome !== undefined &&
+      sharesOut !== undefined &&
+      Number.isFinite(netIncome) &&
+      Number.isFinite(sharesOut) &&
+      sharesOut > 0
+    ) {
+      const derivedEps = Math.round(netIncome / sharesOut);
+      // Guard against stale Yahoo trailingEps contradicting negative ROE / Net Income
+      if (eps === null || (eps > 0 && (derivedEps < 0 || (roePct !== null && roePct < 0)))) {
+        eps = derivedEps;
+      }
+    }
+
     const bvps = toOptionalInt(item.defaultKeyStatistics?.bookValue?.raw);
     const rawDps = item.summaryDetail?.dividendRate?.raw;
     const dps =
       rawDps !== undefined && Number.isFinite(rawDps) && rawDps >= 0 ? Math.round(rawDps) : null;
-
-    const rawRoe = item.financialData?.returnOnEquity?.raw;
-    const roePct =
-      rawRoe !== undefined && Number.isFinite(rawRoe) ? round2(rawRoe * 100) : null;
 
     // Yahoo Finance reports debtToEquity as a percentage (e.g. 64.97 = 0.65x)
     const rawDerPct = item.financialData?.debtToEquity?.raw;

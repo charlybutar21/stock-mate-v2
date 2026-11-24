@@ -108,7 +108,7 @@ export const id: I18nDictionary = {
     quickAddPlaceholder: 'Ketik kode saham IDX (mis. BBCA, BBRI, TLKM)...',
     quickAddBtn: 'Tambah Otomatis',
     quickAdding: 'Mengambil data...',
-    quickAddHint: 'Otomatis mengambil harga & fundamental TTM (delayed, Yahoo Finance .JK). Bisa diubah kapan saja.',
+    quickAddHint: 'Otomatis mengambil harga & fundamental TTM IDX (Sectors.app / Yahoo Finance). Bisa diubah kapan saja.',
     autoFillBtn: 'Isi Otomatis',
     autoFilling: 'Mengambil...',
     autoFillSuccess: 'Data fundamental berhasil diisi otomatis (delayed). Silakan tinjau atau sesuaikan.',

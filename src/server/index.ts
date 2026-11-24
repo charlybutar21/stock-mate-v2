@@ -10,16 +10,29 @@ import { createAuthRoutes } from './modules/auth/infra/auth-routes';
 import { D1WatchlistRepository } from './modules/watchlist/infra/d1-watchlist-repository';
 import { createWatchlistRoutes } from './modules/watchlist/infra/watchlist-routes';
 import type { IdxMarketDataProvider } from './modules/market-data/domain/market-data.types';
+import {
+  CompositeIdxMarketDataProvider,
+  SectorsIdxProvider,
+} from './modules/market-data/infra/sectors-provider';
 import { YahooFinanceIdxProvider } from './modules/market-data/infra/yahoo-finance-provider';
 import { createMarketDataRoutes } from './modules/market-data/infra/market-data-routes';
 
 export function createApp(options?: { marketDataProvider?: IdxMarketDataProvider }) {
   const app = new Hono<AppEnv>();
   const hasher = new WebCryptoHasher();
-  const marketDataProvider = options?.marketDataProvider ?? new YahooFinanceIdxProvider();
+  const yahooProvider = new YahooFinanceIdxProvider();
 
-  const getDeps = (d1: D1Database) => {
+  const getDeps = (d1: D1Database, env?: { SECTORS_API_KEY?: string }) => {
     const db = drizzle(d1, { schema });
+    const marketDataProvider: IdxMarketDataProvider =
+      options?.marketDataProvider ??
+      (env?.SECTORS_API_KEY
+        ? new CompositeIdxMarketDataProvider(
+            new SectorsIdxProvider(env.SECTORS_API_KEY),
+            yahooProvider,
+          )
+        : yahooProvider);
+
     return {
       authRepo: new D1AuthRepository(db),
       watchlistRepo: new D1WatchlistRepository(db),

@@ -15,7 +15,10 @@ const tickerParamSchema = z.object({
 });
 
 export function createMarketDataRoutes(
-  getDeps: (db: D1Database) => {
+  getDeps: (
+    db: D1Database,
+    env?: { SECTORS_API_KEY?: string },
+  ) => {
     authRepo: AuthRepository;
     hasher: PasswordHasher;
     marketDataProvider: IdxMarketDataProvider;
@@ -32,7 +35,7 @@ export function createMarketDataRoutes(
       throw zodToValidationError(parsed.error);
     }
 
-    const { marketDataProvider } = getDeps(c.env.DB);
+    const { marketDataProvider } = getDeps(c.env.DB, c.env);
     const quote = await marketDataProvider.fetchIdxQuote(parsed.data.ticker);
 
     return c.json({ quote }, 200);

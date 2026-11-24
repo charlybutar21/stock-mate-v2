@@ -106,7 +106,7 @@ export const en = {
     quickAddPlaceholder: 'Enter IDX ticker (e.g. BBCA, BBRI, TLKM)...',
     quickAddBtn: 'Auto-Add',
     quickAdding: 'Fetching...',
-    quickAddHint: 'Auto-fetches delayed price & TTM fundamentals (Yahoo Finance .JK). Editable anytime.',
+    quickAddHint: 'Auto-fetches IDX price & TTM fundamentals (Sectors.app / Yahoo Finance). Editable anytime.',
     autoFillBtn: 'Auto-Fill',
     autoFilling: 'Fetching...',
     autoFillSuccess: 'Fundamentals auto-filled (delayed data). Review or adjust as needed.',

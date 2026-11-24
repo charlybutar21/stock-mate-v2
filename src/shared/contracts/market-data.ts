@@ -16,6 +16,6 @@ export interface IdxMarketQuoteDto {
     targetPer: number;
     targetPbv: number;
   };
-  source: 'yahoo_finance';
+  source: 'sectors_app' | 'yahoo_finance';
   fetchedAt: string;
 }
