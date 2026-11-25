@@ -14,13 +14,19 @@ import {
   CompositeIdxMarketDataProvider,
   SectorsIdxProvider,
 } from './modules/market-data/infra/sectors-provider';
+import { TradingViewIdxProvider } from './modules/market-data/infra/tradingview-provider';
 import { YahooFinanceIdxProvider } from './modules/market-data/infra/yahoo-finance-provider';
 import { createMarketDataRoutes } from './modules/market-data/infra/market-data-routes';
 
 export function createApp(options?: { marketDataProvider?: IdxMarketDataProvider }) {
   const app = new Hono<AppEnv>();
   const hasher = new WebCryptoHasher();
+  const tradingViewProvider = new TradingViewIdxProvider();
   const yahooProvider = new YahooFinanceIdxProvider();
+  const defaultFreeProvider = new CompositeIdxMarketDataProvider(
+    tradingViewProvider,
+    yahooProvider,
+  );
 
   const getDeps = (d1: D1Database, env?: { SECTORS_API_KEY?: string }) => {
     const db = drizzle(d1, { schema });
@@ -29,9 +35,9 @@ export function createApp(options?: { marketDataProvider?: IdxMarketDataProvider
       (env?.SECTORS_API_KEY
         ? new CompositeIdxMarketDataProvider(
             new SectorsIdxProvider(env.SECTORS_API_KEY),
-            yahooProvider,
+            defaultFreeProvider,
           )
-        : yahooProvider);
+        : defaultFreeProvider);
 
     return {
       authRepo: new D1AuthRepository(db),

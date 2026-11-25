@@ -5,6 +5,7 @@ import {
   Clock,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Sparkles,
   Trash2,
@@ -31,6 +32,7 @@ import {
   useCreateWatchlistItem,
   useDeleteWatchlistItem,
   useFetchIdxQuote,
+  useSyncAllWatchlist,
   useWatchlist,
 } from './useWatchlist';
 
@@ -62,6 +64,7 @@ export function WatchlistPage() {
   const deleteMutation = useDeleteWatchlistItem();
   const fetchQuoteMutation = useFetchIdxQuote();
   const createMutation = useCreateWatchlistItem();
+  const syncAllMutation = useSyncAllWatchlist();
   const isQuickAdding = fetchQuoteMutation.isPending || createMutation.isPending;
 
   const handleQuickAdd = async (e: FormEvent) => {
@@ -139,10 +142,25 @@ export function WatchlistPage() {
           <h1 className="text-xl font-semibold tracking-tight text-ink">{t.watchlist.title}</h1>
           <p className="mt-0.5 text-sm text-muted">{t.watchlist.subtitle}</p>
         </div>
-        <Button variant="secondary" onClick={openAdd} size="md">
-          <Plus className="h-4 w-4" />
-          {t.watchlist.addStock}
-        </Button>
+        <div className="flex items-center gap-2">
+          {items && items.length > 0 && (
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => syncAllMutation.mutate()}
+              disabled={syncAllMutation.isPending}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${syncAllMutation.isPending ? 'animate-spin' : ''}`}
+              />
+              {syncAllMutation.isPending ? t.watchlist.syncingAll : t.watchlist.syncAllBtn}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={openAdd} size="md">
+            <Plus className="h-4 w-4" />
+            {t.watchlist.addStock}
+          </Button>
+        </div>
       </div>
 
       {/* Quick Auto-Add Bar */}

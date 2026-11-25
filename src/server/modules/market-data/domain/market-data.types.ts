@@ -3,6 +3,7 @@ import type { IdxSector } from '@/shared/domain';
 
 export interface IdxMarketDataProvider {
   fetchIdxQuote(ticker: string): Promise<IdxMarketQuoteDto>;
+  fetchIdxQuotesBatch?(tickers: string[]): Promise<Map<string, IdxMarketQuoteDto>>;
 }
 
 export const SECTOR_BENCHMARK_MULTIPLES: Record<
@@ -26,20 +27,29 @@ export function mapYahooSectorToIdx(rawSector?: string | null, rawIndustry?: str
   const sector = (rawSector ?? '').toLowerCase();
   const industry = (rawIndustry ?? '').toLowerCase();
 
-  if (sector.includes('financial')) return 'FINANCIALS';
+  if (sector.includes('financ') || sector === 'finance') return 'FINANCIALS';
   if (
     sector.includes('consumer non-cyclical') ||
+    sector.includes('consumer non-durable') ||
     sector.includes('consumer defensive') ||
     sector.includes('consumer staple')
   ) {
     return 'CONSUMER_NON_CYCLICALS';
   }
-  if (sector.includes('consumer cyclical') || sector.includes('consumer discretionary')) {
+  if (
+    sector.includes('consumer cyclical') ||
+    sector.includes('consumer durable') ||
+    sector.includes('consumer services') ||
+    sector.includes('consumer discretionary') ||
+    sector.includes('retail')
+  ) {
     return 'CONSUMER_CYCLICALS';
   }
+  if (sector.includes('non-energy mineral') || sector.includes('basic material') || sector.includes('process industries') || sector.includes('material')) {
+    return 'BASIC_MATERIALS';
+  }
   if (sector.includes('energy')) return 'ENERGY';
-  if (sector.includes('basic material') || sector.includes('material')) return 'BASIC_MATERIALS';
-  if (sector.includes('healthcare') || sector.includes('health care')) return 'HEALTHCARE';
+  if (sector.includes('health')) return 'HEALTHCARE';
   if (sector.includes('technology')) return 'TECHNOLOGY';
   if (sector.includes('property') || sector.includes('real estate')) return 'PROPERTY_REAL_ESTATE';
   if (
@@ -60,7 +70,9 @@ export function mapYahooSectorToIdx(rawSector?: string | null, rawIndustry?: str
   ) {
     return 'INFRASTRUCTURE';
   }
-  if (sector.includes('industrial')) return 'INDUSTRIALS';
+  if (sector.includes('industrial') || sector.includes('manufacturing') || sector.includes('commercial')) {
+    return 'INDUSTRIALS';
+  }
 
   return 'INDUSTRIALS';
 }

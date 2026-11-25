@@ -278,12 +278,31 @@ export class CompositeIdxMarketDataProvider implements IdxMarketDataProvider {
   async fetchIdxQuote(ticker: string): Promise<IdxMarketQuoteDto> {
     try {
       return await this.primary.fetchIdxQuote(ticker);
-    } catch (err) {
-      if (err instanceof AppError && err.status === 404) {
-        // Still try fallback in case ticker format differs
-        return await this.fallback.fetchIdxQuote(ticker);
-      }
+    } catch {
       return await this.fallback.fetchIdxQuote(ticker);
     }
+  }
+
+  async fetchIdxQuotesBatch(tickers: string[]): Promise<Map<string, IdxMarketQuoteDto>> {
+    if (this.primary.fetchIdxQuotesBatch) {
+      try {
+        return await this.primary.fetchIdxQuotesBatch(tickers);
+      } catch {
+        // Fallback to secondary batch or individual fetch
+      }
+    }
+    if (this.fallback.fetchIdxQuotesBatch) {
+      return await this.fallback.fetchIdxQuotesBatch(tickers);
+    }
+    const map = new Map<string, IdxMarketQuoteDto>();
+    for (const ticker of tickers) {
+      try {
+        const quote = await this.fetchIdxQuote(ticker);
+        map.set(quote.ticker, quote);
+      } catch {
+        // Skip failed tickers during batch sync
+      }
+    }
+    return map;
   }
 }

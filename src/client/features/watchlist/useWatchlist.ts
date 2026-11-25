@@ -90,3 +90,16 @@ export function useFetchIdxQuote() {
     },
   });
 }
+
+export function useSyncAllWatchlist() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<{ updatedCount: number }>('/api/v1/watchlist/sync-all', {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+    },
+  });
+}
