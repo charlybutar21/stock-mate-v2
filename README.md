@@ -17,11 +17,12 @@
 - **DB-backed sessions:** Raw 32-byte token stored only in `HttpOnly; Secure; SameSite=Lax` cookie (`sm_session`); only `SHA-256(token)` is persisted in Cloudflare D1.
 - **Anti-IDOR isolation:** Every watchlist read/write enforces `user_id` ownership and returns `404` for unauthorized IDs.
 
-### 2. IDX Watchlist, Position Ledger & 1-Click Auto-Fetch (TradingView IDX)
+### 2. IDX Watchlist, Multi-Entry Position Ledger & 1-Click Auto-Fetch (TradingView IDX)
 - **Quick Auto-Add (1-Click):** Enter any 4-letter IDX ticker (e.g. `BBCA`, `BBRI`, `ICBP`, `TLKM`, `ASII`) to automatically fetch near real-time price and TTM key stats via **TradingView Indonesia Scanner** (free, zero API key) with automatic fallback to Yahoo Finance (and optional Sectors.app support via `SECTORS_API_KEY`).
-- **Batch Sync All:** Refresh every stock in your watchlist in 1 single batch request (`POST /api/v1/watchlist/sync-all`) while preserving your personal valuation benchmarks, owned lots, and thesis.
-- **My Holding Position Tracking:** Record and edit your **Owned Lots** (`owned_lots`) and **Avg Buy Price** (`avg_buy_price`) directly on each stock, showing live **Market Value** and **Unrealized P/L (Rp & %)** on the Watchlist Ledger and Stock Detail page.
-- **6 Essential Industry-Standard Key Stats:** Streamlined strictly to the metrics that matter — `EPS (TTM)`, `BVPS`, `ROE (%)`, `DER (x)`, `EPS Growth (YoY %)`, and `Dividend / Share (DPS)` — plus 3 sector-prefilled benchmarks (`Target P/E`, `Target P/B`, `WACC`).
+- **Batch Sync All:** Refresh every stock in your watchlist in 1 single batch request (`POST /api/v1/watchlist/sync-all`) while preserving your personal valuation benchmarks, owned lots, tranches, and thesis.
+- **Multi-Entry Average Down Position Tracking:** Record multiple buy entries at different prices (`+ Add Buy / Average Down` stored in `holding_tranches_json`) and automatically compute **Combined Lots**, **Weighted Average Buy Price**, **Total Invested Capital** (incl. `0.15%` Stockbit buy fee), **Net Market Value** (net of `0.25%` Stockbit sell fee + `Rp 10.000` Bea Materai if gross `> Rp 10M`), and **Net Unrealized P/L (`Rp` & `%`)**.
+- **Stockbit-Style Privacy Toggle & UX:** One-click **Eye (`Hide / Show Balances`)** toggle masks Rupiah portfolio balances and lot counts while keeping `%` returns visible; zero cryptic abbreviations with interactive hover glossary tooltips; compact no-horizontal-scroll Stockbit-inspired watchlist table.
+- **6 Essential Industry-Standard Key Stats:** Streamlined strictly to the metrics that matter — `Earnings Per Share (TTM)`, `Book Value Per Share`, `Return on Equity (%)`, `Debt-to-Equity Ratio (x)`, `Earnings Growth (YoY %)`, and `Dividend Per Share (Annual)` — plus 3 sector-prefilled benchmarks (`Target P/E`, `Target P/B`, `Discount Rate / WACC`).
 
 ### 3. Core-3 Multi-Method Fair Value Engine (2026 Institutional Standard)
 Focuses on the **3 most accurate and relevant valuation anchors** for modern IDX equities, with graceful `N/A` reasons when inputs are negative or missing:
@@ -70,7 +71,7 @@ flowchart TB
             MW["Global Middleware<br/>(Correlation ID, JSON Logger, RFC 7807)"]
             AuthMod["Auth Module<br/>(PBKDF2-SHA256 + Cookie Session)"]
             WatchMod["Watchlist Module<br/>(Single LEFT JOIN + Soft Delete)"]
-            MarketMod["Market Data Module<br/>(15m Quote Cache + 25m Crumb Cache)"]
+            MarketMod["Market Data Module<br/>(TradingView 10m Cache + Yahoo Fallback)"]
             SharedServer["Shared Pure Domain Engine<br/>(Single Source of Truth)"]
 
             MW --> AuthMod
@@ -103,7 +104,7 @@ flowchart TB
 | **Password Hashing** | Web Crypto `PBKDF2-SHA256` (100k iterations) | Runs in native C++ inside Cloudflare V8 (stays well within 10ms CPU limit), unlike pure-JS `bcrypt`/`argon2` which time out on Workers Free Tier. |
 | **Domain Logic Placement** | Pure TypeScript in `src/shared/domain/` | Zero framework imports; executed on both backend (canonical API response) and frontend (instant What-If & Simulator) so formulas never drift. |
 | **Database & Consistency** | Cloudflare D1 (SQLite) with ACID `db.batch()` | Strong consistency for user auth & watchlist mutations (`watchlist_items` + `stock_fundamentals` written atomically). Trade-off: Free Tier meters row scans → every query MUST use indexes (verified via `EXPLAIN QUERY PLAN`). |
-| **Market Data Caching** | Cache-Aside in Worker memory (15m quote / 25m crumb) | Keeps Auto-Add fast and avoids hammering Yahoo Finance. Trade-off: cache is per-isolate and data is delayed (~10–15m), mitigated by allowing full manual override. |
+| **Market Data Caching** | Cache-Aside in Worker memory (10m TradingView / 15m Yahoo fallback) | Keeps Auto-Add and Batch Sync All fast with zero API keys. Trade-off: cache is per-isolate and quotes may have minor exchange delay, mitigated by allowing full manual override. |
 
 ---
 
@@ -131,8 +132,8 @@ flowchart LR
 
     subgraph Outbound["Outbound Adapters (Infra)"]
         D1Repo["Drizzle D1 Repositories<br/>(D1AuthRepository, D1WatchlistRepository)"]
-        Crypto["WebCryptoHasher<br/>(PBKDF2 + SHA-256)"]
-        YahooAdapter["YahooFinanceIdxProvider"]
+        Crypto["WebCryptoHasher<br/>(PBKDF2 + @noble/hashes SHA-256)"]
+        MarketAdapter["TradingViewIdxProvider<br/>(Primary) + Yahoo Fallback"]
     end
 
     Route --> Zod --> UC
@@ -140,7 +141,7 @@ flowchart LR
     UC --> Math
     D1Repo -.->|implements| Port
     Crypto -.->|implements| Port
-    YahooAdapter -.->|implements| Port
+    MarketAdapter -.->|implements| Port
 ```
 
 ---
@@ -187,6 +188,7 @@ erDiagram
         INTEGER current_price "CHECK >= 1 (BEI Sep 2026)"
         INTEGER owned_lots "DEFAULT 0, CHECK >= 0 (0002 migration)"
         INTEGER avg_buy_price "Nullable, CHECK >= 1 (0002 migration)"
+        TEXT holding_tranches_json "JSON array of lots and buyPrice (0003 migration)"
         INTEGER target_buy_price "Nullable, CHECK >= 1"
         TEXT investment_thesis
         INTEGER created_at
@@ -236,16 +238,16 @@ sequenceDiagram
     Crypto-->>API: true
     API->>Crypto: generateSessionToken() (32B) + sha256(token)
     API->>D1: INSERT INTO sessions (token_hash, expires_at = +7d)
-    API-->>SPA: 200 OK + Set-Cookie: sm_session=<raw_hex>; HttpOnly; Secure; SameSite=Lax
+    API-->>SPA: 200 OK + Set-Cookie sm_session (HttpOnly, Secure, SameSite=Lax)
 
     Note over SPA,D1: Subsequent Protected API Call
-    SPA->>API: GET /api/v1/watchlist (Cookie: sm_session)
+    SPA->>API: GET /api/v1/watchlist (Cookie sm_session)
     API->>Crypto: sha256(sm_session)
     API->>D1: SELECT session INNER JOIN users WHERE token_hash = ? AND expires_at > now
     D1-->>API: SessionWithUser
     API->>D1: SELECT watchlist_items LEFT JOIN stock_fundamentals WHERE user_id = ? AND deleted_at IS NULL
     D1-->>API: Joined rows
-    API-->>SPA: 200 OK { items: [...with computed ValuationSummary] }
+    API-->>SPA: 200 OK { items with computed ValuationSummary }
 ```
 
 ---
@@ -257,24 +259,24 @@ sequenceDiagram
     actor User
     participant SPA as WatchlistPage
     participant MarketAPI as GET /api/v1/market-data/idx/:ticker
-    participant Yahoo as Yahoo Finance (.JK)
+    participant TV as TradingView IDX Scanner
     participant WatchAPI as POST /api/v1/watchlist
     participant D1 as Cloudflare D1
 
     User->>SPA: Type "BBCA" & click Auto-Add
     SPA->>MarketAPI: GET /api/v1/market-data/idx/BBCA
-    alt Quote in 15m Worker Cache
-        MarketAPI-->>SPA: 200 OK { quote } (Cache Hit <10ms)
+    alt Quote in 10m Worker Cache
+        MarketAPI-->>SPA: 200 OK { quote } (Cache Hit under 10ms)
     else Cache Miss
-        MarketAPI->>Yahoo: Fetch crumb (cached 25m) + quoteSummary(BBCA.JK)
-        Yahoo-->>MarketAPI: Price, Sector, EPS, BVPS, DPS, ROE, DER, Growth
-        MarketAPI->>MarketAPI: Map sector + normalize DER/ROE + apply sector benchmark PER/PBV
+        MarketAPI->>TV: POST /indonesia/scan (IDX:BBCA fundamentals)
+        TV-->>MarketAPI: Close, Sector, EPS, BVPS, DPS, ROE, DER, Growth
+        MarketAPI->>MarketAPI: Map IDX sector + normalize DER/ROE + apply sector benchmarks
         MarketAPI-->>SPA: 200 OK { quote }
     end
     SPA->>WatchAPI: POST /api/v1/watchlist (quote payload)
     WatchAPI->>D1: db.batch([INSERT watchlist_items, INSERT stock_fundamentals])
     D1-->>WatchAPI: Committed atomically
-    WatchAPI-->>SPA: 201 Created { item + 6-method valuation }
+    WatchAPI-->>SPA: 201 Created { item + Core-3 valuation }
     SPA->>SPA: Invalidate TanStack Query & render BBCA row
 ```
 
@@ -304,28 +306,30 @@ stock-mate-v2/
 ├── vite.config.ts                   # @cloudflare/vite-plugin + React + Tailwind CSS v4
 ├── drizzle.config.ts                # Drizzle Kit SQLite config
 ├── migrations/
-│   └── 0001_initial.sql             # Indexed D1 schema (users, sessions, watchlist_items, stock_fundamentals)
+│   ├── 0001_initial.sql             # Indexed D1 schema (users, sessions, watchlist_items, stock_fundamentals)
+│   ├── 0002_add_position_holdings.sql   # owned_lots & avg_buy_price columns
+│   └── 0003_add_holding_tranches.sql    # holding_tranches_json for multi-entry average-down positions
 ├── src/
 │   ├── shared/
 │   │   ├── domain/                  # Pure TS financial math (0 framework deps, 100% test coverage)
-│   │   │   ├── idx-rules.ts         # LOT=100, MIN_PRICE=1, IDX tick brackets, Stockbit fees
-│   │   │   ├── valuation.ts         # 6 valuation methods, MoS, median range, quality flags
-│   │   │   ├── simulator.ts         # Forward multi-tranche, Goal-Seek, BEP, guardrails
-│   │   │   └── __tests__/           # Golden Test Cases 1–5
+│   │   │   ├── idx-rules.ts         # LOT=100, MIN_PRICE=1, IDX tick brackets, Stockbit fees & Bea Materai
+│   │   │   ├── valuation.ts         # Core-3 valuation methods, Margin of Safety, median range, quality flags
+│   │   │   ├── simulator.ts         # Forward multi-tranche, Goal-Seek, Net Market Value, BEP, guardrails
+│   │   │   └── __tests__/           # Golden Test Cases & 100% branch coverage
 │   │   └── contracts/               # Shared Zod v4 DTOs (auth, watchlist, market-data, RFC 7807)
 │   ├── server/                      # Hono Worker API
-│   │   ├── index.ts                 # App assembly, DI, correlationId, RFC 7807 global error handler
+│   │   ├── index.ts                 # App assembly, DI, secureHeaders, CSRF, correlationId, RFC 7807 handler
 │   │   ├── modules/
-│   │   │   ├── auth/                # Domain, UseCases, D1AuthRepository, WebCryptoHasher, routes
+│   │   │   ├── auth/                # Domain, UseCases, D1AuthRepository, WebCryptoHasher (@noble/hashes), routes
 │   │   │   ├── watchlist/           # Domain, UseCases, D1WatchlistRepository (single LEFT JOIN), routes
-│   │   │   └── market-data/         # IdxMarketDataProvider port, YahooFinanceIdxProvider, routes
+│   │   │   └── market-data/         # TradingViewIdxProvider (primary), YahooFinanceIdxProvider, SectorsIdxProvider
 │   │   ├── shared/                  # Drizzle schema, RFC 7807 helper, auth middleware, JSON logger
-│   │   └── __tests__/               # Integration tests (auth, IDOR, soft-delete, EXPLAIN QUERY PLAN)
-│   └── client/                      # React + Vite + Tailwind v4 SPA
+│   │   └── __tests__/               # Integration tests (auth, IDOR, soft-delete, EXPLAIN QUERY PLAN, providers)
+│   └── client/                      # React + Vite + Tailwind v4 SPA (Stockbit-inspired emerald UI)
 │       ├── i18n/                    # en.ts (default), id.ts (strictly typed), useI18n.tsx
-│       ├── components/ui/           # Presentational primitives, AppShell, Skeleton, ErrorBoundary
-│       ├── features/                # auth/, watchlist/, simulator/
-│       └── lib/                     # apiClient (credentials: 'include'), IDR/percent formatters
+│       ├── components/ui/           # Presentational primitives, TermTooltip glossary, AppShell, ErrorBoundary
+│       ├── features/                # auth/, watchlist/ (incl. HoldingTranchesEditor), simulator/
+│       └── lib/                     # apiClient (credentials: 'include'), usePrivacy.tsx, IDR/percent formatters
 └── .github/workflows/ci.yml         # CI/CD: typecheck -> lint -> test:coverage -> build -> D1 migrate -> deploy
 ```
 
@@ -344,7 +348,7 @@ Base path: `/api/v1` (all errors follow **RFC 7807 `application/problem+json`**)
 | `GET` | `/api/v1/auth/me` | Cookie | Return current authenticated user |
 | `GET` | `/api/v1/watchlist` | Cookie | List active watchlist (`?search=&sector=&sort=mos_desc\|updated_desc\|ticker_asc`) |
 | `POST` | `/api/v1/watchlist` | Cookie | Create watchlist item + fundamentals atomically |
-| `GET` | `/api/v1/watchlist/:id` | Cookie | Get single item + full 6-method valuation breakdown |
+| `GET` | `/api/v1/watchlist/:id` | Cookie | Get single item + full Core-3 valuation breakdown & net position summary |
 | `PATCH` | `/api/v1/watchlist/:id` | Cookie | Partial update of price, thesis, or fundamentals |
 | `DELETE` | `/api/v1/watchlist/:id` | Cookie | Soft delete (`deleted_at`) |
 | `POST` | `/api/v1/watchlist/sync-all` | Cookie | Batch sync all active watchlist stocks via TradingView IDX |
