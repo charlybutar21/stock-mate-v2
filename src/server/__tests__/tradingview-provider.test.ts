@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createWatchlistSchema } from '@/shared/contracts';
 import { parseTradingViewRowToDto } from '../modules/market-data/infra/tradingview-provider';
 
 describe('TradingViewIdxProvider parser', () => {
@@ -68,5 +69,40 @@ describe('TradingViewIdxProvider parser', () => {
     expect(lossMaking!.fundamentals.dps).toBeNull();
     expect(lossMaking!.fundamentals.roePct).toBe(-8.19);
     expect(lossMaking!.fundamentals.der).toBe(0.64);
+  });
+
+  it('handles extreme turnaround YoY EPS growth stocks like IDX:BUMI (+2738%) and passes createWatchlistSchema', () => {
+    const bumi = parseTradingViewRowToDto({
+      s: 'IDX:BUMI',
+      d: [
+        'BUMI',
+        'PT Bumi Resources Tbk Class A',
+        127,
+        'Non-Energy Minerals',
+        5.4151,
+        80.16587,
+        0,
+        7.3295254929497,
+        0.440262269302495,
+        2738.1027253668763,
+      ],
+    });
+
+    expect(bumi).not.toBeNull();
+    expect(bumi!.ticker).toBe('BUMI');
+    expect(bumi!.currentPrice).toBe(127);
+    expect(bumi!.fundamentals.epsGrowthPct).toBe(1000);
+
+    const parsed = createWatchlistSchema.safeParse({
+      ticker: bumi!.ticker,
+      companyName: bumi!.companyName,
+      sector: bumi!.sector,
+      currentPrice: bumi!.currentPrice,
+      fundamentals: {
+        ...bumi!.fundamentals,
+        epsGrowthPct: 2738.1, // even if entered manually without clamping
+      },
+    });
+    expect(parsed.success).toBe(true);
   });
 });

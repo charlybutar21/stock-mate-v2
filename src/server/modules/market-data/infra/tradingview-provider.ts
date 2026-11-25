@@ -42,6 +42,10 @@ function asFinite(val: unknown): number | null {
   return typeof val === 'number' && Number.isFinite(val) ? val : null;
 }
 
+function clamp(val: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, val));
+}
+
 export function parseTradingViewRowToDto(
   row: { s: string; d: Array<string | number | null> },
   nowMs = Date.now(),
@@ -93,9 +97,15 @@ export function parseTradingViewRowToDto(
       eps: epsVal !== null ? Math.round(epsVal) : null,
       bvps: bvpsVal !== null ? Math.round(bvpsVal) : null,
       dps: dpsVal !== null && dpsVal >= 0 ? Math.round(dpsVal) : null,
-      roePct: roeVal !== null ? round2(roeVal) : null,
-      der: sector === 'FINANCIALS' ? null : derVal !== null && derVal >= 0 ? round2(derVal) : null,
-      epsGrowthPct: epsGrowthVal !== null ? round2(epsGrowthVal) : null,
+      roePct: roeVal !== null ? round2(clamp(roeVal, -1000, 1000)) : null,
+      der:
+        sector === 'FINANCIALS'
+          ? null
+          : derVal !== null && derVal >= 0
+            ? round2(clamp(derVal, 0, 1000))
+            : null,
+      epsGrowthPct:
+        epsGrowthVal !== null ? round2(clamp(epsGrowthVal, -1000, 1000)) : null,
       targetPer: benchmarks.targetPer,
       targetPbv: benchmarks.targetPbv,
     },
