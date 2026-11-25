@@ -27,6 +27,7 @@ import {
   Modal,
   Select,
   Skeleton,
+  TermTooltip,
   type BadgeTone,
 } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
@@ -177,44 +178,47 @@ export function WatchlistPage() {
         </div>
       </div>
 
-      {/* Editorial Ledger KPI Strip (hairline dividers, no floating SaaS cards) */}
-      <div className="grid grid-cols-2 divide-y divide-border rounded-md border border-border bg-panel sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-        <div className="px-4 py-3.5">
-          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+      {/* Dynamic Elevated KPI Cards */}
+      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4 animate-fade-up">
+        <Card interactive className="border-t-2 border-t-ink/70 p-4">
+          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
             {t.watchlist.kpiTotal}
           </div>
-          <div className="mt-1 font-mono text-xl font-semibold text-ink tabular-nums">
-            {isLoading ? <Skeleton className="h-6 w-10" /> : kpis.total}
+          <div className="mt-1.5 font-mono text-2xl font-bold text-ink tabular-nums">
+            {isLoading ? <Skeleton className="h-7 w-12" /> : kpis.total}
           </div>
-        </div>
-        <div className="px-4 py-3.5">
-          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
-            {t.watchlist.kpiUndervalued}
+        </Card>
+        <Card interactive className="border-t-2 border-t-positive-600 p-4">
+          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+            <TermTooltip
+              label={t.watchlist.kpiUndervalued}
+              definition={t.glossary.marginOfSafety}
+            />
           </div>
-          <div className="mt-1 font-mono text-xl font-semibold text-positive-700 tabular-nums">
-            {isLoading ? <Skeleton className="h-6 w-10" /> : kpis.undervalued}
+          <div className="mt-1.5 font-mono text-2xl font-bold text-positive-700 tabular-nums">
+            {isLoading ? <Skeleton className="h-7 w-12" /> : kpis.undervalued}
           </div>
-        </div>
-        <div className="px-4 py-3.5">
-          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+        </Card>
+        <Card interactive className="border-t-2 border-t-brand-700 p-4">
+          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
             {t.watchlist.kpiPositions}
           </div>
-          <div className="mt-1 font-mono text-xl font-semibold text-ink tabular-nums">
-            {isLoading ? <Skeleton className="h-6 w-24" /> : formatIdr(kpis.portfolioMarketValue)}
+          <div className="mt-1.5 font-mono text-2xl font-bold text-ink tabular-nums">
+            {isLoading ? <Skeleton className="h-7 w-24" /> : formatIdr(kpis.portfolioMarketValue)}
           </div>
-        </div>
-        <div className="px-4 py-3.5">
-          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+        </Card>
+        <Card interactive className="border-t-2 border-t-warning-600 p-4">
+          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
             {t.watchlist.kpiStale}
           </div>
-          <div className="mt-1 font-mono text-xl font-semibold text-warning-700 tabular-nums">
-            {isLoading ? <Skeleton className="h-6 w-10" /> : kpis.stale}
+          <div className="mt-1.5 font-mono text-2xl font-bold text-warning-700 tabular-nums">
+            {isLoading ? <Skeleton className="h-7 w-12" /> : kpis.stale}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Quick Auto-Add Bar */}
-      <div className="rounded-md border border-border bg-panel p-4">
+      <Card className="p-4">
         <form onSubmit={handleQuickAdd} className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Sparkles className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-brand-700" />
@@ -242,7 +246,7 @@ export function WatchlistPage() {
         ) : (
           <p className="mt-2 text-xs text-muted">{t.watchlist.quickAddHint}</p>
         )}
-      </div>
+      </Card>
 
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -305,18 +309,33 @@ export function WatchlistPage() {
           </Button>
         </Card>
       ) : (
-        <div className="overflow-hidden rounded-md border border-border bg-panel">
+        <div className="overflow-hidden rounded-lg border border-border bg-panel surface-elevated animate-fade-up">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface text-[11px] font-semibold tracking-wider text-muted uppercase">
-                  <th className="px-4 py-3">{t.watchlist.colTicker}</th>
-                  <th className="px-4 py-3 text-right">{t.watchlist.colPosition}</th>
-                  <th className="px-4 py-3 text-right">{t.watchlist.colPrice}</th>
-                  <th className="px-4 py-3 text-right">{t.watchlist.colFairValue}</th>
-                  <th className="px-4 py-3 text-right">{t.watchlist.colMos}</th>
-                  <th className="px-4 py-3">{t.watchlist.colStatus}</th>
-                  <th className="px-4 py-3 text-right">{t.watchlist.colActions}</th>
+                  <th className="px-4 py-3.5">{t.watchlist.colTicker}</th>
+                  <th className="px-4 py-3.5 text-right">
+                    <TermTooltip
+                      label={t.watchlist.colPosition}
+                      definition={t.glossary.unrealizedPnL}
+                    />
+                  </th>
+                  <th className="px-4 py-3.5 text-right">{t.watchlist.colPrice}</th>
+                  <th className="px-4 py-3.5 text-right">
+                    <TermTooltip
+                      label={t.watchlist.colFairValue}
+                      definition={t.glossary.fairValueMedian}
+                    />
+                  </th>
+                  <th className="px-4 py-3.5 text-right">
+                    <TermTooltip
+                      label={t.watchlist.colMos}
+                      definition={t.glossary.marginOfSafety}
+                    />
+                  </th>
+                  <th className="px-4 py-3.5">{t.watchlist.colStatus}</th>
+                  <th className="px-4 py-3.5 text-right">{t.watchlist.colActions}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -326,13 +345,19 @@ export function WatchlistPage() {
                     item.avgBuyPrice,
                     item.currentPrice,
                   );
+                  const mosVal = item.valuation.mosPct;
+                  const barWidth =
+                    mosVal !== null ? Math.min(100, Math.max(8, Math.abs(mosVal))) : 0;
                   return (
-                    <tr key={item.id} className="transition-colors hover:bg-surface/70">
+                    <tr
+                      key={item.id}
+                      className="group transition-colors duration-150 hover:bg-brand-50/40"
+                    >
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
                           <Link
                             to={`/watchlist/${item.id}`}
-                            className="font-mono text-sm font-semibold text-ink hover:text-brand-700"
+                            className="font-mono text-sm font-bold text-ink transition-colors group-hover:text-brand-700"
                           >
                             {item.ticker}
                           </Link>
@@ -373,23 +398,39 @@ export function WatchlistPage() {
                       <td className="px-4 py-3.5 text-right font-mono text-sm font-medium text-ink tabular-nums">
                         {formatIdr(item.currentPrice)}
                       </td>
-                      <td className="px-4 py-3.5 text-right font-mono text-sm text-ink tabular-nums">
+                      <td className="px-4 py-3.5 text-right font-mono text-sm font-medium text-ink tabular-nums">
                         {formatIdr(item.valuation.fairValue.moderate)}
                       </td>
-                      <td className="px-4 py-3.5 text-right font-mono text-sm font-semibold tabular-nums">
-                        <span
-                          className={
-                            item.valuation.mosPct === null
-                              ? 'text-muted'
-                              : item.valuation.mosPct >= 30
-                                ? 'text-positive-700'
-                                : item.valuation.mosPct >= 0
-                                  ? 'text-warning-700'
-                                  : 'text-negative-600'
-                          }
-                        >
-                          {formatPercent(item.valuation.mosPct, true)}
-                        </span>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="inline-flex flex-col items-end gap-1">
+                          <span
+                            className={`font-mono text-sm font-semibold tabular-nums ${
+                              mosVal === null
+                                ? 'text-muted'
+                                : mosVal >= 30
+                                  ? 'text-positive-700'
+                                  : mosVal >= 0
+                                    ? 'text-warning-700'
+                                    : 'text-negative-600'
+                            }`}
+                          >
+                            {formatPercent(mosVal, true)}
+                          </span>
+                          {mosVal !== null && (
+                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-subtle">
+                              <div
+                                className={`h-full rounded-full transition-all duration-300 ${
+                                  mosVal >= 30
+                                    ? 'bg-positive-600'
+                                    : mosVal >= 0
+                                      ? 'bg-warning-600'
+                                      : 'bg-negative-600'
+                                }`}
+                                style={{ width: `${barWidth}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5">
                         <Badge tone={statusTone(item.valuation.valuationStatus)}>

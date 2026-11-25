@@ -453,8 +453,8 @@ function StockFormBody({
               <div className="mb-3 text-[11px] font-semibold tracking-wider text-muted uppercase">
                 {t.watchlist.form.keyStatsSection}
               </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <Field label={t.watchlist.form.eps} htmlFor="f-eps">
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                <Field label={t.watchlist.form.eps} tooltip={t.glossary.eps} htmlFor="f-eps">
                   <Input
                     id="f-eps"
                     type="number"
@@ -465,7 +465,7 @@ function StockFormBody({
                     className="font-mono tabular-nums"
                   />
                 </Field>
-                <Field label={t.watchlist.form.bvps} htmlFor="f-bvps">
+                <Field label={t.watchlist.form.bvps} tooltip={t.glossary.bvps} htmlFor="f-bvps">
                   <Input
                     id="f-bvps"
                     type="number"
@@ -476,7 +476,7 @@ function StockFormBody({
                     className="font-mono tabular-nums"
                   />
                 </Field>
-                <Field label={t.watchlist.form.roePct} htmlFor="f-roe">
+                <Field label={t.watchlist.form.roePct} tooltip={t.glossary.roe} htmlFor="f-roe">
                   <Input
                     id="f-roe"
                     type="number"
@@ -487,20 +487,24 @@ function StockFormBody({
                     className="font-mono tabular-nums"
                   />
                 </Field>
-                <Field label={t.watchlist.form.der} htmlFor="f-der">
+                <Field label={t.watchlist.form.der} tooltip={t.glossary.der} htmlFor="f-der">
                   <Input
                     id="f-der"
                     type="number"
                     min={0}
                     step="0.01"
-                    placeholder={sector === 'FINANCIALS' ? 'N/A (Bank)' : '0.60'}
+                    placeholder={sector === 'FINANCIALS' ? 'N/A (Banking)' : '0.60'}
                     disabled={sector === 'FINANCIALS'}
                     value={sector === 'FINANCIALS' ? '' : der}
                     onChange={(e) => setDer(e.target.value)}
                     className="font-mono tabular-nums"
                   />
                 </Field>
-                <Field label={t.watchlist.form.epsGrowthPct} htmlFor="f-eps-growth">
+                <Field
+                  label={t.watchlist.form.epsGrowthPct}
+                  tooltip={t.glossary.epsGrowth}
+                  htmlFor="f-eps-growth"
+                >
                   <Input
                     id="f-eps-growth"
                     type="number"
@@ -511,7 +515,7 @@ function StockFormBody({
                     className="font-mono tabular-nums"
                   />
                 </Field>
-                <Field label={t.watchlist.form.dps} htmlFor="f-dps">
+                <Field label={t.watchlist.form.dps} tooltip={t.glossary.dps} htmlFor="f-dps">
                   <Input
                     id="f-dps"
                     type="number"
@@ -531,8 +535,12 @@ function StockFormBody({
               <div className="mb-3 text-[11px] font-semibold tracking-wider text-muted uppercase">
                 {t.watchlist.form.benchmarksSection}
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <Field label={t.watchlist.form.targetPer} htmlFor="f-tper">
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+                <Field
+                  label={t.watchlist.form.targetPer}
+                  tooltip={t.glossary.targetPer}
+                  htmlFor="f-tper"
+                >
                   <Input
                     id="f-tper"
                     type="number"
@@ -544,7 +552,11 @@ function StockFormBody({
                     className="font-mono tabular-nums"
                   />
                 </Field>
-                <Field label={t.watchlist.form.targetPbv} htmlFor="f-tpbv">
+                <Field
+                  label={t.watchlist.form.targetPbv}
+                  tooltip={t.glossary.targetPbv}
+                  htmlFor="f-tpbv"
+                >
                   <Input
                     id="f-tpbv"
                     type="number"
@@ -556,7 +568,11 @@ function StockFormBody({
                     className="font-mono tabular-nums"
                   />
                 </Field>
-                <Field label={t.watchlist.form.discountRatePct} htmlFor="f-disc">
+                <Field
+                  label={t.watchlist.form.discountRatePct}
+                  tooltip={t.glossary.discountRate}
+                  htmlFor="f-disc"
+                >
                   <Input
                     id="f-disc"
                     type="number"

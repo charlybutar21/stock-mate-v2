@@ -1,8 +1,10 @@
 import clsx from 'clsx';
-import { X } from 'lucide-react';
+import { HelpCircle, X } from 'lucide-react';
 import {
   forwardRef,
   useEffect,
+  useRef,
+  useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
@@ -10,6 +12,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { twMerge } from 'tailwind-merge';
 
 export function cn(...inputs: Array<string | undefined | null | false>) {
@@ -27,12 +30,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       type={type}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors duration-150 ease-in-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:pointer-events-none disabled:opacity-45 cursor-pointer',
-        variant === 'primary' && 'bg-ink text-surface hover:bg-brand-700',
+        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-all duration-150 ease-out active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:pointer-events-none disabled:opacity-45 cursor-pointer',
+        variant === 'primary' &&
+          'bg-ink text-surface shadow-xs hover:bg-brand-700 hover:shadow-sm',
         variant === 'secondary' &&
-          'border border-border bg-panel text-ink hover:bg-subtle',
+          'border border-border bg-panel text-ink shadow-2xs hover:border-ink/30 hover:bg-surface',
         variant === 'ghost' && 'text-muted hover:bg-subtle hover:text-ink',
-        variant === 'danger' && 'bg-negative-600 text-white hover:bg-negative-700',
+        variant === 'danger' &&
+          'bg-negative-600 text-white shadow-xs hover:bg-negative-700',
         size === 'sm' && 'h-8 px-3 text-xs',
         size === 'md' && 'h-9 px-4 text-sm',
         size === 'lg' && 'h-10 px-5 text-sm',
@@ -49,7 +54,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cn(
-        'h-9 w-full rounded-md border border-border bg-panel px-3 text-sm text-ink placeholder:text-muted/65 transition-colors duration-150 focus:border-ink focus:outline-none disabled:bg-subtle disabled:text-muted',
+        'h-9 w-full rounded-md border border-border bg-panel px-3 text-sm text-ink placeholder:text-muted/60 shadow-2xs transition-all duration-150 focus:border-brand-700 focus:ring-2 focus:ring-brand-100 focus:outline-none disabled:bg-subtle disabled:text-muted',
         className,
       )}
       {...props}
@@ -63,7 +68,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
     <select
       ref={ref}
       className={cn(
-        'h-9 w-full rounded-md border border-border bg-panel px-3 text-sm text-ink transition-colors duration-150 focus:border-ink focus:outline-none disabled:bg-subtle disabled:text-muted',
+        'h-9 w-full rounded-md border border-border bg-panel px-3 text-sm text-ink shadow-2xs transition-all duration-150 focus:border-brand-700 focus:ring-2 focus:ring-brand-100 focus:outline-none disabled:bg-subtle disabled:text-muted',
         className,
       )}
       {...props}
@@ -79,7 +84,7 @@ export const Textarea = forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      'w-full rounded-md border border-border bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/65 transition-colors duration-150 focus:border-ink focus:outline-none',
+      'w-full rounded-md border border-border bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/60 shadow-2xs transition-all duration-150 focus:border-brand-700 focus:ring-2 focus:ring-brand-100 focus:outline-none',
       className,
     )}
     {...props}
@@ -87,14 +92,92 @@ export const Textarea = forwardRef<
 ));
 Textarea.displayName = 'Textarea';
 
+/**
+ * Portal-rendered accessible hover/focus tooltip for financial terminology.
+ * Never clipped by overflow-hidden tables or modals.
+ */
+export function TermTooltip({
+  label,
+  definition,
+  className,
+}: {
+  label: string;
+  definition: string;
+  className?: string;
+}) {
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; placeBelow: boolean } | null>(
+    null,
+  );
+
+  const show = () => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const clampedX = Math.max(150, Math.min(window.innerWidth - 150, centerX));
+    const placeBelow = rect.top < 110;
+    setCoords({
+      top: placeBelow ? rect.bottom + 8 : rect.top - 8,
+      left: clampedX,
+      placeBelow,
+    });
+  };
+
+  const hide = () => setCoords(null);
+
+  return (
+    <>
+      <span
+        ref={triggerRef}
+        tabIndex={0}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        className={cn(
+          'inline-flex items-center gap-1 cursor-help border-b border-dotted border-muted/60 hover:border-ink hover:text-ink transition-colors',
+          className,
+        )}
+      >
+        <span>{label}</span>
+        <HelpCircle className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
+      </span>
+
+      {coords &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            role="tooltip"
+            style={{
+              position: 'fixed',
+              top: coords.top,
+              left: coords.left,
+              transform: coords.placeBelow
+                ? 'translate(-50%, 0)'
+                : 'translate(-50%, -100%)',
+            }}
+            className="pointer-events-none z-[100] w-68 rounded-md border border-ink/10 bg-ink px-3 py-2.5 text-left text-xs leading-relaxed font-normal tracking-normal text-surface normal-case shadow-lg"
+          >
+            <div className="mb-0.5 font-semibold text-white">{label}</div>
+            <p className="text-surface/85">{definition}</p>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
 export function Field({
   label,
+  tooltip,
   htmlFor,
   error,
   hint,
   children,
 }: {
   label: string;
+  tooltip?: string;
   htmlFor?: string;
   error?: string;
   hint?: string;
@@ -103,7 +186,7 @@ export function Field({
   return (
     <div className="space-y-1">
       <label htmlFor={htmlFor} className="block text-xs font-medium text-ink">
-        {label}
+        {tooltip ? <TermTooltip label={label} definition={tooltip} /> : label}
       </label>
       {children}
       {error ? (
@@ -131,7 +214,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[11px] font-medium tracking-tight',
+        'inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-[11px] font-medium tracking-tight',
         tone === 'neutral' && 'border-border bg-subtle text-muted',
         tone === 'positive' && 'border-positive-600/25 bg-positive-50 text-positive-700',
         tone === 'warning' && 'border-warning-600/25 bg-warning-50 text-warning-700',
@@ -147,12 +230,17 @@ export function Badge({
 
 export function Card({
   className,
+  interactive = false,
   children,
   ...props
-}: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
+}: HTMLAttributes<HTMLDivElement> & { interactive?: boolean; children: ReactNode }) {
   return (
     <div
-      className={cn('rounded-md border border-border bg-panel p-5', className)}
+      className={cn(
+        'rounded-lg border border-border bg-panel p-5 surface-elevated',
+        interactive && 'surface-interactive',
+        className,
+      )}
       {...props}
     >
       {children}
@@ -190,7 +278,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -200,7 +288,7 @@ export function Modal({
     >
       <div
         className={cn(
-          'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-md border border-border bg-panel shadow-xl',
+          'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg border border-border bg-panel shadow-2xl animate-fade-up',
           maxWidthClass,
         )}
       >

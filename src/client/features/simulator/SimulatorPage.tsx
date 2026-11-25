@@ -10,6 +10,7 @@ import {
   Input,
   Select,
   Skeleton,
+  TermTooltip,
 } from '@/client/components/ui/primitives';
 import { useWatchlist } from '@/client/features/watchlist/useWatchlist';
 import { statusTone } from '@/client/features/watchlist/WatchlistPage';
@@ -113,15 +114,25 @@ export function SimulatorPage() {
                   {formatIdr(linkedStock.currentPrice)}
                 </div>
               </div>
-              <div className="rounded-lg bg-brand-50 px-3 py-2">
-                <div className="text-[11px] text-brand-700">{t.simulator.linkedFairValue}</div>
+              <div className="rounded-md border border-brand-600/20 bg-brand-50 px-3 py-2">
+                <div className="text-[11px] text-brand-700">
+                  <TermTooltip
+                    label={t.simulator.linkedFairValue}
+                    definition={t.glossary.fairValueMedian}
+                  />
+                </div>
                 <div className="font-mono text-sm font-semibold text-brand-900 tabular-nums">
                   {formatIdr(linkedStock.valuation.fairValue.moderate)}
                 </div>
               </div>
-              <div className="rounded-lg bg-subtle/70 px-3 py-2">
-                <div className="text-[11px] text-muted">{t.simulator.linkedMos}</div>
-                <div className="mt-0.5 flex items-center gap-1.5">
+              <div className="rounded-md border border-border bg-surface px-3 py-2">
+                <div className="text-[11px] text-muted">
+                  <TermTooltip
+                    label={t.simulator.linkedMos}
+                    definition={t.glossary.marginOfSafety}
+                  />
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                   <span className="font-mono text-sm font-semibold text-ink tabular-nums">
                     {formatPercent(linkedStock.valuation.mosPct, true)}
                   </span>
@@ -172,9 +183,12 @@ export function SimulatorPage() {
               type="checkbox"
               checked={includeStampDuty}
               onChange={(e) => setIncludeStampDuty(e.target.checked)}
-              className="h-4 w-4 rounded border-border accent-brand-600"
+              className="h-4 w-4 rounded border-border accent-brand-700"
             />
-            <span>{t.simulator.includeStampDuty}</span>
+            <TermTooltip
+              label={t.simulator.includeStampDuty}
+              definition={t.glossary.stampDuty}
+            />
           </label>
         </div>
       </Card>

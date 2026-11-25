@@ -110,8 +110,8 @@ export function GoalSeekTab({
             {t.simulator.goalSeekHint}
           </Card>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Card className="border-brand-600/30 bg-brand-50/60 p-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 animate-fade-up">
+            <Card interactive className="border-t-2 border-t-brand-700 bg-brand-50/60 p-5">
               <div className="text-xs font-medium text-brand-700">{t.simulator.lotsNeeded}</div>
               <div className="mt-1 font-mono text-3xl font-bold text-brand-900 tabular-nums">
                 {formatNumber(result.lotsNeeded)}
@@ -121,14 +121,14 @@ export function GoalSeekTab({
               </div>
             </Card>
 
-            <Card className="p-5">
+            <Card interactive className="p-5">
               <div className="text-xs text-muted">{t.simulator.resultingPureAvg}</div>
               <div className="mt-1 font-mono text-2xl font-bold text-ink tabular-nums">
                 {formatIdr(result.resultingPureAvg, true)}
               </div>
             </Card>
 
-            <Card className="p-5">
+            <Card interactive className="p-5">
               <div className="text-xs text-muted">{t.simulator.cashRequired}</div>
               <div className="mt-1 font-mono text-xl font-bold text-ink tabular-nums">
                 {formatIdr(result.totalCashRequired)}

@@ -24,6 +24,7 @@ import {
   Field,
   Input,
   Skeleton,
+  TermTooltip,
   type BadgeTone,
 } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
@@ -308,7 +309,10 @@ export function StockDetailPage() {
             </div>
             <div>
               <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
-                {t.detail.marginOfSafety}
+                <TermTooltip
+                  label={t.detail.marginOfSafety}
+                  definition={t.glossary.marginOfSafety}
+                />
               </div>
               <div
                 className={`font-mono text-xl font-bold tabular-nums ${
@@ -340,7 +344,10 @@ export function StockDetailPage() {
         {/* Fair Value Range Bar */}
         <div className="border-t border-border pt-4">
           <h2 className="mb-2 text-[11px] font-semibold tracking-wider text-muted uppercase">
-            {t.detail.fairValueRange}
+            <TermTooltip
+              label={t.detail.fairValueRange}
+              definition={t.glossary.fairValueRange}
+            />
           </h2>
           <FairValueRangeBar
             conservative={liveValuation.fairValue.conservative}
@@ -352,7 +359,7 @@ export function StockDetailPage() {
       </Card>
 
       {/* My Holding Position Card (Inline Editable + Linked to Simulator) */}
-      <Card className="space-y-4">
+      <Card className="space-y-4 border-l-4 border-l-brand-700 animate-fade-up">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-display text-lg font-semibold text-ink">
             {t.detail.myPositionTitle}
@@ -402,8 +409,13 @@ export function StockDetailPage() {
                 {formatNumber(livePosition.ownedShares)} {t.common.shares}
               </div>
             </div>
-            <div className="rounded-sm border border-border bg-surface px-3 py-2">
-              <div className="text-[11px] text-muted">{t.detail.unrealizedPnL}</div>
+            <div className="rounded-md border border-border bg-surface px-3 py-2">
+              <div className="text-[11px] text-muted">
+                <TermTooltip
+                  label={t.detail.unrealizedPnL}
+                  definition={t.glossary.unrealizedPnL}
+                />
+              </div>
               <div
                 className={`font-mono text-sm font-semibold tabular-nums ${
                   livePosition.unrealizedPnL === null
@@ -437,40 +449,40 @@ export function StockDetailPage() {
         </div>
       </Card>
 
-      {/* Market Ratios Strip */}
-      <div className="grid grid-cols-2 divide-y divide-border rounded-md border border-border bg-panel sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-        <div className="px-4 py-3.5">
-          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
-            {t.detail.per}
+      {/* Market Ratios Cards */}
+      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4 animate-fade-up">
+        <Card interactive className="p-4">
+          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+            <TermTooltip label={t.detail.per} definition={t.glossary.currentPer} />
           </div>
-          <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
+          <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
             {formatMultiple(liveValuation.ratios.currentPer)}
           </div>
-        </div>
-        <div className="px-4 py-3.5">
-          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
-            {t.detail.pbv}
+        </Card>
+        <Card interactive className="p-4">
+          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+            <TermTooltip label={t.detail.pbv} definition={t.glossary.currentPbv} />
           </div>
-          <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
+          <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
             {formatMultiple(liveValuation.ratios.currentPbv)}
           </div>
-        </div>
-        <div className="px-4 py-3.5">
-          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
-            {t.detail.divYield}
+        </Card>
+        <Card interactive className="p-4">
+          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+            <TermTooltip label={t.detail.divYield} definition={t.glossary.dividendYield} />
           </div>
-          <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
+          <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
             {formatPercent(liveValuation.ratios.dividendYieldPct)}
           </div>
-        </div>
-        <div className="px-4 py-3.5">
-          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
-            {t.detail.peg}
+        </Card>
+        <Card interactive className="p-4">
+          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+            <TermTooltip label={t.detail.peg} definition={t.glossary.pegRatio} />
           </div>
-          <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
+          <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
             {formatMultiple(liveValuation.ratios.pegRatio)}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Core-3 2026 Fair Value Methods */}
@@ -485,17 +497,24 @@ export function StockDetailPage() {
                 ? ((m.fairValue - item.currentPrice) / m.fairValue) * 100
                 : null;
             return (
-              <Card key={m.method} className="flex flex-col justify-between p-4">
+              <Card
+                key={m.method}
+                interactive
+                className="flex flex-col justify-between border-t-2 border-t-brand-700/70 p-4"
+              >
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-ink">
-                      {t.methods[m.method]}
+                      <TermTooltip
+                        label={t.methods[m.method]}
+                        definition={t.glossary[m.method]}
+                      />
                     </span>
                     {isPrimaryBankPbv && (
                       <Badge tone="info">{t.detail.primaryBankRef}</Badge>
                     )}
                   </div>
-                  <p className="mt-0.5 text-[11px] text-muted">
+                  <p className="mt-1 text-[11px] text-muted">
                     {t.methodDescriptions[m.method]}
                   </p>
                   {m.status === 'VALID' ? (
@@ -508,12 +527,12 @@ export function StockDetailPage() {
                           (diffPct ?? 0) >= 0 ? 'text-positive-700' : 'text-negative-600'
                         }`}
                       >
-                        {formatPercent(diffPct, true)} MoS
+                        {formatPercent(diffPct, true)}
                       </span>
                     </div>
                   ) : (
                     <div className="mt-3 border-t border-border pt-3">
-                      <span className="font-mono text-lg font-semibold text-muted">
+                      <span className="font-mono text-base font-semibold text-muted">
                         {t.common.na}
                       </span>
                       {m.reasonCode && (
@@ -549,7 +568,11 @@ export function StockDetailPage() {
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label={t.watchlist.form.targetPer} htmlFor="w-tper">
+            <Field
+              label={t.watchlist.form.targetPer}
+              tooltip={t.glossary.targetPer}
+              htmlFor="w-tper"
+            >
               <Input
                 id="w-tper"
                 type="number"
@@ -560,7 +583,11 @@ export function StockDetailPage() {
                 className="font-mono tabular-nums"
               />
             </Field>
-            <Field label={t.watchlist.form.targetPbv} htmlFor="w-tpbv">
+            <Field
+              label={t.watchlist.form.targetPbv}
+              tooltip={t.glossary.targetPbv}
+              htmlFor="w-tpbv"
+            >
               <Input
                 id="w-tpbv"
                 type="number"
@@ -571,7 +598,11 @@ export function StockDetailPage() {
                 className="font-mono tabular-nums"
               />
             </Field>
-            <Field label={t.watchlist.form.discountRatePct} htmlFor="w-disc">
+            <Field
+              label={t.watchlist.form.discountRatePct}
+              tooltip={t.glossary.discountRate}
+              htmlFor="w-disc"
+            >
               <Input
                 id="w-disc"
                 type="number"

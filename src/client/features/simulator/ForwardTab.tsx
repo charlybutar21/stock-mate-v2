@@ -2,7 +2,7 @@ import { AlertTriangle, Plus, Trash2, TrendingUp } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { WatchlistItemDto } from '@/shared/contracts';
 import { simulateForwardAverageDown, type PlannedTranche } from '@/shared/domain';
-import { Button, Card, Field, Input } from '@/client/components/ui/primitives';
+import { Button, Card, Field, Input, TermTooltip } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
 
@@ -242,22 +242,34 @@ export function ForwardTab({
             )}
 
             {/* Primary Output Grid */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Card className="p-4">
-                <div className="text-xs text-muted">{t.simulator.pureAvg}</div>
-                <div className="mt-1 font-mono text-xl font-bold text-ink tabular-nums">
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3 animate-fade-up">
+              <Card interactive className="p-4">
+                <div className="text-xs text-muted">
+                  <TermTooltip label={t.simulator.pureAvg} definition={t.glossary.pureAvg} />
+                </div>
+                <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
                   {formatIdr(result.pureAvgPrice, true)}
                 </div>
               </Card>
-              <Card className="p-4">
-                <div className="text-xs text-muted">{t.simulator.effectiveAvg}</div>
-                <div className="mt-1 font-mono text-xl font-bold text-ink tabular-nums">
+              <Card interactive className="p-4">
+                <div className="text-xs text-muted">
+                  <TermTooltip
+                    label={t.simulator.effectiveAvg}
+                    definition={t.glossary.effectiveAvg}
+                  />
+                </div>
+                <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
                   {formatIdr(result.effectiveAvgPrice, true)}
                 </div>
               </Card>
-              <Card className="border-brand-600/30 bg-brand-50/60 p-4">
-                <div className="text-xs font-medium text-brand-700">{t.simulator.realBepTick}</div>
-                <div className="mt-1 font-mono text-xl font-bold text-brand-900 tabular-nums">
+              <Card interactive className="border-t-2 border-t-brand-700 bg-brand-50/70 p-4">
+                <div className="text-xs font-medium text-brand-700">
+                  <TermTooltip
+                    label={t.simulator.realBepTick}
+                    definition={t.glossary.realBepTick}
+                  />
+                </div>
+                <div className="mt-1.5 font-mono text-xl font-bold text-brand-900 tabular-nums">
                   {formatIdr(result.bepIdxTick)}
                 </div>
                 <div className="mt-0.5 font-mono text-[11px] text-brand-700/80 tabular-nums">
@@ -270,7 +282,9 @@ export function ForwardTab({
             <Card className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                 <div>
-                  <div className="text-xs text-muted">{t.simulator.netPnL}</div>
+                  <div className="text-xs text-muted">
+                    <TermTooltip label={t.simulator.netPnL} definition={t.glossary.netPnL} />
+                  </div>
                   <div
                     className={`mt-0.5 font-mono text-2xl font-bold tabular-nums ${
                       result.netPnL >= 0 ? 'text-positive-600' : 'text-negative-600'
