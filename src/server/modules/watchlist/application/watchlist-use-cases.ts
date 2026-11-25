@@ -72,6 +72,8 @@ export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()):
     companyName: record.companyName,
     sector: record.sector,
     currentPrice: record.currentPrice,
+    ownedLots: record.ownedLots,
+    avgBuyPrice: record.avgBuyPrice,
     targetBuyPrice: record.targetBuyPrice,
     investmentThesis: record.investmentThesis,
     createdAt: new Date(record.createdAt).toISOString(),
@@ -162,6 +164,8 @@ export class CreateWatchlistItemUseCase {
       companyName: input.companyName,
       sector: input.sector,
       currentPrice: input.currentPrice,
+      ownedLots: input.ownedLots ?? 0,
+      avgBuyPrice: input.avgBuyPrice ?? null,
       targetBuyPrice: input.targetBuyPrice ?? null,
       investmentThesis: input.investmentThesis ?? null,
       createdAt: now,
@@ -228,6 +232,8 @@ export class UpdateWatchlistItemUseCase {
     if (input.companyName !== undefined) itemPatch.companyName = input.companyName;
     if (input.sector !== undefined) itemPatch.sector = input.sector;
     if (input.currentPrice !== undefined) itemPatch.currentPrice = input.currentPrice;
+    if (input.ownedLots !== undefined) itemPatch.ownedLots = input.ownedLots;
+    if (input.avgBuyPrice !== undefined) itemPatch.avgBuyPrice = input.avgBuyPrice;
     if (input.targetBuyPrice !== undefined) itemPatch.targetBuyPrice = input.targetBuyPrice;
     if (input.investmentThesis !== undefined) itemPatch.investmentThesis = input.investmentThesis;
 

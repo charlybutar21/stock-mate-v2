@@ -27,12 +27,16 @@ export function ForwardTab({
 }: ForwardTabProps) {
   const { t } = useI18n();
 
-  const [existingLots, setExistingLots] = useState('20');
-  const [existingAvgPrice, setExistingAvgPrice] = useState(
-    String(Math.round(linkedStock.currentPrice * 1.15) || linkedStock.currentPrice),
-  );
+  const defaultLots = linkedStock.ownedLots > 0 ? String(linkedStock.ownedLots) : '0';
+  const defaultAvgPrice =
+    linkedStock.avgBuyPrice && linkedStock.avgBuyPrice >= 1
+      ? String(linkedStock.avgBuyPrice)
+      : String(Math.max(1, Math.round(linkedStock.currentPrice * 1.1)));
+
+  const [existingLots, setExistingLots] = useState(defaultLots);
+  const [existingAvgPrice, setExistingAvgPrice] = useState(defaultAvgPrice);
   const [tranches, setTranches] = useState<TrancheRow[]>([
-    { id: 't1', lots: '30', buyPrice: String(linkedStock.currentPrice) },
+    { id: 't1', lots: '10', buyPrice: String(linkedStock.currentPrice) },
   ]);
   const [targetSellPrice, setTargetSellPrice] = useState(
     String(linkedStock.valuation.fairValue.moderate ?? linkedStock.currentPrice),

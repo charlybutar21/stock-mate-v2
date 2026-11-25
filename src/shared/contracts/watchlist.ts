@@ -91,6 +91,8 @@ export const createWatchlistSchema = z.object({
     .number()
     .int('Must be an integer >= 1')
     .min(MIN_IDX_PRICE, 'Must be an integer >= 1'),
+  ownedLots: z.number().int('Must be an integer >= 0').min(0).optional().default(0),
+  avgBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
   targetBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
   investmentThesis: z.string().trim().max(2000).nullable().optional(),
   fundamentals: fundamentalsInputSchema.optional(),
@@ -106,6 +108,8 @@ export const updateWatchlistSchema = z.object({
   companyName: z.string().trim().min(1).max(120).optional(),
   sector: z.enum(IDX_SECTORS).optional(),
   currentPrice: z.number().int().min(MIN_IDX_PRICE).optional(),
+  ownedLots: z.number().int().min(0).optional(),
+  avgBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
   targetBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
   investmentThesis: z.string().trim().max(2000).nullable().optional(),
   fundamentals: fundamentalsPatchSchema.optional(),
@@ -144,6 +148,8 @@ export interface WatchlistItemDto {
   companyName: string;
   sector: IdxSector;
   currentPrice: number;
+  ownedLots: number;
+  avgBuyPrice: number | null;
   targetBuyPrice: number | null;
   investmentThesis: string | null;
   createdAt: string;

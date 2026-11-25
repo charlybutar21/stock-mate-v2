@@ -79,9 +79,11 @@ export function SimulatorPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">{t.simulator.title}</h1>
-        <p className="mt-0.5 text-sm text-muted">{t.simulator.subtitle}</p>
+      <div className="border-b border-border pb-5">
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">
+          {t.simulator.title}
+        </h1>
+        <p className="mt-1 text-sm text-muted">{t.simulator.subtitle}</p>
       </div>
 
       {/* Linked Watchlist Stock Selector & Context Strip */}
@@ -203,7 +205,7 @@ export function SimulatorPage() {
 
       {linkedStock && activeTab === 'forward' && (
         <ForwardTab
-          key={linkedStock.id}
+          key={`${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
           linkedStock={linkedStock}
           buyFeePct={Number(buyFeePct || 0)}
           sellFeePct={Number(sellFeePct || 0)}
@@ -213,7 +215,7 @@ export function SimulatorPage() {
 
       {linkedStock && activeTab === 'goalSeek' && (
         <GoalSeekTab
-          key={linkedStock.id}
+          key={`${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
           linkedStock={linkedStock}
           buyFeePct={Number(buyFeePct || 0)}
           includeStampDuty={includeStampDuty}

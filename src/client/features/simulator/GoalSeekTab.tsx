@@ -18,14 +18,20 @@ export function GoalSeekTab({
 }: GoalSeekTabProps) {
   const { t } = useI18n();
 
-  const [existingLots, setExistingLots] = useState('20');
-  const [existingAvgPrice, setExistingAvgPrice] = useState(
-    String(Math.max(3, Math.round(linkedStock.currentPrice * 1.25))),
+  const defaultLots = linkedStock.ownedLots > 0 ? String(linkedStock.ownedLots) : '20';
+  const defaultAvg =
+    linkedStock.avgBuyPrice && linkedStock.avgBuyPrice > linkedStock.currentPrice
+      ? linkedStock.avgBuyPrice
+      : Math.max(3, Math.round(linkedStock.currentPrice * 1.25));
+  const defaultTarget = Math.max(
+    linkedStock.currentPrice + 1,
+    Math.round((defaultAvg + linkedStock.currentPrice) / 2),
   );
+
+  const [existingLots, setExistingLots] = useState(defaultLots);
+  const [existingAvgPrice, setExistingAvgPrice] = useState(String(defaultAvg));
   const [plannedBuyPrice, setPlannedBuyPrice] = useState(String(linkedStock.currentPrice));
-  const [targetPureAvg, setTargetPureAvg] = useState(
-    String(Math.max(2, Math.round(linkedStock.currentPrice * 1.1))),
-  );
+  const [targetPureAvg, setTargetPureAvg] = useState(String(defaultTarget));
 
   const result = useMemo(
     () =>

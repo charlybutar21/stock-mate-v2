@@ -29,6 +29,8 @@ export const watchlistItems = sqliteTable('watchlist_items', {
   companyName: text('company_name').notNull(),
   sector: text('sector').notNull(),
   currentPrice: integer('current_price').notNull(),
+  ownedLots: integer('owned_lots').notNull().default(0),
+  avgBuyPrice: integer('avg_buy_price'),
   targetBuyPrice: integer('target_buy_price'),
   investmentThesis: text('investment_thesis'),
   createdAt: integer('created_at').notNull(),

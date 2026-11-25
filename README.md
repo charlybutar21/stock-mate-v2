@@ -10,35 +10,33 @@
 
 ## Key Features
 
-### 1. Public Authentication & Strict Data Isolation
+### 1. Audited Authentication & Security-First Architecture
 - **Email + Password** registration and login with zero third-party auth fees.
-- **Cloudflare 10ms-safe password hashing:** Native Web Crypto API (`PBKDF2-SHA256`, 100,000 iterations) with constant-time XOR verification.
+- **Audited cryptographic primitives (`@noble/hashes` + Web Crypto):** Cure53-audited `@noble/hashes` (`sha256`, CSPRNG `randomBytes`, hex encoding) paired with native Web Crypto `PBKDF2-SHA256` (100,000 iterations, native C++ in Cloudflare V8 within 10ms CPU limit) and constant-time byte verification.
+- **Standard Hono Security Middlewares:** Built-in `hono/secure-headers` and `hono/csrf` same-origin protection on all `/api/*` endpoints.
 - **DB-backed sessions:** Raw 32-byte token stored only in `HttpOnly; Secure; SameSite=Lax` cookie (`sm_session`); only `SHA-256(token)` is persisted in Cloudflare D1.
 - **Anti-IDOR isolation:** Every watchlist read/write enforces `user_id` ownership and returns `404` for unauthorized IDs.
 
-### 2. IDX Watchlist Management + 1-Click Auto-Fetch
-- **Quick Auto-Add (1-Click):** Enter any 4-letter IDX ticker (e.g. `BBCA`, `BBRI`, `ICBP`, `TLKM`, `ASII`) to automatically fetch delayed price, company name, IDX sector, TTM fundamentals (`EPS`, `BVPS`, `DPS`, `ROE`, `DER`, `EPS Growth`), and sector-benchmark Target PER/PBV via Yahoo Finance (`.JK`).
-- **Auto-Fill & Sync Data:** Preview/edit auto-fetched fundamentals in the Add/Edit modal, or refresh existing stocks in 1 click from the Stock Detail page.
-- **Manual Override:** All values remain 100% editable to match Stockbit Keystats or official IDX filings.
-- **BEI 2026 Compliant:** Supports stock prices down to **`Rp 1`** (BEI rule effective 28 Sep 2026), soft-delete (`deleted_at`), 14-day staleness badge, search, sector filter, and sorting by Margin of Safety (MoS).
+### 2. IDX Watchlist, Position Ledger & 1-Click Auto-Fetch (TradingView IDX)
+- **Quick Auto-Add (1-Click):** Enter any 4-letter IDX ticker (e.g. `BBCA`, `BBRI`, `ICBP`, `TLKM`, `ASII`) to automatically fetch near real-time price and TTM key stats via **TradingView Indonesia Scanner** (free, zero API key) with automatic fallback to Yahoo Finance (and optional Sectors.app support via `SECTORS_API_KEY`).
+- **Batch Sync All:** Refresh every stock in your watchlist in 1 single batch request (`POST /api/v1/watchlist/sync-all`) while preserving your personal valuation benchmarks, owned lots, and thesis.
+- **My Holding Position Tracking:** Record and edit your **Owned Lots** (`owned_lots`) and **Avg Buy Price** (`avg_buy_price`) directly on each stock, showing live **Market Value** and **Unrealized P/L (Rp & %)** on the Watchlist Ledger and Stock Detail page.
+- **6 Essential Industry-Standard Key Stats:** Streamlined strictly to the metrics that matter — `EPS (TTM)`, `BVPS`, `ROE (%)`, `DER (x)`, `EPS Growth (YoY %)`, and `Dividend / Share (DPS)` — plus 3 sector-prefilled benchmarks (`Target P/E`, `Target P/B`, `WACC`).
 
-### 3. Multi-Method Fair Value Analysis (5 Methods / 6 Outputs)
-Computes intrinsic value transparently with graceful `N/A` reasons when inputs are negative or missing:
-1. **Graham Number:** $\sqrt{22.5 \times \text{EPS} \times \text{BVPS}}$
-2. **Relative PER:** $\text{EPS} \times \text{Target PER}$
-3. **Relative PBV:** $\text{BVPS} \times \text{Target PBV}$ *(highlighted as primary reference for `FINANCIALS`)*
-4. **Peter Lynch / PEG:** $\text{EPS} \times \min(\text{EPS Growth \%} + \text{Div Yield \%},\ 25)$
-5. **Simple DCF (Discounted EPS):** Multi-year projected EPS + terminal value (growth capped at 20%)
-6. **DDM (Gordon Growth):** $\frac{\text{DPS} \times (1 + g_d)}{r - g_d}$
+### 3. Core-3 Multi-Method Fair Value Engine (2026 Institutional Standard)
+Focuses on the **3 most accurate and relevant valuation anchors** for modern IDX equities, with graceful `N/A` reasons when inputs are negative or missing:
+1. **Relative P/E (Earnings Multiple):** $\text{EPS (TTM)} \times \text{Target P/E}$
+2. **Relative P/B (Book Value Multiple):** $\text{BVPS} \times \text{Target P/B}$ *(primary valuation anchor for `FINANCIALS` / Banking)*
+3. **Discounted Cash Flow — DCF (5-Yr Projected EPS):** $\sum_{t=1}^{5} \frac{\text{EPS}(1+g_{\text{eff}})^t}{(1+r)^t} + \frac{\text{EPS}(1+g_{\text{eff}})^5(1+g_t)}{(r - g_t)(1+r)^5}$ *(growth capped at 20%, configurable WACC)*
 
 Includes:
-- **Fair Value Range Bar:** Conservative (Min) / **Moderate (Median)** / Optimistic (Max) vs Current Price.
+- **Fair Value Range Bar:** Conservative (Min) / **Moderate (Median)** / Optimistic (Max) vs Market Price.
 - **Margin of Safety (MoS %):** `≥ 30%` Undervalued · `0–29.99%` Fairly Valued · `< 0%` Overvalued.
 - **Sector-Aware Quality Flags:** ROE strength and DER health (with banking-aware `NOT_APPLICABLE_BANKING` badge for `FINANCIALS`).
-- **Interactive What-If Tuning:** Adjust Target PER/PBV, Discount Rate, Projection Years, Terminal Growth, and Dividend Growth in real time, with Save/Reset controls.
+- **Interactive What-If Tuning:** Adjust Target P/E, Target P/B, and WACC in real time, with Save/Reset controls.
 
-### 4. Real-Time Average Down & Stockbit Simulator
-Linked directly to your Watchlist stocks (client-side < 50ms recalculation via shared pure domain engine):
+### 4. Position-Linked Average Down & Sell Simulator
+Automatically pre-loads your saved **Owned Lots** and **Avg Buy Price** from the selected Watchlist stock (client-side < 50ms recalculation via shared pure domain engine):
 - **Mode 1 — Multi-Tranche Forward:** Existing position + up to 5 planned buy tranches + target sell price → outputs Pure Avg, Effective Avg (incl. buy fee), **Real BEP rounded up to IDX Tick Size (`ceilToIdxTick`)**, Additional Cash Required, Total Capital, Projected Net P/L (`Rp` & `%`), and Before/After Gain-to-BEP comparison.
 - **Mode 2 — Goal-Seek Target Average:** Calculates exact **Lots Needed** and **Total Cash Required** to reach a desired average price.
 - **Stockbit 2026 Fee Defaults:** `0.15%` Buy / `0.25%` Sell (customizable) + optional **Bea Materai `Rp 10.000`** toggle for gross transactions `> Rp 10.000.000`.
@@ -84,7 +82,8 @@ flowchart TB
 
     subgraph Data["Data & External Services"]
         D1[("Cloudflare D1 (SQLite - APAC)<br/>users · sessions · watchlist_items · stock_fundamentals")]
-        Yahoo["Yahoo Finance API (.JK)<br/>(Delayed Price & TTM Fundamentals)"]
+        TV["TradingView IDX Scanner<br/>(Primary Free Near Real-Time + Batch Sync)"]
+        Yahoo["Yahoo Finance (.JK)<br/>(Automatic Fallback)"]
     end
 
     TQ -->|"HTTPS + HttpOnly Cookie"| Router
@@ -92,7 +91,8 @@ flowchart TB
     Router -->|"/api/v1/*"| MW
     AuthMod --> D1
     WatchMod --> D1
-    MarketMod -->|"Cache Miss Only"| Yahoo
+    MarketMod -->|"Primary (10m Cache)"| TV
+    MarketMod -.->|"Fallback"| Yahoo
 ```
 
 ### Key Architectural Decisions & Trade-Offs
@@ -185,6 +185,8 @@ erDiagram
         TEXT company_name
         TEXT sector "11 IDX Sector Enum"
         INTEGER current_price "CHECK >= 1 (BEI Sep 2026)"
+        INTEGER owned_lots "DEFAULT 0, CHECK >= 0 (0002 migration)"
+        INTEGER avg_buy_price "Nullable, CHECK >= 1 (0002 migration)"
         INTEGER target_buy_price "Nullable, CHECK >= 1"
         TEXT investment_thesis
         INTEGER created_at
@@ -345,7 +347,8 @@ Base path: `/api/v1` (all errors follow **RFC 7807 `application/problem+json`**)
 | `GET` | `/api/v1/watchlist/:id` | Cookie | Get single item + full 6-method valuation breakdown |
 | `PATCH` | `/api/v1/watchlist/:id` | Cookie | Partial update of price, thesis, or fundamentals |
 | `DELETE` | `/api/v1/watchlist/:id` | Cookie | Soft delete (`deleted_at`) |
-| `GET` | `/api/v1/market-data/idx/:ticker` | Cookie | Auto-fetch delayed IDX quote & TTM fundamentals (cached 15m) |
+| `POST` | `/api/v1/watchlist/sync-all` | Cookie | Batch sync all active watchlist stocks via TradingView IDX |
+| `GET` | `/api/v1/market-data/idx/:ticker` | Cookie | Auto-fetch near real-time IDX quote & TTM key stats (TradingView primary, Yahoo fallback) |
 
 ---
 

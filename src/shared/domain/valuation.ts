@@ -1,20 +1,17 @@
 import { round2, type IdxSector } from './idx-rules';
 
-export type ValuationMethodKey =
-  | 'grahamNumber'
-  | 'relativePer'
-  | 'relativePbv'
-  | 'peterLynch'
-  | 'simpleDcf'
-  | 'ddmGordon';
+/**
+ * Core-3 2026 Institutional Valuation Methods for IDX:
+ * 1. Relative P/E (Earnings Multiple)
+ * 2. Relative P/B (Book Value Multiple — primary anchor for Financials/Banking)
+ * 3. Simple DCF (5-Year Projected EPS + Terminal Value)
+ */
+export type ValuationMethodKey = 'relativePer' | 'relativePbv' | 'simpleDcf';
 
 export type ValuationMethodReasonCode =
-  | 'REQUIRES_POSITIVE_EPS_AND_BVPS'
   | 'REQUIRES_POSITIVE_EPS_AND_TARGET_PER'
   | 'REQUIRES_POSITIVE_BVPS_AND_TARGET_PBV'
-  | 'REQUIRES_POSITIVE_EPS_AND_GROWTH'
-  | 'REQUIRES_POSITIVE_EPS_AND_VALID_DCF_RATES'
-  | 'REQUIRES_POSITIVE_DPS_AND_VALID_DDM_RATES';
+  | 'REQUIRES_POSITIVE_EPS_AND_VALID_DCF_RATES';
 
 export interface ValuationMethodResult {
   method: ValuationMethodKey;
@@ -79,7 +76,6 @@ export interface ValuationSummary {
     discountRatePct: number;
     projectionYears: number;
     terminalGrowthPct: number;
-    effectiveDividendGrowthPct: number;
   };
 }
 
@@ -124,37 +120,18 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
   const discountRatePct = input.discountRatePct ?? DEFAULT_DISCOUNT_RATE_PCT;
   const projectionYears = input.projectionYears ?? DEFAULT_PROJECTION_YEARS;
   const terminalGrowthPct = input.terminalGrowthPct ?? DEFAULT_TERMINAL_GROWTH_PCT;
-  const effectiveDividendGrowthPct =
-    input.dividendGrowthPct !== null && input.dividendGrowthPct !== undefined
-      ? input.dividendGrowthPct
-      : Math.min(Math.max(epsGrowthPct ?? 0, 0), 8.0);
 
-  // Actual Ratios
+  // Actual Market Ratios
   const currentPer = eps !== null && eps > 0 ? round2(input.currentPrice / eps) : null;
   const currentPbv = bvps !== null && bvps > 0 ? round2(input.currentPrice / bvps) : null;
-  const rawDivYieldPct = dps !== null && dps > 0 ? (dps / input.currentPrice) * 100 : 0;
-  const dividendYieldPct = dps !== null && dps > 0 ? round2(rawDivYieldPct) : 0;
+  const dividendYieldPct =
+    dps !== null && dps > 0 ? round2((dps / input.currentPrice) * 100) : 0;
   const pegRatio =
     currentPer !== null && epsGrowthPct !== null && epsGrowthPct > 0
       ? round2(currentPer / epsGrowthPct)
       : null;
 
-  // 1. Graham Number
-  const grahamNumber: ValuationMethodResult =
-    eps !== null && eps > 0 && bvps !== null && bvps > 0
-      ? {
-          method: 'grahamNumber',
-          fairValue: Math.round(Math.sqrt(22.5 * eps * bvps)),
-          status: 'VALID',
-        }
-      : {
-          method: 'grahamNumber',
-          fairValue: null,
-          status: 'NA',
-          reasonCode: 'REQUIRES_POSITIVE_EPS_AND_BVPS',
-        };
-
-  // 2. Relative PER
+  // 1. Relative P/E (Earnings Multiple)
   const relativePer: ValuationMethodResult =
     eps !== null && eps > 0 && targetPer !== null && targetPer > 0
       ? {
@@ -169,7 +146,7 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
           reasonCode: 'REQUIRES_POSITIVE_EPS_AND_TARGET_PER',
         };
 
-  // 3. Relative PBV
+  // 2. Relative P/B (Book Value Multiple)
   const relativePbv: ValuationMethodResult =
     bvps !== null && bvps > 0 && targetPbv !== null && targetPbv > 0
       ? {
@@ -184,22 +161,7 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
           reasonCode: 'REQUIRES_POSITIVE_BVPS_AND_TARGET_PBV',
         };
 
-  // 4. Peter Lynch / PEG
-  const peterLynch: ValuationMethodResult =
-    eps !== null && eps > 0 && epsGrowthPct !== null && epsGrowthPct > 0
-      ? {
-          method: 'peterLynch',
-          fairValue: Math.round(eps * Math.min(epsGrowthPct + rawDivYieldPct, 25)),
-          status: 'VALID',
-        }
-      : {
-          method: 'peterLynch',
-          fairValue: null,
-          status: 'NA',
-          reasonCode: 'REQUIRES_POSITIVE_EPS_AND_GROWTH',
-        };
-
-  // 5. Simple DCF (Discounted EPS)
+  // 3. Simple DCF (5-Year Projected EPS + Terminal Value)
   const r = discountRatePct / 100;
   const gt = terminalGrowthPct / 100;
   let simpleDcf: ValuationMethodResult;
@@ -210,7 +172,8 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
       pvCashFlows += (eps * Math.pow(1 + gEff, t)) / Math.pow(1 + r, t);
     }
     const terminalEps = eps * Math.pow(1 + gEff, projectionYears);
-    const pvTerminal = (terminalEps * (1 + gt)) / ((r - gt) * Math.pow(1 + r, projectionYears));
+    const pvTerminal =
+      (terminalEps * (1 + gt)) / ((r - gt) * Math.pow(1 + r, projectionYears));
     simpleDcf = {
       method: 'simpleDcf',
       fairValue: Math.round(pvCashFlows + pvTerminal),
@@ -225,33 +188,13 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
     };
   }
 
-  // 6. DDM (Gordon Growth)
-  const gd = effectiveDividendGrowthPct / 100;
-  const ddmGordon: ValuationMethodResult =
-    dps !== null && dps > 0 && r > gd
-      ? {
-          method: 'ddmGordon',
-          fairValue: Math.round((dps * (1 + gd)) / (r - gd)),
-          status: 'VALID',
-        }
-      : {
-          method: 'ddmGordon',
-          fairValue: null,
-          status: 'NA',
-          reasonCode: 'REQUIRES_POSITIVE_DPS_AND_VALID_DDM_RATES',
-        };
-
-  const methods: ValuationMethodResult[] = [
-    grahamNumber,
-    relativePer,
-    relativePbv,
-    peterLynch,
-    simpleDcf,
-    ddmGordon,
-  ];
+  const methods: ValuationMethodResult[] = [relativePer, relativePbv, simpleDcf];
 
   const validValues = methods
-    .filter((m): m is ValuationMethodResult & { fairValue: number } => m.status === 'VALID' && m.fairValue !== null)
+    .filter(
+      (m): m is ValuationMethodResult & { fairValue: number } =>
+        m.status === 'VALID' && m.fairValue !== null,
+    )
     .map((m) => m.fairValue)
     .sort((a, b) => a - b);
 
@@ -299,7 +242,6 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
       discountRatePct,
       projectionYears,
       terminalGrowthPct,
-      effectiveDividendGrowthPct,
     },
   };
 }

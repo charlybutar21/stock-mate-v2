@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateGoalSeekAverageDown,
+  calculatePositionSummary,
   simulateForwardAverageDown,
 } from '../simulator';
 
@@ -212,5 +213,37 @@ describe('simulator engine', () => {
         targetPureAvg: 4500,
       }),
     ).toEqual({ valid: false, errorCode: 'INVALID_GOAL_SEEK_BOUNDS' });
+  });
+
+  it('computes owned position summary (cost basis, market value, unrealized P/L)', () => {
+    expect(calculatePositionSummary(0, 5000, 5500)).toEqual({
+      ownedLots: 0,
+      ownedShares: 0,
+      avgBuyPrice: null,
+      costBasis: 0,
+      marketValue: 0,
+      unrealizedPnL: null,
+      unrealizedPnLPct: null,
+    });
+
+    expect(calculatePositionSummary(10, null, 5500)).toEqual({
+      ownedLots: 10,
+      ownedShares: 1000,
+      avgBuyPrice: null,
+      costBasis: 0,
+      marketValue: 5_500_000,
+      unrealizedPnL: null,
+      unrealizedPnLPct: null,
+    });
+
+    expect(calculatePositionSummary(20, 5000, 5500)).toEqual({
+      ownedLots: 20,
+      ownedShares: 2000,
+      avgBuyPrice: 5000,
+      costBasis: 10_000_000,
+      marketValue: 11_000_000,
+      unrealizedPnL: 1_000_000,
+      unrealizedPnLPct: 10,
+    });
   });
 });

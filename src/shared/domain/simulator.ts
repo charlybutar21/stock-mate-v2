@@ -244,6 +244,52 @@ export function simulateForwardAverageDown(input: ForwardSimulationInput): Forwa
   };
 }
 
+export interface PositionSummary {
+  ownedLots: number;
+  ownedShares: number;
+  avgBuyPrice: number | null;
+  costBasis: number;
+  marketValue: number;
+  unrealizedPnL: number | null;
+  unrealizedPnLPct: number | null;
+}
+
+export function calculatePositionSummary(
+  ownedLots: number,
+  avgBuyPrice: number | null,
+  currentPrice: number,
+): PositionSummary {
+  const safeLots = Math.max(0, Math.floor(ownedLots));
+  const ownedShares = safeLots * SHARES_PER_LOT;
+  const marketValue = ownedShares * currentPrice;
+
+  if (safeLots === 0 || avgBuyPrice === null || avgBuyPrice < MIN_IDX_PRICE) {
+    return {
+      ownedLots: safeLots,
+      ownedShares,
+      avgBuyPrice: safeLots > 0 ? avgBuyPrice : null,
+      costBasis: 0,
+      marketValue,
+      unrealizedPnL: null,
+      unrealizedPnLPct: null,
+    };
+  }
+
+  const costBasis = ownedShares * avgBuyPrice;
+  const unrealizedPnL = marketValue - costBasis;
+  const unrealizedPnLPct = round2((unrealizedPnL / costBasis) * 100);
+
+  return {
+    ownedLots: safeLots,
+    ownedShares,
+    avgBuyPrice,
+    costBasis,
+    marketValue,
+    unrealizedPnL,
+    unrealizedPnLPct,
+  };
+}
+
 export function calculateGoalSeekAverageDown(input: GoalSeekInput): GoalSeekOutput {
   const buyFeePct = input.buyFeePct ?? DEFAULT_BUY_FEE_PCT;
   const includeStampDuty = input.includeStampDuty ?? false;

@@ -26,6 +26,8 @@ export interface WatchlistItemRecord {
   companyName: string;
   sector: IdxSector;
   currentPrice: number;
+  ownedLots: number;
+  avgBuyPrice: number | null;
   targetBuyPrice: number | null;
   investmentThesis: string | null;
   createdAt: number;
@@ -47,6 +49,8 @@ export interface WatchlistRepository {
       companyName: string;
       sector: IdxSector;
       currentPrice: number;
+      ownedLots: number;
+      avgBuyPrice: number | null;
       targetBuyPrice: number | null;
       investmentThesis: string | null;
       updatedAt: number;

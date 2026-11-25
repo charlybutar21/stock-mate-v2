@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { calculateValuation } from '../valuation';
 
-describe('valuation engine', () => {
-  it('matches Golden Case 1 — Full Multi-Method Valuation', () => {
+describe('Core-3 2026 valuation engine', () => {
+  it('computes Core-3 methods (Relative P/E, Relative P/B, Simple DCF) accurately', () => {
     const result = calculateValuation({
       sector: 'CONSUMER_NON_CYCLICALS',
       currentPrice: 9000,
@@ -17,7 +17,6 @@ describe('valuation engine', () => {
       discountRatePct: 12.0,
       projectionYears: 5,
       terminalGrowthPct: 4.0,
-      dividendGrowthPct: 5.0,
     });
 
     expect(result.ratios).toEqual({
@@ -27,42 +26,51 @@ describe('valuation engine', () => {
       pegRatio: 1.67,
     });
 
-    const byMethod = Object.fromEntries(
-      result.methods.map((m) => [m.method, m]),
-    );
-    expect(byMethod.grahamNumber).toEqual({ method: 'grahamNumber', fairValue: 4500, status: 'VALID' });
+    const byMethod = Object.fromEntries(result.methods.map((m) => [m.method, m]));
+    expect(result.methods).toHaveLength(3);
     expect(byMethod.relativePer).toEqual({ method: 'relativePer', fairValue: 9900, status: 'VALID' });
     expect(byMethod.relativePbv).toEqual({ method: 'relativePbv', fairValue: 9600, status: 'VALID' });
-    expect(byMethod.peterLynch).toEqual({ method: 'peterLynch', fairValue: 6650, status: 'VALID' });
     expect(byMethod.simpleDcf).toEqual({ method: 'simpleDcf', fairValue: 8100, status: 'VALID' });
-    expect(byMethod.ddmGordon).toEqual({ method: 'ddmGordon', fairValue: 3750, status: 'VALID' });
 
+    // Sorted valid: [8100, 9600, 9900] -> median = 9600, mos = (9600 - 9000) / 9600 * 100 = 6.25%
     expect(result.fairValue).toEqual({
-      conservative: 3750,
-      moderate: 7375,
+      conservative: 8100,
+      moderate: 9600,
       optimistic: 9900,
-      validCount: 6,
+      validCount: 3,
     });
-    expect(result.mosPct).toBe(-22.03);
-    expect(result.valuationStatus).toBe('OVERVALUED');
+    expect(result.mosPct).toBe(6.25);
+    expect(result.valuationStatus).toBe('FAIRLY_VALUED');
     expect(result.qualityFlags).toEqual({
       roeFlag: 'STRONG',
       derFlag: 'HEALTHY',
     });
   });
 
-  it('matches Golden Case 2A — Banking sector DER is NOT_APPLICABLE_BANKING', () => {
+  it('handles Banking sector DER=NOT_APPLICABLE_BANKING and even-count median', () => {
     const result = calculateValuation({
       sector: 'FINANCIALS',
       currentPrice: 9500,
+      eps: 400,
+      bvps: 2000,
+      targetPer: 15, // 6000
+      targetPbv: 2.5, // 5000
       der: 5.5,
       roePct: 14.5,
     });
     expect(result.qualityFlags.derFlag).toBe('NOT_APPLICABLE_BANKING');
     expect(result.qualityFlags.roeFlag).toBe('MODERATE');
+    // 2 valid methods [5000, 6000] -> even median = 5500 -> Overvalued
+    expect(result.fairValue).toEqual({
+      conservative: 5000,
+      moderate: 5500,
+      optimistic: 6000,
+      validCount: 2,
+    });
+    expect(result.valuationStatus).toBe('OVERVALUED');
   });
 
-  it('matches Golden Case 2B — Loss-Making & Zero Dividend graceful N/A', () => {
+  it('handles Loss-Making & Zero Dividend gracefully with N/A reasons', () => {
     const result = calculateValuation({
       sector: 'TECHNOLOGY',
       currentPrice: 50,
@@ -82,7 +90,7 @@ describe('valuation engine', () => {
       fairValue: 240,
       status: 'VALID',
     });
-    expect(naMethods).toHaveLength(5);
+    expect(naMethods).toHaveLength(2);
     expect(result.fairValue).toEqual({
       conservative: 240,
       moderate: 240,
@@ -97,7 +105,7 @@ describe('valuation engine', () => {
     });
   });
 
-  it('matches Golden Case 2C — Sub-50 IDX stock (Rp 12) & FAIRLY_VALUED / INSUFFICIENT_DATA / fallback assumptions', () => {
+  it('handles Sub-50 IDX stock (Rp 12), default assumptions, and INSUFFICIENT_DATA', () => {
     const sub50 = calculateValuation({
       sector: 'ENERGY',
       currentPrice: 12,
@@ -113,31 +121,17 @@ describe('valuation engine', () => {
       discountRatePct: 12,
       projectionYears: 5,
       terminalGrowthPct: 4,
-      effectiveDividendGrowthPct: 8,
     });
     expect(sub50.qualityFlags.derFlag).toBe('MODERATE');
     expect(sub50.qualityFlags.roeFlag).toBe('UNKNOWN');
 
-    // Fairly valued branch (0 <= mosPct < 30)
-    const fairlyValued = calculateValuation({
-      sector: 'INDUSTRIALS',
-      currentPrice: 900,
-      bvps: 1000,
-      targetPbv: 1.0,
-    });
-    expect(fairlyValued.mosPct).toBe(10);
-    expect(fairlyValued.valuationStatus).toBe('FAIRLY_VALUED');
-
-    // Insufficient data branch (0 valid methods) & invalid DCF/DDM rates
     const empty = calculateValuation({
       sector: 'HEALTHCARE',
       currentPrice: 1000,
       eps: null,
       bvps: null,
-      dps: 50,
       discountRatePct: 5,
       terminalGrowthPct: 5,
-      dividendGrowthPct: 6,
     });
     expect(empty.fairValue).toEqual({
       conservative: null,
@@ -148,8 +142,5 @@ describe('valuation engine', () => {
     expect(empty.mosPct).toBeNull();
     expect(empty.valuationStatus).toBe('INSUFFICIENT_DATA');
     expect(empty.qualityFlags.derFlag).toBe('UNKNOWN');
-    expect(empty.methods.find((m) => m.method === 'ddmGordon')?.reasonCode).toBe(
-      'REQUIRES_POSITIVE_DPS_AND_VALID_DDM_RATES',
-    );
   });
 });

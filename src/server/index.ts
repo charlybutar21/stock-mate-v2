@@ -1,5 +1,8 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { Hono } from 'hono';
+import { csrf } from 'hono/csrf';
+import { HTTPException } from 'hono/http-exception';
+import { secureHeaders } from 'hono/secure-headers';
 import * as schema from './shared/db/schema';
 import { AppError, notFoundError, problemResponse } from './shared/http/problem';
 import { logJson } from './shared/logger';
@@ -46,6 +49,19 @@ export function createApp(options?: { marketDataProvider?: IdxMarketDataProvider
       marketDataProvider,
     };
   };
+
+  // Security Headers & Same-Origin CSRF Protection (Hono built-in standard middlewares)
+  app.use('/api/*', secureHeaders());
+  app.use('/api/*', async (c, next) => {
+    const hasOrigin = Boolean(c.req.header('origin'));
+    const fetchSite = c.req.header('sec-fetch-site');
+    if (hasOrigin || fetchSite === 'cross-site') {
+      return csrf({
+        origin: (origin, ctx) => origin === new URL(ctx.req.url).origin,
+      })(c, next);
+    }
+    await next();
+  });
 
   // Correlation ID & Structured Request Logging (zero PII)
   app.use('/api/*', async (c, next) => {
@@ -108,6 +124,18 @@ export function createApp(options?: { marketDataProvider?: IdxMarketDataProvider
         });
       }
       return problemResponse(c, err);
+    }
+
+    if (err instanceof HTTPException) {
+      return problemResponse(
+        c,
+        new AppError({
+          status: err.status,
+          type: 'https://stock-mate-v2/errors/http-error',
+          title: err.status === 403 ? 'Forbidden' : 'Request Error',
+          detail: err.message || 'Request rejected by security policy.',
+        }),
+      );
     }
 
     logJson('error', 'unhandled_error', correlationId, {

@@ -79,9 +79,15 @@ export function createTestD1(): { d1: D1Database; sqlite: DatabaseSync } {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys = ON;');
 
-  const migrationPath = path.resolve(process.cwd(), 'migrations/0001_initial.sql');
-  const sql = fs.readFileSync(migrationPath, 'utf8');
-  sqlite.exec(sql);
+  const migrationsDir = path.resolve(process.cwd(), 'migrations');
+  const migrationFiles = fs
+    .readdirSync(migrationsDir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+  for (const file of migrationFiles) {
+    const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+    sqlite.exec(sql);
+  }
 
   const d1 = {
     prepare(query: string) {

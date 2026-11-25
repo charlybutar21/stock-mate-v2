@@ -171,6 +171,8 @@ describe('Stock-Mate v2 API Integration', () => {
           companyName: 'Indofood CBP Sukses Makmur',
           sector: 'CONSUMER_NON_CYCLICALS',
           currentPrice: 9000,
+          ownedLots: 25,
+          avgBuyPrice: 8400,
           targetBuyPrice: 7000,
           investmentThesis: 'Strong consumer moat',
           fundamentals: {
@@ -197,12 +199,16 @@ describe('Stock-Mate v2 API Integration', () => {
       item: {
         id: string;
         ticker: string;
+        ownedLots: number;
+        avgBuyPrice: number | null;
         valuation: { fairValue: { moderate: number }; mosPct: number };
       };
     };
     expect(created.item.ticker).toBe('ICBP');
-    expect(created.item.valuation.fairValue.moderate).toBe(7375);
-    expect(created.item.valuation.mosPct).toBe(-22.03);
+    expect(created.item.ownedLots).toBe(25);
+    expect(created.item.avgBuyPrice).toBe(8400);
+    expect(created.item.valuation.fairValue.moderate).toBe(9600);
+    expect(created.item.valuation.mosPct).toBe(6.25);
 
     // Duplicate ticker for User A -> 409
     const dupTickerRes = await app.request(

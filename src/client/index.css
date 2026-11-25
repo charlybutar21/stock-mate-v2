@@ -1,33 +1,37 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Newsreader", Georgia, Cambria, "Times New Roman", serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --color-surface: #f8fafc;
+  /* Warm Archival Editorial Financial Palette */
+  --color-surface: #f7f5f0;
   --color-panel: #ffffff;
-  --color-subtle: #f1f5f9;
-  --color-border: #e2e8f0;
-  --color-ink: #0f172a;
-  --color-muted: #64748b;
+  --color-subtle: #efece5;
+  --color-border: #ddd8ce;
+  --color-ink: #161513;
+  --color-muted: #656058;
 
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-600: #1d4ed8;
-  --color-brand-700: #1e40af;
-  --color-brand-900: #1e3a8a;
+  /* Deliberate Institutional Accent: Deep Forest Pine */
+  --color-brand-50: #edf7f1;
+  --color-brand-100: #d5ecde;
+  --color-brand-600: #166534;
+  --color-brand-700: #14532d;
+  --color-brand-900: #0a2e19;
 
-  --color-positive-50: #ecfdf5;
-  --color-positive-600: #059669;
-  --color-positive-700: #047857;
+  /* Editorial Semantic Signals */
+  --color-positive-50: #eef8f2;
+  --color-positive-600: #15803d;
+  --color-positive-700: #166534;
 
-  --color-warning-50: #fffbeb;
-  --color-warning-600: #d97706;
-  --color-warning-700: #b45309;
+  --color-warning-50: #fdf7ea;
+  --color-warning-600: #b45309;
+  --color-warning-700: #92400e;
 
-  --color-negative-50: #fff1f2;
-  --color-negative-600: #e11d48;
-  --color-negative-700: #be123c;
+  --color-negative-50: #fdf1f1;
+  --color-negative-600: #b91c1c;
+  --color-negative-700: #991b1b;
 }
 
 @layer base {
@@ -35,6 +39,10 @@
     font-family: var(--font-sans);
     background-color: var(--color-surface);
     color: var(--color-ink);
+  }
+
+  .font-display {
+    font-family: var(--font-display);
   }
 
   .tabular-nums {

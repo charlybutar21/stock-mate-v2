@@ -12,6 +12,7 @@ import {
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {
+  calculatePositionSummary,
   calculateValuation,
   type DerQualityFlag,
   type RoeQualityFlag,
@@ -29,6 +30,7 @@ import { useI18n } from '@/client/i18n/useI18n';
 import {
   formatIdr,
   formatMultiple,
+  formatNumber,
   formatPercent,
   formatShortDate,
 } from '@/client/lib/formatters';
@@ -61,7 +63,45 @@ export function StockDetailPage() {
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [positionSavedNotice, setPositionSavedNotice] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  // Inline Position draft overrides
+  const [posDraft, setPosDraft] = useState<{
+    ownedLots?: string;
+    avgBuyPrice?: string;
+  }>({});
+
+  const ownedLotsStr = posDraft.ownedLots ?? (item ? String(item.ownedLots) : '0');
+  const avgBuyPriceStr =
+    posDraft.avgBuyPrice ??
+    (item?.avgBuyPrice !== null && item?.avgBuyPrice !== undefined
+      ? String(item.avgBuyPrice)
+      : '');
+
+  const livePosition = useMemo(() => {
+    if (!item) return null;
+    const lots = ownedLotsStr.trim() ? Math.max(0, Math.round(Number(ownedLotsStr))) : 0;
+    const avg = avgBuyPriceStr.trim() ? Math.round(Number(avgBuyPriceStr)) : null;
+    return calculatePositionSummary(lots, avg, item.currentPrice);
+  }, [item, ownedLotsStr, avgBuyPriceStr]);
+
+  const savePosition = async () => {
+    if (!item) return;
+    setPositionSavedNotice(false);
+    const lots = ownedLotsStr.trim() ? Math.max(0, Math.round(Number(ownedLotsStr))) : 0;
+    const avg = avgBuyPriceStr.trim() ? Math.max(1, Math.round(Number(avgBuyPriceStr))) : null;
+    await updateMutation.mutateAsync({
+      id: item.id,
+      payload: {
+        ownedLots: lots,
+        avgBuyPrice: avg,
+      },
+    });
+    setPosDraft({});
+    setPositionSavedNotice(true);
+    setTimeout(() => setPositionSavedNotice(false), 3000);
+  };
 
   const handleSyncData = async () => {
     if (!item) return;
@@ -86,18 +126,15 @@ export function StockDetailPage() {
       setSyncNotice(t.watchlist.syncSuccess);
       setTimeout(() => setSyncNotice(null), 3000);
     } catch {
-      // Errors handled gracefully
+      // Handled gracefully
     }
   };
 
-  // Interactive What-If draft overrides (null/undefined falls back to saved server value)
+  // Interactive Core-3 What-If draft overrides
   const [draft, setDraft] = useState<{
     targetPer?: string;
     targetPbv?: string;
     discountRatePct?: string;
-    projectionYears?: string;
-    terminalGrowthPct?: string;
-    dividendGrowthPct?: string;
   }>({});
 
   const targetPer =
@@ -112,23 +149,6 @@ export function StockDetailPage() {
       : '');
   const discountRatePct =
     draft.discountRatePct ?? (item ? String(item.fundamentals.discountRatePct) : '12');
-  const projectionYears =
-    draft.projectionYears ?? (item ? String(item.fundamentals.projectionYears) : '5');
-  const terminalGrowthPct =
-    draft.terminalGrowthPct ?? (item ? String(item.fundamentals.terminalGrowthPct) : '4');
-  const dividendGrowthPct =
-    draft.dividendGrowthPct ??
-    (item?.fundamentals.dividendGrowthPct !== null &&
-    item?.fundamentals.dividendGrowthPct !== undefined
-      ? String(item.fundamentals.dividendGrowthPct)
-      : '');
-
-  const setTargetPer = (v: string) => setDraft((d) => ({ ...d, targetPer: v }));
-  const setTargetPbv = (v: string) => setDraft((d) => ({ ...d, targetPbv: v }));
-  const setDiscountRatePct = (v: string) => setDraft((d) => ({ ...d, discountRatePct: v }));
-  const setProjectionYears = (v: string) => setDraft((d) => ({ ...d, projectionYears: v }));
-  const setTerminalGrowthPct = (v: string) => setDraft((d) => ({ ...d, terminalGrowthPct: v }));
-  const setDividendGrowthPct = (v: string) => setDraft((d) => ({ ...d, dividendGrowthPct: v }));
 
   const liveValuation = useMemo(() => {
     if (!item) return null;
@@ -145,23 +165,10 @@ export function StockDetailPage() {
       targetPer: targetPer.trim() ? Number(targetPer) : null,
       targetPbv: targetPbv.trim() ? Number(targetPbv) : null,
       discountRatePct: discountRatePct.trim() ? Number(discountRatePct) : f.discountRatePct,
-      projectionYears: projectionYears.trim()
-        ? Math.max(1, Math.min(15, Math.round(Number(projectionYears))))
-        : f.projectionYears,
-      terminalGrowthPct: terminalGrowthPct.trim()
-        ? Number(terminalGrowthPct)
-        : f.terminalGrowthPct,
-      dividendGrowthPct: dividendGrowthPct.trim() ? Number(dividendGrowthPct) : null,
+      projectionYears: f.projectionYears,
+      terminalGrowthPct: f.terminalGrowthPct,
     });
-  }, [
-    item,
-    targetPer,
-    targetPbv,
-    discountRatePct,
-    projectionYears,
-    terminalGrowthPct,
-    dividendGrowthPct,
-  ]);
+  }, [item, targetPer, targetPbv, discountRatePct]);
 
   const resetWhatIf = () => {
     setDraft({});
@@ -178,9 +185,6 @@ export function StockDetailPage() {
           targetPer: targetPer.trim() ? Number(targetPer) : null,
           targetPbv: targetPbv.trim() ? Number(targetPbv) : null,
           discountRatePct: Number(discountRatePct),
-          projectionYears: Math.round(Number(projectionYears)),
-          terminalGrowthPct: Number(terminalGrowthPct),
-          dividendGrowthPct: dividendGrowthPct.trim() ? Number(dividendGrowthPct) : null,
         },
       },
     });
@@ -203,11 +207,11 @@ export function StockDetailPage() {
     );
   }
 
-  if (isError || !item || !liveValuation) {
+  if (isError || !item || !liveValuation || !livePosition) {
     return (
       <Card className="p-8 text-center">
         <p className="text-sm text-muted">{t.common.unexpectedError}</p>
-        <Link to="/watchlist" className="mt-4 inline-block text-sm font-medium text-brand-600">
+        <Link to="/watchlist" className="mt-4 inline-block text-sm font-medium text-brand-700">
           {t.detail.backToWatchlist}
         </Link>
       </Card>
@@ -249,7 +253,7 @@ export function StockDetailPage() {
           </Button>
           <Link
             to={`/simulator?stockId=${item.id}`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-600 px-3 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-xs font-medium text-surface transition-colors hover:bg-brand-700"
           >
             <Calculator className="h-3.5 w-3.5" />
             {t.detail.openSimulator}
@@ -257,11 +261,11 @@ export function StockDetailPage() {
         </div>
       </div>
 
-      {/* Header Card */}
+      {/* Editorial Research Sheet Header */}
       <Card className="space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="font-mono text-2xl font-bold tracking-tight text-ink">
                 {item.ticker}
               </h1>
@@ -275,8 +279,9 @@ export function StockDetailPage() {
                 </Badge>
               )}
             </div>
-            <p className="mt-1 text-sm text-muted">
-              {item.companyName} · {t.sectors[item.sector]}
+            <p className="mt-1 font-display text-lg text-ink/90">{item.companyName}</p>
+            <p className="text-xs text-muted">
+              {t.sectors[item.sector]}
               {item.fundamentals.periodLabel ? ` · ${item.fundamentals.periodLabel}` : ''}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -294,21 +299,25 @@ export function StockDetailPage() {
 
           <div className="flex flex-wrap gap-6 sm:text-right">
             <div>
-              <div className="text-xs text-muted">{t.detail.currentPrice}</div>
+              <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+                {t.detail.currentPrice}
+              </div>
               <div className="font-mono text-xl font-bold text-ink tabular-nums">
                 {formatIdr(item.currentPrice)}
               </div>
             </div>
             <div>
-              <div className="text-xs text-muted">{t.detail.marginOfSafety}</div>
+              <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+                {t.detail.marginOfSafety}
+              </div>
               <div
                 className={`font-mono text-xl font-bold tabular-nums ${
                   liveValuation.mosPct === null
                     ? 'text-muted'
                     : liveValuation.mosPct >= 30
-                      ? 'text-positive-600'
+                      ? 'text-positive-700'
                       : liveValuation.mosPct >= 0
-                        ? 'text-warning-600'
+                        ? 'text-warning-700'
                         : 'text-negative-600'
                 }`}
               >
@@ -317,7 +326,9 @@ export function StockDetailPage() {
             </div>
             {item.targetBuyPrice !== null && (
               <div>
-                <div className="text-xs text-muted">{t.detail.targetBuy}</div>
+                <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+                  {t.detail.targetBuy}
+                </div>
                 <div className="font-mono text-xl font-semibold text-brand-700 tabular-nums">
                   {formatIdr(item.targetBuyPrice)}
                 </div>
@@ -328,7 +339,7 @@ export function StockDetailPage() {
 
         {/* Fair Value Range Bar */}
         <div className="border-t border-border pt-4">
-          <h2 className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">
+          <h2 className="mb-2 text-[11px] font-semibold tracking-wider text-muted uppercase">
             {t.detail.fairValueRange}
           </h2>
           <FairValueRangeBar
@@ -340,38 +351,132 @@ export function StockDetailPage() {
         </div>
       </Card>
 
-      {/* Actual Ratios Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="p-4">
-          <div className="text-xs text-muted">{t.detail.per}</div>
+      {/* My Holding Position Card (Inline Editable + Linked to Simulator) */}
+      <Card className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-lg font-semibold text-ink">
+            {t.detail.myPositionTitle}
+          </h2>
+          {positionSavedNotice && (
+            <Badge tone="positive">
+              <CheckCircle2 className="h-3 w-3" />
+              {t.detail.positionSaved}
+            </Badge>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
+          <div className="grid grid-cols-2 gap-3 md:col-span-5">
+            <Field label={t.detail.ownedLots} htmlFor="pos-lots">
+              <Input
+                id="pos-lots"
+                type="number"
+                min={0}
+                step={1}
+                value={ownedLotsStr}
+                onChange={(e) => setPosDraft((p) => ({ ...p, ownedLots: e.target.value }))}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+            <Field label={t.detail.avgBuyPrice} htmlFor="pos-avg">
+              <Input
+                id="pos-avg"
+                type="number"
+                min={1}
+                step={1}
+                placeholder={String(item.currentPrice)}
+                value={avgBuyPriceStr}
+                onChange={(e) => setPosDraft((p) => ({ ...p, avgBuyPrice: e.target.value }))}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:col-span-4">
+            <div className="rounded-sm border border-border bg-surface px-3 py-2">
+              <div className="text-[11px] text-muted">{t.detail.marketValue}</div>
+              <div className="font-mono text-sm font-semibold text-ink tabular-nums">
+                {formatIdr(livePosition.marketValue)}
+              </div>
+              <div className="font-mono text-[10px] text-muted tabular-nums">
+                {formatNumber(livePosition.ownedShares)} {t.common.shares}
+              </div>
+            </div>
+            <div className="rounded-sm border border-border bg-surface px-3 py-2">
+              <div className="text-[11px] text-muted">{t.detail.unrealizedPnL}</div>
+              <div
+                className={`font-mono text-sm font-semibold tabular-nums ${
+                  livePosition.unrealizedPnL === null
+                    ? 'text-muted'
+                    : livePosition.unrealizedPnL >= 0
+                      ? 'text-positive-700'
+                      : 'text-negative-600'
+                }`}
+              >
+                {livePosition.unrealizedPnL !== null
+                  ? `${livePosition.unrealizedPnL >= 0 ? '+' : ''}${formatIdr(livePosition.unrealizedPnL)}`
+                  : '—'}
+              </div>
+              <div className="font-mono text-[10px] text-muted tabular-nums">
+                {formatPercent(livePosition.unrealizedPnLPct, true)}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 md:col-span-3 md:justify-end">
+            <Button
+              size="sm"
+              onClick={savePosition}
+              disabled={updateMutation.isPending}
+              className="w-full md:w-auto"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {t.detail.savePosition}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Market Ratios Strip */}
+      <div className="grid grid-cols-2 divide-y divide-border rounded-md border border-border bg-panel sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+        <div className="px-4 py-3.5">
+          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+            {t.detail.per}
+          </div>
           <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
             {formatMultiple(liveValuation.ratios.currentPer)}
           </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted">{t.detail.pbv}</div>
+        </div>
+        <div className="px-4 py-3.5">
+          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+            {t.detail.pbv}
+          </div>
           <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
             {formatMultiple(liveValuation.ratios.currentPbv)}
           </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted">{t.detail.divYield}</div>
+        </div>
+        <div className="px-4 py-3.5">
+          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+            {t.detail.divYield}
+          </div>
           <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
             {formatPercent(liveValuation.ratios.dividendYieldPct)}
           </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted">{t.detail.peg}</div>
+        </div>
+        <div className="px-4 py-3.5">
+          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+            {t.detail.peg}
+          </div>
           <div className="mt-1 font-mono text-lg font-semibold text-ink tabular-nums">
             {formatMultiple(liveValuation.ratios.pegRatio)}
           </div>
-        </Card>
+        </div>
       </div>
 
-      {/* 6 Method Cards */}
+      {/* Core-3 2026 Fair Value Methods */}
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-ink">{t.detail.methodsTitle}</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <h2 className="font-display text-lg font-semibold text-ink">{t.detail.methodsTitle}</h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {liveValuation.methods.map((m) => {
             const isPrimaryBankPbv =
               item.sector === 'FINANCIALS' && m.method === 'relativePbv';
@@ -390,21 +495,24 @@ export function StockDetailPage() {
                       <Badge tone="info">{t.detail.primaryBankRef}</Badge>
                     )}
                   </div>
+                  <p className="mt-0.5 text-[11px] text-muted">
+                    {t.methodDescriptions[m.method]}
+                  </p>
                   {m.status === 'VALID' ? (
-                    <div className="mt-2 flex items-baseline justify-between">
+                    <div className="mt-3 flex items-baseline justify-between border-t border-border pt-3">
                       <span className="font-mono text-xl font-bold text-ink tabular-nums">
                         {formatIdr(m.fairValue)}
                       </span>
                       <span
                         className={`font-mono text-xs font-semibold tabular-nums ${
-                          (diffPct ?? 0) >= 0 ? 'text-positive-600' : 'text-negative-600'
+                          (diffPct ?? 0) >= 0 ? 'text-positive-700' : 'text-negative-600'
                         }`}
                       >
                         {formatPercent(diffPct, true)} MoS
                       </span>
                     </div>
                   ) : (
-                    <div className="mt-2">
+                    <div className="mt-3 border-t border-border pt-3">
                       <span className="font-mono text-lg font-semibold text-muted">
                         {t.common.na}
                       </span>
@@ -427,7 +535,9 @@ export function StockDetailPage() {
         <Card className="lg:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold text-ink">{t.detail.whatIfTitle}</h2>
+              <h2 className="font-display text-lg font-semibold text-ink">
+                {t.detail.whatIfTitle}
+              </h2>
               <p className="mt-0.5 text-xs text-muted">{t.detail.whatIfSubtitle}</p>
             </div>
             {savedNotice && (
@@ -438,7 +548,7 @@ export function StockDetailPage() {
             )}
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t.watchlist.form.targetPer} htmlFor="w-tper">
               <Input
                 id="w-tper"
@@ -446,7 +556,7 @@ export function StockDetailPage() {
                 min="0.1"
                 step="0.5"
                 value={targetPer}
-                onChange={(e) => setTargetPer(e.target.value)}
+                onChange={(e) => setDraft((d) => ({ ...d, targetPer: e.target.value }))}
                 className="font-mono tabular-nums"
               />
             </Field>
@@ -457,7 +567,7 @@ export function StockDetailPage() {
                 min="0.1"
                 step="0.1"
                 value={targetPbv}
-                onChange={(e) => setTargetPbv(e.target.value)}
+                onChange={(e) => setDraft((d) => ({ ...d, targetPbv: e.target.value }))}
                 className="font-mono tabular-nums"
               />
             </Field>
@@ -469,44 +579,7 @@ export function StockDetailPage() {
                 max={50}
                 step="0.5"
                 value={discountRatePct}
-                onChange={(e) => setDiscountRatePct(e.target.value)}
-                className="font-mono tabular-nums"
-              />
-            </Field>
-            <Field label={t.watchlist.form.projectionYears} htmlFor="w-years">
-              <Input
-                id="w-years"
-                type="number"
-                min={1}
-                max={15}
-                step={1}
-                value={projectionYears}
-                onChange={(e) => setProjectionYears(e.target.value)}
-                className="font-mono tabular-nums"
-              />
-            </Field>
-            <Field label={t.watchlist.form.terminalGrowthPct} htmlFor="w-term">
-              <Input
-                id="w-term"
-                type="number"
-                min={0}
-                max={15}
-                step="0.5"
-                value={terminalGrowthPct}
-                onChange={(e) => setTerminalGrowthPct(e.target.value)}
-                className="font-mono tabular-nums"
-              />
-            </Field>
-            <Field label={t.watchlist.form.dividendGrowthPct} htmlFor="w-divg">
-              <Input
-                id="w-divg"
-                type="number"
-                min={0}
-                max={30}
-                step="0.5"
-                placeholder={String(liveValuation.assumptionsUsed.effectiveDividendGrowthPct)}
-                value={dividendGrowthPct}
-                onChange={(e) => setDividendGrowthPct(e.target.value)}
+                onChange={(e) => setDraft((d) => ({ ...d, discountRatePct: e.target.value }))}
                 className="font-mono tabular-nums"
               />
             </Field>
@@ -517,11 +590,7 @@ export function StockDetailPage() {
               <RotateCcw className="h-3.5 w-3.5" />
               {t.common.reset}
             </Button>
-            <Button
-              size="sm"
-              onClick={saveWhatIf}
-              disabled={updateMutation.isPending}
-            >
+            <Button size="sm" onClick={saveWhatIf} disabled={updateMutation.isPending}>
               <Save className="h-3.5 w-3.5" />
               {updateMutation.isPending
                 ? t.detail.savingAssumptions
@@ -532,7 +601,9 @@ export function StockDetailPage() {
 
         <Card className="flex flex-col justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-ink">{t.detail.thesisTitle}</h2>
+            <h2 className="font-display text-lg font-semibold text-ink">
+              {t.detail.thesisTitle}
+            </h2>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted">
               {item.investmentThesis || t.detail.noThesis}
             </p>

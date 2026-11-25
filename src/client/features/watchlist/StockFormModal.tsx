@@ -91,6 +91,14 @@ function StockFormBody({
   const [currentPrice, setCurrentPrice] = useState(
     editingItem ? String(editingItem.currentPrice) : '',
   );
+  const [ownedLots, setOwnedLots] = useState(
+    editingItem ? String(editingItem.ownedLots) : '0',
+  );
+  const [avgBuyPrice, setAvgBuyPrice] = useState(
+    editingItem?.avgBuyPrice !== null && editingItem?.avgBuyPrice !== undefined
+      ? String(editingItem.avgBuyPrice)
+      : '',
+  );
   const [targetBuyPrice, setTargetBuyPrice] = useState(
     editingItem?.targetBuyPrice !== null && editingItem?.targetBuyPrice !== undefined
       ? String(editingItem.targetBuyPrice)
@@ -100,7 +108,8 @@ function StockFormBody({
     editingItem?.investmentThesis ?? '',
   );
 
-  const [periodLabel, setPeriodLabel] = useState(f0?.periodLabel ?? '');
+  // Only 6 Essential Industry-Standard Key Stats + 3 Valuation Benchmarks
+  const [periodLabel, setPeriodLabel] = useState(f0?.periodLabel ?? 'TTM');
   const [eps, setEps] = useState(f0?.eps !== null && f0?.eps !== undefined ? String(f0.eps) : '');
   const [bvps, setBvps] = useState(
     f0?.bvps !== null && f0?.bvps !== undefined ? String(f0.bvps) : '',
@@ -121,17 +130,6 @@ function StockFormBody({
   );
   const [discountRatePct, setDiscountRatePct] = useState(
     String(f0?.discountRatePct ?? DEFAULT_DISCOUNT_RATE_PCT),
-  );
-  const [projectionYears, setProjectionYears] = useState(
-    String(f0?.projectionYears ?? DEFAULT_PROJECTION_YEARS),
-  );
-  const [terminalGrowthPct, setTerminalGrowthPct] = useState(
-    String(f0?.terminalGrowthPct ?? DEFAULT_TERMINAL_GROWTH_PCT),
-  );
-  const [dividendGrowthPct, setDividendGrowthPct] = useState(
-    f0?.dividendGrowthPct !== null && f0?.dividendGrowthPct !== undefined
-      ? String(f0.dividendGrowthPct)
-      : '',
   );
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -185,11 +183,15 @@ function StockFormBody({
     setFieldErrors({});
     setFormError(null);
 
+    const parsedLots = ownedLots.trim() ? Math.max(0, Math.round(Number(ownedLots))) : 0;
+
     const payloadCandidate = {
       ticker: ticker.trim().toUpperCase(),
       companyName: companyName.trim(),
       sector,
       currentPrice: Number(currentPrice),
+      ownedLots: parsedLots,
+      avgBuyPrice: parseOptionalInt(avgBuyPrice),
       targetBuyPrice: parseOptionalInt(targetBuyPrice),
       investmentThesis: investmentThesis.trim() || null,
       fundamentals: {
@@ -198,20 +200,16 @@ function StockFormBody({
         bvps: parseOptionalInt(bvps),
         dps: parseOptionalInt(dps),
         roePct: parseOptionalFloat(roePct),
-        der: parseOptionalFloat(der),
+        der: sector === 'FINANCIALS' ? null : parseOptionalFloat(der),
         epsGrowthPct: parseOptionalFloat(epsGrowthPct),
         targetPer: parseOptionalFloat(targetPer),
         targetPbv: parseOptionalFloat(targetPbv),
         discountRatePct: discountRatePct.trim()
           ? Number(discountRatePct)
           : DEFAULT_DISCOUNT_RATE_PCT,
-        projectionYears: projectionYears.trim()
-          ? Math.round(Number(projectionYears))
-          : DEFAULT_PROJECTION_YEARS,
-        terminalGrowthPct: terminalGrowthPct.trim()
-          ? Number(terminalGrowthPct)
-          : DEFAULT_TERMINAL_GROWTH_PCT,
-        dividendGrowthPct: parseOptionalFloat(dividendGrowthPct),
+        projectionYears: f0?.projectionYears ?? DEFAULT_PROJECTION_YEARS,
+        terminalGrowthPct: f0?.terminalGrowthPct ?? DEFAULT_TERMINAL_GROWTH_PCT,
+        dividendGrowthPct: null,
       },
     };
 
@@ -223,7 +221,14 @@ function StockFormBody({
         if (v?.[0]) next[k] = v[0];
       }
       setFieldErrors(next);
-      if (next.ticker || next.companyName || next.currentPrice || next.targetBuyPrice) {
+      if (
+        next.ticker ||
+        next.companyName ||
+        next.currentPrice ||
+        next.ownedLots ||
+        next.avgBuyPrice ||
+        next.targetBuyPrice
+      ) {
         setTab('basic');
       } else {
         setTab('fundamentals');
@@ -252,13 +257,15 @@ function StockFormBody({
 
   return (
     <>
-      <div className="mb-4 flex gap-1 rounded-lg bg-subtle p-1">
+      <div className="mb-4 flex border-b border-border">
         <button
           type="button"
           onClick={() => setTab('basic')}
           className={cn(
-            'flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer',
-            tab === 'basic' ? 'bg-panel text-ink shadow-xs' : 'text-muted hover:text-ink',
+            'border-b-2 px-4 py-2 text-xs font-semibold transition-colors cursor-pointer',
+            tab === 'basic'
+              ? 'border-brand-700 text-ink'
+              : 'border-transparent text-muted hover:text-ink',
           )}
         >
           {t.watchlist.form.tabBasic}
@@ -267,8 +274,10 @@ function StockFormBody({
           type="button"
           onClick={() => setTab('fundamentals')}
           className={cn(
-            'flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer',
-            tab === 'fundamentals' ? 'bg-panel text-ink shadow-xs' : 'text-muted hover:text-ink',
+            'border-b-2 px-4 py-2 text-xs font-semibold transition-colors cursor-pointer',
+            tab === 'fundamentals'
+              ? 'border-brand-700 text-ink'
+              : 'border-transparent text-muted hover:text-ink',
           )}
         >
           {t.watchlist.form.tabFundamentals}
@@ -278,7 +287,7 @@ function StockFormBody({
       {formError && (
         <div
           role="alert"
-          className="mb-4 rounded-lg border border-negative-600/20 bg-negative-50 px-3 py-2 text-xs text-negative-700"
+          className="mb-4 rounded-sm border border-negative-600/25 bg-negative-50 px-3 py-2 text-xs text-negative-700"
         >
           {formError}
         </div>
@@ -287,7 +296,7 @@ function StockFormBody({
       {autoFillNotice && (
         <div
           role="status"
-          className="mb-4 rounded-lg border border-positive-600/20 bg-positive-50 px-3 py-2 text-xs text-positive-700"
+          className="mb-4 rounded-sm border border-positive-600/25 bg-positive-50 px-3 py-2 text-xs text-positive-700"
         >
           {autoFillNotice}
         </div>
@@ -314,7 +323,7 @@ function StockFormBody({
                     disabled={fetchQuoteMutation.isPending || ticker.trim().length < 4}
                     className="h-9 shrink-0"
                   >
-                    <Sparkles className="h-3.5 w-3.5 text-brand-600" />
+                    <Sparkles className="h-3.5 w-3.5 text-brand-700" />
                     {fetchQuoteMutation.isPending
                       ? t.watchlist.autoFilling
                       : t.watchlist.autoFillBtn}
@@ -361,7 +370,7 @@ function StockFormBody({
                   type="number"
                   min={1}
                   step={1}
-                  placeholder="9000"
+                  placeholder="5800"
                   value={currentPrice}
                   onChange={(e) => setCurrentPrice(e.target.value)}
                   className="font-mono tabular-nums"
@@ -378,12 +387,53 @@ function StockFormBody({
                   type="number"
                   min={1}
                   step={1}
-                  placeholder="7500"
+                  placeholder="5200"
                   value={targetBuyPrice}
                   onChange={(e) => setTargetBuyPrice(e.target.value)}
                   className="font-mono tabular-nums"
                 />
               </Field>
+            </div>
+
+            {/* Position Holdings Section */}
+            <div className="rounded-md border border-border bg-surface/70 p-3.5">
+              <div className="mb-2.5 text-[11px] font-semibold tracking-wider text-muted uppercase">
+                {t.watchlist.form.positionSection}
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field
+                  label={t.watchlist.form.ownedLots}
+                  htmlFor="stock-owned-lots"
+                  error={fieldErrors.ownedLots}
+                >
+                  <Input
+                    id="stock-owned-lots"
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="0"
+                    value={ownedLots}
+                    onChange={(e) => setOwnedLots(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field
+                  label={t.watchlist.form.avgBuyPrice}
+                  htmlFor="stock-avg-buy"
+                  error={fieldErrors.avgBuyPrice}
+                >
+                  <Input
+                    id="stock-avg-buy"
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="5600"
+                    value={avgBuyPrice}
+                    onChange={(e) => setAvgBuyPrice(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+              </div>
             </div>
 
             <Field label={t.watchlist.form.investmentThesis} htmlFor="stock-thesis">
@@ -397,161 +447,128 @@ function StockFormBody({
             </Field>
           </div>
         ) : (
-          <div className="space-y-4">
-            <Field label={t.watchlist.form.periodLabel} htmlFor="f-period">
-              <Input
-                id="f-period"
-                placeholder={t.watchlist.form.periodPlaceholder}
-                value={periodLabel}
-                onChange={(e) => setPeriodLabel(e.target.value)}
-              />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Field label={t.watchlist.form.eps} htmlFor="f-eps">
-                <Input
-                  id="f-eps"
-                  type="number"
-                  step={1}
-                  placeholder="450"
-                  value={eps}
-                  onChange={(e) => setEps(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.bvps} htmlFor="f-bvps">
-                <Input
-                  id="f-bvps"
-                  type="number"
-                  step={1}
-                  placeholder="2000"
-                  value={bvps}
-                  onChange={(e) => setBvps(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.dps} htmlFor="f-dps">
-                <Input
-                  id="f-dps"
-                  type="number"
-                  min={0}
-                  step={1}
-                  placeholder="250"
-                  value={dps}
-                  onChange={(e) => setDps(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.roePct} htmlFor="f-roe">
-                <Input
-                  id="f-roe"
-                  type="number"
-                  step="0.01"
-                  placeholder="22.5"
-                  value={roePct}
-                  onChange={(e) => setRoePct(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.der} htmlFor="f-der">
-                <Input
-                  id="f-der"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="0.60"
-                  value={der}
-                  onChange={(e) => setDer(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.epsGrowthPct} htmlFor="f-eps-growth">
-                <Input
-                  id="f-eps-growth"
-                  type="number"
-                  step="0.01"
-                  placeholder="12.0"
-                  value={epsGrowthPct}
-                  onChange={(e) => setEpsGrowthPct(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.targetPer} htmlFor="f-tper">
-                <Input
-                  id="f-tper"
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  placeholder="20.0"
-                  value={targetPer}
-                  onChange={(e) => setTargetPer(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.targetPbv} htmlFor="f-tpbv">
-                <Input
-                  id="f-tpbv"
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  placeholder="4.5"
-                  value={targetPbv}
-                  onChange={(e) => setTargetPbv(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.dividendGrowthPct} htmlFor="f-div-growth">
-                <Input
-                  id="f-div-growth"
-                  type="number"
-                  min={0}
-                  max={30}
-                  step="0.1"
-                  placeholder="Auto"
-                  value={dividendGrowthPct}
-                  onChange={(e) => setDividendGrowthPct(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
+          <div className="space-y-5">
+            {/* 6 Core Industry-Standard Key Stats */}
+            <div>
+              <div className="mb-3 text-[11px] font-semibold tracking-wider text-muted uppercase">
+                {t.watchlist.form.keyStatsSection}
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <Field label={t.watchlist.form.eps} htmlFor="f-eps">
+                  <Input
+                    id="f-eps"
+                    type="number"
+                    step={1}
+                    placeholder="483"
+                    value={eps}
+                    onChange={(e) => setEps(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field label={t.watchlist.form.bvps} htmlFor="f-bvps">
+                  <Input
+                    id="f-bvps"
+                    type="number"
+                    step={1}
+                    placeholder="2307"
+                    value={bvps}
+                    onChange={(e) => setBvps(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field label={t.watchlist.form.roePct} htmlFor="f-roe">
+                  <Input
+                    id="f-roe"
+                    type="number"
+                    step="0.01"
+                    placeholder="21.2"
+                    value={roePct}
+                    onChange={(e) => setRoePct(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field label={t.watchlist.form.der} htmlFor="f-der">
+                  <Input
+                    id="f-der"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder={sector === 'FINANCIALS' ? 'N/A (Bank)' : '0.60'}
+                    disabled={sector === 'FINANCIALS'}
+                    value={sector === 'FINANCIALS' ? '' : der}
+                    onChange={(e) => setDer(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field label={t.watchlist.form.epsGrowthPct} htmlFor="f-eps-growth">
+                  <Input
+                    id="f-eps-growth"
+                    type="number"
+                    step="0.01"
+                    placeholder="12.0"
+                    value={epsGrowthPct}
+                    onChange={(e) => setEpsGrowthPct(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field label={t.watchlist.form.dps} htmlFor="f-dps">
+                  <Input
+                    id="f-dps"
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="336"
+                    value={dps}
+                    onChange={(e) => setDps(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+              </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 border-t border-border pt-3">
-              <Field label={t.watchlist.form.discountRatePct} htmlFor="f-disc">
-                <Input
-                  id="f-disc"
-                  type="number"
-                  min={1}
-                  max={50}
-                  step="0.5"
-                  value={discountRatePct}
-                  onChange={(e) => setDiscountRatePct(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.projectionYears} htmlFor="f-years">
-                <Input
-                  id="f-years"
-                  type="number"
-                  min={1}
-                  max={15}
-                  step={1}
-                  value={projectionYears}
-                  onChange={(e) => setProjectionYears(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-              <Field label={t.watchlist.form.terminalGrowthPct} htmlFor="f-term">
-                <Input
-                  id="f-term"
-                  type="number"
-                  min={0}
-                  max={15}
-                  step="0.5"
-                  value={terminalGrowthPct}
-                  onChange={(e) => setTerminalGrowthPct(e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
+            {/* 3 Compact Valuation Benchmarks */}
+            <div className="border-t border-border pt-4">
+              <div className="mb-3 text-[11px] font-semibold tracking-wider text-muted uppercase">
+                {t.watchlist.form.benchmarksSection}
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label={t.watchlist.form.targetPer} htmlFor="f-tper">
+                  <Input
+                    id="f-tper"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="15.0"
+                    value={targetPer}
+                    onChange={(e) => setTargetPer(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field label={t.watchlist.form.targetPbv} htmlFor="f-tpbv">
+                  <Input
+                    id="f-tpbv"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="2.5"
+                    value={targetPbv}
+                    onChange={(e) => setTargetPbv(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field label={t.watchlist.form.discountRatePct} htmlFor="f-disc">
+                  <Input
+                    id="f-disc"
+                    type="number"
+                    min={1}
+                    max={50}
+                    step="0.5"
+                    value={discountRatePct}
+                    onChange={(e) => setDiscountRatePct(e.target.value)}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+              </div>
             </div>
           </div>
         )}

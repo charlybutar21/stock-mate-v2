@@ -27,8 +27,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       type={type}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors duration-150 ease-in-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:pointer-events-none disabled:opacity-50 cursor-pointer',
-        variant === 'primary' && 'bg-brand-600 text-white hover:bg-brand-700',
+        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors duration-150 ease-in-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:pointer-events-none disabled:opacity-45 cursor-pointer',
+        variant === 'primary' && 'bg-ink text-surface hover:bg-brand-700',
         variant === 'secondary' &&
           'border border-border bg-panel text-ink hover:bg-subtle',
         variant === 'ghost' && 'text-muted hover:bg-subtle hover:text-ink',
@@ -49,7 +49,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cn(
-        'h-9 w-full rounded-lg border border-border bg-panel px-3 text-sm text-ink placeholder:text-muted/70 transition-colors duration-150 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-subtle disabled:text-muted',
+        'h-9 w-full rounded-md border border-border bg-panel px-3 text-sm text-ink placeholder:text-muted/65 transition-colors duration-150 focus:border-ink focus:outline-none disabled:bg-subtle disabled:text-muted',
         className,
       )}
       {...props}
@@ -63,7 +63,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
     <select
       ref={ref}
       className={cn(
-        'h-9 w-full rounded-lg border border-border bg-panel px-3 text-sm text-ink transition-colors duration-150 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-subtle disabled:text-muted',
+        'h-9 w-full rounded-md border border-border bg-panel px-3 text-sm text-ink transition-colors duration-150 focus:border-ink focus:outline-none disabled:bg-subtle disabled:text-muted',
         className,
       )}
       {...props}
@@ -79,7 +79,7 @@ export const Textarea = forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      'w-full rounded-lg border border-border bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/70 transition-colors duration-150 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100',
+      'w-full rounded-md border border-border bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/65 transition-colors duration-150 focus:border-ink focus:outline-none',
       className,
     )}
     {...props}
@@ -111,7 +111,7 @@ export function Field({
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-muted">{hint}</p>
+        <p className="text-[11px] text-muted">{hint}</p>
       ) : null}
     </div>
   );
@@ -131,12 +131,12 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium',
-        tone === 'neutral' && 'bg-subtle text-muted',
-        tone === 'positive' && 'bg-positive-50 text-positive-700',
-        tone === 'warning' && 'bg-warning-50 text-warning-700',
-        tone === 'negative' && 'bg-negative-50 text-negative-700',
-        tone === 'info' && 'bg-brand-50 text-brand-700',
+        'inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[11px] font-medium tracking-tight',
+        tone === 'neutral' && 'border-border bg-subtle text-muted',
+        tone === 'positive' && 'border-positive-600/25 bg-positive-50 text-positive-700',
+        tone === 'warning' && 'border-warning-600/25 bg-warning-50 text-warning-700',
+        tone === 'negative' && 'border-negative-600/25 bg-negative-50 text-negative-700',
+        tone === 'info' && 'border-brand-600/25 bg-brand-50 text-brand-700',
         className,
       )}
     >
@@ -152,7 +152,7 @@ export function Card({
 }: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
   return (
     <div
-      className={cn('rounded-xl border border-border bg-panel p-5', className)}
+      className={cn('rounded-md border border-border bg-panel p-5', className)}
       {...props}
     >
       {children}
@@ -161,7 +161,7 @@ export function Card({
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-lg bg-subtle', className)} />;
+  return <div className={cn('animate-pulse rounded-sm bg-subtle', className)} />;
 }
 
 export function Modal({
@@ -190,7 +190,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -200,17 +200,17 @@ export function Modal({
     >
       <div
         className={cn(
-          'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-panel shadow-xl',
+          'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-md border border-border bg-panel shadow-xl',
           maxWidthClass,
         )}
       >
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-base font-semibold tracking-tight text-ink">{title}</h2>
+        <div className="flex items-center justify-between border-b border-border bg-surface px-5 py-3.5">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-ink">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+            className="rounded-sm p-1 text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>

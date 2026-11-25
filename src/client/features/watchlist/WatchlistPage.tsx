@@ -13,7 +13,12 @@ import {
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import type { WatchlistItemDto } from '@/shared/contracts';
-import { IDX_SECTORS, type IdxSector, type ValuationStatus } from '@/shared/domain';
+import {
+  calculatePositionSummary,
+  IDX_SECTORS,
+  type IdxSector,
+  type ValuationStatus,
+} from '@/shared/domain';
 import {
   Badge,
   Button,
@@ -26,7 +31,7 @@ import {
 } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { ApiClientError } from '@/client/lib/apiClient';
-import { formatIdr, formatPercent } from '@/client/lib/formatters';
+import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
 import { StockFormModal } from './StockFormModal';
 import {
   useCreateWatchlistItem,
@@ -83,6 +88,7 @@ export function WatchlistPage() {
         companyName: quote.companyName,
         sector: quote.sector,
         currentPrice: quote.currentPrice,
+        ownedLots: 0,
         fundamentals: {
           periodLabel: quote.periodLabel,
           eps: quote.fundamentals.eps,
@@ -111,9 +117,15 @@ export function WatchlistPage() {
 
   const kpis = useMemo(() => {
     const list = items ?? [];
+    const portfolioMarketValue = list.reduce(
+      (sum, item) =>
+        sum + calculatePositionSummary(item.ownedLots, item.avgBuyPrice, item.currentPrice).marketValue,
+      0,
+    );
     return {
       total: list.length,
       undervalued: list.filter((i) => i.valuation.valuationStatus === 'UNDERVALUED').length,
+      portfolioMarketValue,
       stale: list.filter((i) => i.isStale).length,
     };
   }, [items]);
@@ -136,11 +148,13 @@ export function WatchlistPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Editorial Header */}
+      <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">{t.watchlist.title}</h1>
-          <p className="mt-0.5 text-sm text-muted">{t.watchlist.subtitle}</p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">
+            {t.watchlist.title}
+          </h1>
+          <p className="mt-1 text-sm text-muted">{t.watchlist.subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
           {items && items.length > 0 && (
@@ -151,23 +165,59 @@ export function WatchlistPage() {
               disabled={syncAllMutation.isPending}
             >
               <RefreshCw
-                className={`h-4 w-4 ${syncAllMutation.isPending ? 'animate-spin' : ''}`}
+                className={`h-3.5 w-3.5 ${syncAllMutation.isPending ? 'animate-spin' : ''}`}
               />
               {syncAllMutation.isPending ? t.watchlist.syncingAll : t.watchlist.syncAllBtn}
             </Button>
           )}
           <Button variant="secondary" onClick={openAdd} size="md">
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             {t.watchlist.addStock}
           </Button>
         </div>
       </div>
 
+      {/* Editorial Ledger KPI Strip (hairline dividers, no floating SaaS cards) */}
+      <div className="grid grid-cols-2 divide-y divide-border rounded-md border border-border bg-panel sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+        <div className="px-4 py-3.5">
+          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+            {t.watchlist.kpiTotal}
+          </div>
+          <div className="mt-1 font-mono text-xl font-semibold text-ink tabular-nums">
+            {isLoading ? <Skeleton className="h-6 w-10" /> : kpis.total}
+          </div>
+        </div>
+        <div className="px-4 py-3.5">
+          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+            {t.watchlist.kpiUndervalued}
+          </div>
+          <div className="mt-1 font-mono text-xl font-semibold text-positive-700 tabular-nums">
+            {isLoading ? <Skeleton className="h-6 w-10" /> : kpis.undervalued}
+          </div>
+        </div>
+        <div className="px-4 py-3.5">
+          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+            {t.watchlist.kpiPositions}
+          </div>
+          <div className="mt-1 font-mono text-xl font-semibold text-ink tabular-nums">
+            {isLoading ? <Skeleton className="h-6 w-24" /> : formatIdr(kpis.portfolioMarketValue)}
+          </div>
+        </div>
+        <div className="px-4 py-3.5">
+          <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+            {t.watchlist.kpiStale}
+          </div>
+          <div className="mt-1 font-mono text-xl font-semibold text-warning-700 tabular-nums">
+            {isLoading ? <Skeleton className="h-6 w-10" /> : kpis.stale}
+          </div>
+        </div>
+      </div>
+
       {/* Quick Auto-Add Bar */}
-      <Card className="p-4">
+      <div className="rounded-md border border-border bg-panel p-4">
         <form onSubmit={handleQuickAdd} className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
           <div className="relative flex-1">
-            <Sparkles className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-brand-600" />
+            <Sparkles className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-brand-700" />
             <Input
               placeholder={t.watchlist.quickAddPlaceholder}
               maxLength={4}
@@ -181,7 +231,7 @@ export function WatchlistPage() {
             />
           </div>
           <Button type="submit" disabled={isQuickAdding || quickTicker.trim().length < 4}>
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="h-3.5 w-3.5" />
             {isQuickAdding ? t.watchlist.quickAdding : t.watchlist.quickAddBtn}
           </Button>
         </form>
@@ -192,28 +242,6 @@ export function WatchlistPage() {
         ) : (
           <p className="mt-2 text-xs text-muted">{t.watchlist.quickAddHint}</p>
         )}
-      </Card>
-
-      {/* KPI Strip */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card className="p-4">
-          <div className="text-xs font-medium text-muted">{t.watchlist.kpiTotal}</div>
-          <div className="mt-1 font-mono text-2xl font-semibold text-ink tabular-nums">
-            {isLoading ? <Skeleton className="h-7 w-12" /> : kpis.total}
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs font-medium text-muted">{t.watchlist.kpiUndervalued}</div>
-          <div className="mt-1 font-mono text-2xl font-semibold text-positive-600 tabular-nums">
-            {isLoading ? <Skeleton className="h-7 w-12" /> : kpis.undervalued}
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs font-medium text-muted">{t.watchlist.kpiStale}</div>
-          <div className="mt-1 font-mono text-2xl font-semibold text-warning-600 tabular-nums">
-            {isLoading ? <Skeleton className="h-7 w-12" /> : kpis.stale}
-          </div>
-        </Card>
       </div>
 
       {/* Filters */}
@@ -254,7 +282,7 @@ export function WatchlistPage() {
 
       {/* Content */}
       {isError && (
-        <Card className="flex items-center gap-3 border-negative-600/20 bg-negative-50 p-4 text-sm text-negative-700">
+        <Card className="flex items-center gap-3 border-negative-600/25 bg-negative-50 p-4 text-sm text-negative-700">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{t.common.unexpectedError}</span>
         </Card>
@@ -262,27 +290,28 @@ export function WatchlistPage() {
 
       {isLoading ? (
         <Card className="space-y-3 p-5">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-11 w-full" />
+          <Skeleton className="h-11 w-full" />
+          <Skeleton className="h-11 w-full" />
         </Card>
       ) : items && items.length === 0 ? (
         <Card className="py-14 text-center">
-          <h2 className="text-base font-semibold text-ink">{t.watchlist.emptyTitle}</h2>
+          <h2 className="font-display text-xl font-semibold text-ink">{t.watchlist.emptyTitle}</h2>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted">{t.watchlist.emptyBody}</p>
-          <Button className="mt-5" onClick={openAdd}>
+          <Button variant="secondary" className="mt-5" onClick={openAdd}>
             <Plus className="h-4 w-4" />
             {t.watchlist.emptyAction}
           </Button>
         </Card>
       ) : (
-        <Card className="overflow-hidden p-0">
+        <div className="overflow-hidden rounded-md border border-border bg-panel">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-border bg-subtle/60 text-xs font-medium text-muted">
+                <tr className="border-b border-border bg-surface text-[11px] font-semibold tracking-wider text-muted uppercase">
                   <th className="px-4 py-3">{t.watchlist.colTicker}</th>
+                  <th className="px-4 py-3 text-right">{t.watchlist.colPosition}</th>
                   <th className="px-4 py-3 text-right">{t.watchlist.colPrice}</th>
                   <th className="px-4 py-3 text-right">{t.watchlist.colFairValue}</th>
                   <th className="px-4 py-3 text-right">{t.watchlist.colMos}</th>
@@ -291,96 +320,123 @@ export function WatchlistPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {(items ?? []).map((item) => (
-                  <tr
-                    key={item.id}
-                    className="transition-colors hover:bg-subtle/40"
-                  >
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          to={`/watchlist/${item.id}`}
-                          className="font-mono text-sm font-semibold text-ink hover:text-brand-600"
-                        >
-                          {item.ticker}
-                        </Link>
-                        {item.isStale && (
-                          <Badge tone="warning">
-                            <Clock className="h-3 w-3" />
-                            {t.watchlist.staleBadge}
-                          </Badge>
+                {(items ?? []).map((item) => {
+                  const pos = calculatePositionSummary(
+                    item.ownedLots,
+                    item.avgBuyPrice,
+                    item.currentPrice,
+                  );
+                  return (
+                    <tr key={item.id} className="transition-colors hover:bg-surface/70">
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/watchlist/${item.id}`}
+                            className="font-mono text-sm font-semibold text-ink hover:text-brand-700"
+                          >
+                            {item.ticker}
+                          </Link>
+                          {item.isStale && (
+                            <Badge tone="warning">
+                              <Clock className="h-3 w-3" />
+                              {t.watchlist.staleBadge}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-xs text-muted">
+                          {item.companyName} · {t.sectors[item.sector]}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        {pos.ownedLots > 0 ? (
+                          <div>
+                            <div className="font-mono text-xs font-semibold text-ink tabular-nums">
+                              {formatNumber(pos.ownedLots)} {t.common.lots}
+                              {pos.avgBuyPrice ? ` @ ${formatIdr(pos.avgBuyPrice)}` : ''}
+                            </div>
+                            {pos.unrealizedPnLPct !== null && (
+                              <div
+                                className={`font-mono text-[11px] font-medium tabular-nums ${
+                                  pos.unrealizedPnLPct >= 0
+                                    ? 'text-positive-700'
+                                    : 'text-negative-600'
+                                }`}
+                              >
+                                {formatPercent(pos.unrealizedPnLPct, true)}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted/70">{t.watchlist.noPosition}</span>
                         )}
-                      </div>
-                      <div className="mt-0.5 text-xs text-muted">
-                        {item.companyName} · {t.sectors[item.sector]}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 text-right font-mono text-sm font-medium text-ink tabular-nums">
-                      {formatIdr(item.currentPrice)}
-                    </td>
-                    <td className="px-4 py-3.5 text-right font-mono text-sm text-ink tabular-nums">
-                      {formatIdr(item.valuation.fairValue.moderate)}
-                    </td>
-                    <td className="px-4 py-3.5 text-right font-mono text-sm font-semibold tabular-nums">
-                      <span
-                        className={
-                          item.valuation.mosPct === null
-                            ? 'text-muted'
-                            : item.valuation.mosPct >= 30
-                              ? 'text-positive-600'
-                              : item.valuation.mosPct >= 0
-                                ? 'text-warning-600'
-                                : 'text-negative-600'
-                        }
-                      >
-                        {formatPercent(item.valuation.mosPct, true)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Badge tone={statusTone(item.valuation.valuationStatus)}>
-                        {t.valuationStatus[item.valuation.valuationStatus]}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center justify-end gap-1">
-                        <Link
-                          to={`/watchlist/${item.id}`}
-                          className="inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-50"
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono text-sm font-medium text-ink tabular-nums">
+                        {formatIdr(item.currentPrice)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono text-sm text-ink tabular-nums">
+                        {formatIdr(item.valuation.fairValue.moderate)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono text-sm font-semibold tabular-nums">
+                        <span
+                          className={
+                            item.valuation.mosPct === null
+                              ? 'text-muted'
+                              : item.valuation.mosPct >= 30
+                                ? 'text-positive-700'
+                                : item.valuation.mosPct >= 0
+                                  ? 'text-warning-700'
+                                  : 'text-negative-600'
+                          }
                         >
-                          <BarChart3 className="h-3.5 w-3.5" />
-                          {t.watchlist.analyze}
-                        </Link>
-                        <Link
-                          to={`/simulator?stockId=${item.id}`}
-                          className="inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium text-muted transition-colors hover:bg-subtle hover:text-ink"
-                        >
-                          <Calculator className="h-3.5 w-3.5" />
-                          {t.watchlist.simulate}
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(item)}
-                          aria-label={t.common.edit}
-                          className="rounded-lg p-1.5 text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingItem(item)}
-                          aria-label={t.common.delete}
-                          className="rounded-lg p-1.5 text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {formatPercent(item.valuation.mosPct, true)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <Badge tone={statusTone(item.valuation.valuationStatus)}>
+                          {t.valuationStatus[item.valuation.valuationStatus]}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <Link
+                            to={`/watchlist/${item.id}`}
+                            className="inline-flex h-8 items-center gap-1 rounded-sm px-2.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-50"
+                          >
+                            <BarChart3 className="h-3.5 w-3.5" />
+                            {t.watchlist.analyze}
+                          </Link>
+                          <Link
+                            to={`/simulator?stockId=${item.id}`}
+                            className="inline-flex h-8 items-center gap-1 rounded-sm px-2.5 text-xs font-medium text-muted transition-colors hover:bg-subtle hover:text-ink"
+                          >
+                            <Calculator className="h-3.5 w-3.5" />
+                            {t.watchlist.simulate}
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(item)}
+                            aria-label={t.common.edit}
+                            className="rounded-sm p-1.5 text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingItem(item)}
+                            aria-label={t.common.delete}
+                            className="rounded-sm p-1.5 text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       )}
 
       <StockFormModal

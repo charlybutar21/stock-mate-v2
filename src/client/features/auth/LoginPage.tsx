@@ -1,4 +1,3 @@
-import { TrendingUp } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { z } from 'zod';
@@ -50,17 +49,21 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-surface px-4 py-10">
       <div className="mb-6 flex w-full max-w-md items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
-            <TrendingUp className="h-4 w-4" />
+        <div className="flex items-baseline gap-2">
+          <span className="font-display text-xl font-semibold tracking-tight text-ink">
+            {t.appName}
           </span>
-          <span className="text-sm font-semibold tracking-tight text-ink">{t.appName}</span>
+          <span className="font-mono text-[10px] tracking-widest text-muted uppercase">
+            IDX DESK
+          </span>
         </div>
         <LanguageSwitcher />
       </div>
 
       <Card className="w-full max-w-md p-6">
-        <h1 className="text-lg font-semibold tracking-tight text-ink">{t.auth.loginTitle}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
+          {t.auth.loginTitle}
+        </h1>
         <p className="mt-1 text-sm text-muted">{t.auth.loginSubtitle}</p>
 
         {formError && (

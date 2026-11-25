@@ -20,6 +20,8 @@ function mapJoinedRow(row: {
     companyName: row.item.companyName,
     sector: row.item.sector as IdxSector,
     currentPrice: row.item.currentPrice,
+    ownedLots: row.item.ownedLots,
+    avgBuyPrice: row.item.avgBuyPrice,
     targetBuyPrice: row.item.targetBuyPrice,
     investmentThesis: row.item.investmentThesis,
     createdAt: row.item.createdAt,
@@ -142,6 +144,8 @@ export class D1WatchlistRepository implements WatchlistRepository {
         companyName: item.companyName,
         sector: item.sector,
         currentPrice: item.currentPrice,
+        ownedLots: item.ownedLots,
+        avgBuyPrice: item.avgBuyPrice,
         targetBuyPrice: item.targetBuyPrice,
         investmentThesis: item.investmentThesis,
         createdAt: item.createdAt,
@@ -177,6 +181,8 @@ export class D1WatchlistRepository implements WatchlistRepository {
       companyName: string;
       sector: IdxSector;
       currentPrice: number;
+      ownedLots: number;
+      avgBuyPrice: number | null;
       targetBuyPrice: number | null;
       investmentThesis: string | null;
       updatedAt: number;

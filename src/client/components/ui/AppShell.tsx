@@ -1,4 +1,4 @@
-import { Calculator, Layers, LogOut, TrendingUp } from 'lucide-react';
+import { Calculator, Layers, LogOut } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useI18n } from '@/client/i18n/useI18n';
@@ -9,7 +9,7 @@ export function LanguageSwitcher() {
   const { lang, setLang } = useI18n();
   return (
     <div
-      className="inline-flex items-center rounded-lg border border-border bg-subtle p-0.5 text-xs font-medium"
+      className="inline-flex items-center rounded-sm border border-border bg-surface p-0.5 font-mono text-[11px] font-medium"
       role="group"
       aria-label="Language switcher"
     >
@@ -17,8 +17,8 @@ export function LanguageSwitcher() {
         type="button"
         onClick={() => setLang('en')}
         className={cn(
-          'rounded-md px-2 py-1 transition-colors cursor-pointer',
-          lang === 'en' ? 'bg-panel text-ink shadow-xs' : 'text-muted hover:text-ink',
+          'rounded-xs px-2 py-0.5 transition-colors cursor-pointer',
+          lang === 'en' ? 'bg-ink text-surface' : 'text-muted hover:text-ink',
         )}
       >
         EN
@@ -27,8 +27,8 @@ export function LanguageSwitcher() {
         type="button"
         onClick={() => setLang('id')}
         className={cn(
-          'rounded-md px-2 py-1 transition-colors cursor-pointer',
-          lang === 'id' ? 'bg-panel text-ink shadow-xs' : 'text-muted hover:text-ink',
+          'rounded-xs px-2 py-0.5 transition-colors cursor-pointer',
+          lang === 'id' ? 'bg-ink text-surface' : 'text-muted hover:text-ink',
         )}
       >
         ID
@@ -50,17 +50,19 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-surface">
-      <header className="sticky top-0 z-30 border-b border-border bg-panel/95 backdrop-blur-xs">
+      <header className="sticky top-0 z-30 border-b border-border bg-panel">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-6">
-            <Link to="/watchlist" className="flex items-center gap-2 font-semibold text-ink">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-white">
-                <TrendingUp className="h-4 w-4" />
+          <div className="flex h-full items-center gap-7">
+            <Link to="/watchlist" className="flex items-baseline gap-2 text-ink">
+              <span className="font-display text-lg font-semibold tracking-tight">
+                {t.appName}
               </span>
-              <span className="text-sm tracking-tight">{t.appName}</span>
+              <span className="hidden font-mono text-[10px] tracking-widest text-muted uppercase sm:inline">
+                IDX DESK
+              </span>
             </Link>
 
-            <nav className="flex items-center gap-1" aria-label="Main navigation">
+            <nav className="flex h-full items-center gap-1" aria-label="Main navigation">
               {navItems.map((item) => {
                 const active = location.pathname.startsWith(item.to);
                 const Icon = item.icon;
@@ -69,13 +71,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                     key={item.to}
                     to={item.to}
                     className={cn(
-                      'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                      'relative inline-flex h-full items-center gap-1.5 px-3 text-sm font-medium transition-colors',
                       active
-                        ? 'bg-brand-50 text-brand-700'
-                        : 'text-muted hover:bg-subtle hover:text-ink',
+                        ? 'text-ink after:absolute after:right-0 after:bottom-0 after:left-0 after:h-[2px] after:bg-brand-700'
+                        : 'text-muted hover:text-ink',
                     )}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-3.5 w-3.5" />
                     {item.label}
                   </Link>
                 );
@@ -99,14 +101,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               disabled={logout.isPending}
               aria-label={t.nav.logout}
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{t.nav.logout}</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-7 sm:px-6">{children}</main>
     </div>
   );
 }
