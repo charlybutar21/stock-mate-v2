@@ -12,7 +12,6 @@ import {
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {
-  calculatePositionSummary,
   calculateValuation,
   type DerQualityFlag,
   type RoeQualityFlag,
@@ -31,11 +30,14 @@ import { useI18n } from '@/client/i18n/useI18n';
 import {
   formatIdr,
   formatMultiple,
-  formatNumber,
   formatPercent,
   formatShortDate,
 } from '@/client/lib/formatters';
 import { FairValueRangeBar } from './FairValueRangeBar';
+import {
+  HoldingTranchesEditor,
+  type EditableHoldingRow,
+} from './HoldingTranchesEditor';
 import { StockFormModal } from './StockFormModal';
 import { statusTone } from './WatchlistPage';
 import { useFetchIdxQuote, useUpdateWatchlistItem, useWatchlistItem } from './useWatchlist';
@@ -67,39 +69,35 @@ export function StockDetailPage() {
   const [positionSavedNotice, setPositionSavedNotice] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
-  // Inline Position draft overrides
-  const [posDraft, setPosDraft] = useState<{
-    ownedLots?: string;
-    avgBuyPrice?: string;
-  }>({});
+  // Inline Multi-Tranche Position draft overrides
+  const [holdingDraft, setHoldingDraft] = useState<EditableHoldingRow[] | null>(null);
 
-  const ownedLotsStr = posDraft.ownedLots ?? (item ? String(item.ownedLots) : '0');
-  const avgBuyPriceStr =
-    posDraft.avgBuyPrice ??
-    (item?.avgBuyPrice !== null && item?.avgBuyPrice !== undefined
-      ? String(item.avgBuyPrice)
-      : '');
-
-  const livePosition = useMemo(() => {
-    if (!item) return null;
-    const lots = ownedLotsStr.trim() ? Math.max(0, Math.round(Number(ownedLotsStr))) : 0;
-    const avg = avgBuyPriceStr.trim() ? Math.round(Number(avgBuyPriceStr)) : null;
-    return calculatePositionSummary(lots, avg, item.currentPrice);
-  }, [item, ownedLotsStr, avgBuyPriceStr]);
+  const activeHoldingRows: EditableHoldingRow[] = useMemo(() => {
+    if (holdingDraft !== null) return holdingDraft;
+    return (item?.holdingTranches ?? []).map((tr, i) => ({
+      id: `srv_${i}`,
+      lots: String(tr.lots),
+      buyPrice: String(tr.buyPrice),
+    }));
+  }, [holdingDraft, item]);
 
   const savePosition = async () => {
     if (!item) return;
     setPositionSavedNotice(false);
-    const lots = ownedLotsStr.trim() ? Math.max(0, Math.round(Number(ownedLotsStr))) : 0;
-    const avg = avgBuyPriceStr.trim() ? Math.max(1, Math.round(Number(avgBuyPriceStr))) : null;
+    const validTranches = activeHoldingRows
+      .map((r) => ({
+        lots: r.lots.trim() ? Math.round(Number(r.lots)) : 0,
+        buyPrice: r.buyPrice.trim() ? Math.round(Number(r.buyPrice)) : 0,
+      }))
+      .filter((r) => r.lots >= 1 && r.buyPrice >= 1);
+
     await updateMutation.mutateAsync({
       id: item.id,
       payload: {
-        ownedLots: lots,
-        avgBuyPrice: avg,
+        holdingTranches: validTranches,
       },
     });
-    setPosDraft({});
+    setHoldingDraft(null);
     setPositionSavedNotice(true);
     setTimeout(() => setPositionSavedNotice(false), 3000);
   };
@@ -208,7 +206,7 @@ export function StockDetailPage() {
     );
   }
 
-  if (isError || !item || !liveValuation || !livePosition) {
+  if (isError || !item || !liveValuation) {
     return (
       <Card className="p-8 text-center">
         <p className="text-sm text-muted">{t.common.unexpectedError}</p>
@@ -358,95 +356,35 @@ export function StockDetailPage() {
         </div>
       </Card>
 
-      {/* My Holding Position Card (Inline Editable + Linked to Simulator) */}
-      <Card className="space-y-4 border-l-4 border-l-brand-700 animate-fade-up">
+      {/* My Holding Position Card (Multi-Entry Average Down + Net Market Value After Stockbit Fees) */}
+      <Card className="space-y-4 border-l-4 border-l-brand-600 animate-fade-up">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-lg font-semibold text-ink">
+          <h2 className="font-display text-lg font-bold text-ink">
             {t.detail.myPositionTitle}
           </h2>
-          {positionSavedNotice && (
-            <Badge tone="positive">
-              <CheckCircle2 className="h-3 w-3" />
-              {t.detail.positionSaved}
-            </Badge>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
-          <div className="grid grid-cols-2 gap-3 md:col-span-5">
-            <Field label={t.detail.ownedLots} htmlFor="pos-lots">
-              <Input
-                id="pos-lots"
-                type="number"
-                min={0}
-                step={1}
-                value={ownedLotsStr}
-                onChange={(e) => setPosDraft((p) => ({ ...p, ownedLots: e.target.value }))}
-                className="font-mono tabular-nums"
-              />
-            </Field>
-            <Field label={t.detail.avgBuyPrice} htmlFor="pos-avg">
-              <Input
-                id="pos-avg"
-                type="number"
-                min={1}
-                step={1}
-                placeholder={String(item.currentPrice)}
-                value={avgBuyPriceStr}
-                onChange={(e) => setPosDraft((p) => ({ ...p, avgBuyPrice: e.target.value }))}
-                className="font-mono tabular-nums"
-              />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 md:col-span-4">
-            <div className="rounded-sm border border-border bg-surface px-3 py-2">
-              <div className="text-[11px] text-muted">{t.detail.marketValue}</div>
-              <div className="font-mono text-sm font-semibold text-ink tabular-nums">
-                {formatIdr(livePosition.marketValue)}
-              </div>
-              <div className="font-mono text-[10px] text-muted tabular-nums">
-                {formatNumber(livePosition.ownedShares)} {t.common.shares}
-              </div>
-            </div>
-            <div className="rounded-md border border-border bg-surface px-3 py-2">
-              <div className="text-[11px] text-muted">
-                <TermTooltip
-                  label={t.detail.unrealizedPnL}
-                  definition={t.glossary.unrealizedPnL}
-                />
-              </div>
-              <div
-                className={`font-mono text-sm font-semibold tabular-nums ${
-                  livePosition.unrealizedPnL === null
-                    ? 'text-muted'
-                    : livePosition.unrealizedPnL >= 0
-                      ? 'text-positive-700'
-                      : 'text-negative-600'
-                }`}
-              >
-                {livePosition.unrealizedPnL !== null
-                  ? `${livePosition.unrealizedPnL >= 0 ? '+' : ''}${formatIdr(livePosition.unrealizedPnL)}`
-                  : '—'}
-              </div>
-              <div className="font-mono text-[10px] text-muted tabular-nums">
-                {formatPercent(livePosition.unrealizedPnLPct, true)}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 md:col-span-3 md:justify-end">
+          <div className="flex items-center gap-2">
+            {positionSavedNotice && (
+              <Badge tone="positive">
+                <CheckCircle2 className="h-3 w-3" />
+                {t.detail.positionSaved}
+              </Badge>
+            )}
             <Button
               size="sm"
               onClick={savePosition}
               disabled={updateMutation.isPending}
-              className="w-full md:w-auto"
             >
               <Save className="h-3.5 w-3.5" />
               {t.detail.savePosition}
             </Button>
           </div>
         </div>
+
+        <HoldingTranchesEditor
+          rows={activeHoldingRows}
+          onChange={setHoldingDraft}
+          currentPrice={item.currentPrice}
+        />
       </Card>
 
       {/* Market Ratios Cards */}

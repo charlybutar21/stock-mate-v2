@@ -188,7 +188,12 @@ export function WatchlistPage() {
           </div>
         </Card>
         <Card interactive className="p-4">
-          <div className="text-xs font-medium text-muted">{t.watchlist.kpiPositions}</div>
+          <div className="text-xs font-medium text-muted">
+            <TermTooltip
+              label={t.watchlist.kpiPositions}
+              definition={t.glossary.netMarketValue}
+            />
+          </div>
           <div className="mt-1 font-mono text-2xl font-bold text-ink tabular-nums">
             {isLoading ? <Skeleton className="h-7 w-24" /> : formatIdr(kpis.portfolioMarketValue)}
           </div>

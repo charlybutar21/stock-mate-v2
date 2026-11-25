@@ -248,34 +248,82 @@ export interface PositionSummary {
   ownedLots: number;
   ownedShares: number;
   avgBuyPrice: number | null;
+  grossCostBasis: number;
+  estimatedBuyFee: number;
   costBasis: number;
+  grossMarketValue: number;
+  estimatedSellFee: number;
+  estimatedSellStampDuty: number;
   marketValue: number;
   unrealizedPnL: number | null;
   unrealizedPnLPct: number | null;
 }
 
+export function aggregateHoldingTranches(tranches: PlannedTranche[]): {
+  ownedLots: number;
+  avgBuyPrice: number | null;
+} {
+  let totalLots = 0;
+  let totalWeighted = 0;
+  for (const t of tranches) {
+    if (Number.isInteger(t.lots) && t.lots > 0 && t.buyPrice >= MIN_IDX_PRICE) {
+      totalLots += t.lots;
+      totalWeighted += t.lots * t.buyPrice;
+    }
+  }
+  if (totalLots === 0) {
+    return { ownedLots: 0, avgBuyPrice: null };
+  }
+  return {
+    ownedLots: totalLots,
+    avgBuyPrice: Math.round(totalWeighted / totalLots),
+  };
+}
+
+/**
+ * Computes net holding position value after all Stockbit fees:
+ * - Net Market Value = Gross Market Value - Sell Fee (0.25%) - Stamp Duty (Rp 10,000 if > Rp 10,000,000)
+ * - Total Cost Basis = Gross Cost + Buy Fee (0.15%)
+ * - Net Unrealized P/L = Net Market Value - Total Cost Basis
+ */
 export function calculatePositionSummary(
   ownedLots: number,
   avgBuyPrice: number | null,
   currentPrice: number,
+  buyFeePct: number = DEFAULT_BUY_FEE_PCT,
+  sellFeePct: number = DEFAULT_SELL_FEE_PCT,
 ): PositionSummary {
   const safeLots = Math.max(0, Math.floor(ownedLots));
   const ownedShares = safeLots * SHARES_PER_LOT;
-  const marketValue = ownedShares * currentPrice;
+  const grossMarketValue = ownedShares * currentPrice;
+  const estimatedSellFee = Math.round(grossMarketValue * (sellFeePct / 100));
+  const estimatedSellStampDuty =
+    grossMarketValue > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
+  const marketValue = Math.max(
+    0,
+    grossMarketValue - estimatedSellFee - estimatedSellStampDuty,
+  );
 
   if (safeLots === 0 || avgBuyPrice === null || avgBuyPrice < MIN_IDX_PRICE) {
     return {
       ownedLots: safeLots,
       ownedShares,
       avgBuyPrice: safeLots > 0 ? avgBuyPrice : null,
+      grossCostBasis: 0,
+      estimatedBuyFee: 0,
       costBasis: 0,
+      grossMarketValue,
+      estimatedSellFee,
+      estimatedSellStampDuty,
       marketValue,
       unrealizedPnL: null,
       unrealizedPnLPct: null,
     };
   }
 
-  const costBasis = ownedShares * avgBuyPrice;
+  const grossCostBasis = ownedShares * avgBuyPrice;
+  const estimatedBuyFee = Math.round(grossCostBasis * (buyFeePct / 100));
+  const costBasis = grossCostBasis + estimatedBuyFee;
   const unrealizedPnL = marketValue - costBasis;
   const unrealizedPnLPct = round2((unrealizedPnL / costBasis) * 100);
 
@@ -283,7 +331,12 @@ export function calculatePositionSummary(
     ownedLots: safeLots,
     ownedShares,
     avgBuyPrice,
+    grossCostBasis,
+    estimatedBuyFee,
     costBasis,
+    grossMarketValue,
+    estimatedSellFee,
+    estimatedSellStampDuty,
     marketValue,
     unrealizedPnL,
     unrealizedPnLPct,

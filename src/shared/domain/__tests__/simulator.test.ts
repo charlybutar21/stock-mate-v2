@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aggregateHoldingTranches,
   calculateGoalSeekAverageDown,
   calculatePositionSummary,
   simulateForwardAverageDown,
@@ -215,35 +216,62 @@ describe('simulator engine', () => {
     ).toEqual({ valid: false, errorCode: 'INVALID_GOAL_SEEK_BOUNDS' });
   });
 
-  it('computes owned position summary (cost basis, market value, unrealized P/L)', () => {
+  it('aggregates multiple holding tranches & computes Net Market Value after Stockbit sell fee + stamp duty', () => {
+    expect(aggregateHoldingTranches([])).toEqual({ ownedLots: 0, avgBuyPrice: null });
+    expect(
+      aggregateHoldingTranches([
+        { lots: 10, buyPrice: 1200 },
+        { lots: 20, buyPrice: 1050 },
+        { lots: 0, buyPrice: 900 }, // ignored
+      ]),
+    ).toEqual({ ownedLots: 30, avgBuyPrice: 1100 });
+
     expect(calculatePositionSummary(0, 5000, 5500)).toEqual({
       ownedLots: 0,
       ownedShares: 0,
       avgBuyPrice: null,
+      grossCostBasis: 0,
+      estimatedBuyFee: 0,
       costBasis: 0,
+      grossMarketValue: 0,
+      estimatedSellFee: 0,
+      estimatedSellStampDuty: 0,
       marketValue: 0,
       unrealizedPnL: null,
       unrealizedPnLPct: null,
     });
 
+    // Under Rp 10M: 10 lots @ Rp 5,500 = 5,500,000 gross -> sellFee 0.25% = 13,750, stamp = 0 -> net = 5,486,250
     expect(calculatePositionSummary(10, null, 5500)).toEqual({
       ownedLots: 10,
       ownedShares: 1000,
       avgBuyPrice: null,
+      grossCostBasis: 0,
+      estimatedBuyFee: 0,
       costBasis: 0,
-      marketValue: 5_500_000,
+      grossMarketValue: 5_500_000,
+      estimatedSellFee: 13_750,
+      estimatedSellStampDuty: 0,
+      marketValue: 5_486_250,
       unrealizedPnL: null,
       unrealizedPnLPct: null,
     });
 
+    // Over Rp 10M: 20 lots @ avg 5000, current 5500 -> grossMV 11,000,000 -> sellFee 27,500 + stamp 10,000 -> netMV 10,962,500
+    // grossCost 10,000,000 + buyFee 15,000 = 10,015,000 -> netPnL = +947,500 (+9.46%)
     expect(calculatePositionSummary(20, 5000, 5500)).toEqual({
       ownedLots: 20,
       ownedShares: 2000,
       avgBuyPrice: 5000,
-      costBasis: 10_000_000,
-      marketValue: 11_000_000,
-      unrealizedPnL: 1_000_000,
-      unrealizedPnLPct: 10,
+      grossCostBasis: 10_000_000,
+      estimatedBuyFee: 15_000,
+      costBasis: 10_015_000,
+      grossMarketValue: 11_000_000,
+      estimatedSellFee: 27_500,
+      estimatedSellStampDuty: 10_000,
+      marketValue: 10_962_500,
+      unrealizedPnL: 947_500,
+      unrealizedPnLPct: 9.46,
     });
   });
 });

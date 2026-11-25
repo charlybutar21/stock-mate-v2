@@ -75,6 +75,13 @@ export const fundamentalsPatchSchema = z.object({
   dividendGrowthPct: optionalNullableNumber({ min: 0.0, max: 30.0 }),
 });
 
+export const holdingTrancheSchema = z.object({
+  lots: z.number().int('Lots must be >= 1').min(1),
+  buyPrice: z.number().int('Price must be >= 1').min(MIN_IDX_PRICE),
+});
+
+export type HoldingTrancheDto = z.infer<typeof holdingTrancheSchema>;
+
 export const createWatchlistSchema = z.object({
   ticker: z
     .string()
@@ -93,6 +100,7 @@ export const createWatchlistSchema = z.object({
     .min(MIN_IDX_PRICE, 'Must be an integer >= 1'),
   ownedLots: z.number().int('Must be an integer >= 0').min(0).optional().default(0),
   avgBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
+  holdingTranches: z.array(holdingTrancheSchema).max(20).optional(),
   targetBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
   investmentThesis: z.string().trim().max(2000).nullable().optional(),
   fundamentals: fundamentalsInputSchema.optional(),
@@ -110,6 +118,7 @@ export const updateWatchlistSchema = z.object({
   currentPrice: z.number().int().min(MIN_IDX_PRICE).optional(),
   ownedLots: z.number().int().min(0).optional(),
   avgBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
+  holdingTranches: z.array(holdingTrancheSchema).max(20).optional(),
   targetBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
   investmentThesis: z.string().trim().max(2000).nullable().optional(),
   fundamentals: fundamentalsPatchSchema.optional(),
@@ -150,6 +159,7 @@ export interface WatchlistItemDto {
   currentPrice: number;
   ownedLots: number;
   avgBuyPrice: number | null;
+  holdingTranches: HoldingTrancheDto[];
   targetBuyPrice: number | null;
   investmentThesis: string | null;
   createdAt: string;

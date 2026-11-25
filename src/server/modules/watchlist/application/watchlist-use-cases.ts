@@ -1,10 +1,12 @@
 import type {
   CreateWatchlistRequest,
+  HoldingTrancheDto,
   UpdateWatchlistRequest,
   WatchlistItemDto,
   WatchlistQuery,
 } from '@/shared/contracts';
 import {
+  aggregateHoldingTranches,
   calculateValuation,
   DEFAULT_DISCOUNT_RATE_PCT,
   DEFAULT_PROJECTION_YEARS,
@@ -36,6 +38,35 @@ function toX100(val: number | null | undefined): number | null {
 function fromX100(x100: number | null): number | null {
   if (x100 === null) return null;
   return x100 / 100;
+}
+
+function parseHoldingTranches(
+  rawJson: string | null,
+  ownedLots: number,
+  avgBuyPrice: number | null,
+): HoldingTrancheDto[] {
+  if (rawJson) {
+    try {
+      const parsed = JSON.parse(rawJson);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (t): t is HoldingTrancheDto =>
+            typeof t === 'object' &&
+            t !== null &&
+            typeof t.lots === 'number' &&
+            t.lots >= 1 &&
+            typeof t.buyPrice === 'number' &&
+            t.buyPrice >= 1,
+        );
+      }
+    } catch {
+      // Fallback below
+    }
+  }
+  if (ownedLots > 0 && avgBuyPrice !== null && avgBuyPrice >= 1) {
+    return [{ lots: ownedLots, buyPrice: avgBuyPrice }];
+  }
+  return [];
 }
 
 export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()): WatchlistItemDto {
@@ -74,6 +105,11 @@ export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()):
     currentPrice: record.currentPrice,
     ownedLots: record.ownedLots,
     avgBuyPrice: record.avgBuyPrice,
+    holdingTranches: parseHoldingTranches(
+      record.holdingTranchesJson,
+      record.ownedLots,
+      record.avgBuyPrice,
+    ),
     targetBuyPrice: record.targetBuyPrice,
     investmentThesis: record.investmentThesis,
     createdAt: new Date(record.createdAt).toISOString(),
@@ -157,6 +193,18 @@ export class CreateWatchlistItemUseCase {
     const fundamentalsId = crypto.randomUUID();
     const f = input.fundamentals;
 
+    const agg = input.holdingTranches
+      ? aggregateHoldingTranches(input.holdingTranches)
+      : {
+          ownedLots: input.ownedLots ?? 0,
+          avgBuyPrice: input.avgBuyPrice ?? null,
+        };
+    const holdingTranchesJson = input.holdingTranches
+      ? JSON.stringify(input.holdingTranches)
+      : agg.ownedLots > 0 && agg.avgBuyPrice !== null
+        ? JSON.stringify([{ lots: agg.ownedLots, buyPrice: agg.avgBuyPrice }])
+        : null;
+
     const record: Omit<WatchlistItemRecord, 'deletedAt'> = {
       id: itemId,
       userId,
@@ -164,8 +212,9 @@ export class CreateWatchlistItemUseCase {
       companyName: input.companyName,
       sector: input.sector,
       currentPrice: input.currentPrice,
-      ownedLots: input.ownedLots ?? 0,
-      avgBuyPrice: input.avgBuyPrice ?? null,
+      ownedLots: agg.ownedLots,
+      avgBuyPrice: agg.avgBuyPrice,
+      holdingTranchesJson,
       targetBuyPrice: input.targetBuyPrice ?? null,
       investmentThesis: input.investmentThesis ?? null,
       createdAt: now,
@@ -232,8 +281,15 @@ export class UpdateWatchlistItemUseCase {
     if (input.companyName !== undefined) itemPatch.companyName = input.companyName;
     if (input.sector !== undefined) itemPatch.sector = input.sector;
     if (input.currentPrice !== undefined) itemPatch.currentPrice = input.currentPrice;
-    if (input.ownedLots !== undefined) itemPatch.ownedLots = input.ownedLots;
-    if (input.avgBuyPrice !== undefined) itemPatch.avgBuyPrice = input.avgBuyPrice;
+    if (input.holdingTranches !== undefined) {
+      const agg = aggregateHoldingTranches(input.holdingTranches);
+      itemPatch.ownedLots = agg.ownedLots;
+      itemPatch.avgBuyPrice = agg.avgBuyPrice;
+      itemPatch.holdingTranchesJson = JSON.stringify(input.holdingTranches);
+    } else {
+      if (input.ownedLots !== undefined) itemPatch.ownedLots = input.ownedLots;
+      if (input.avgBuyPrice !== undefined) itemPatch.avgBuyPrice = input.avgBuyPrice;
+    }
     if (input.targetBuyPrice !== undefined) itemPatch.targetBuyPrice = input.targetBuyPrice;
     if (input.investmentThesis !== undefined) itemPatch.investmentThesis = input.investmentThesis;
 

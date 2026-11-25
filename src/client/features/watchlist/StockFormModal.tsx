@@ -26,6 +26,10 @@ import {
 import { useI18n } from '@/client/i18n/useI18n';
 import { ApiClientError } from '@/client/lib/apiClient';
 import {
+  HoldingTranchesEditor,
+  type EditableHoldingRow,
+} from './HoldingTranchesEditor';
+import {
   useCreateWatchlistItem,
   useFetchIdxQuote,
   useUpdateWatchlistItem,
@@ -91,13 +95,12 @@ function StockFormBody({
   const [currentPrice, setCurrentPrice] = useState(
     editingItem ? String(editingItem.currentPrice) : '',
   );
-  const [ownedLots, setOwnedLots] = useState(
-    editingItem ? String(editingItem.ownedLots) : '0',
-  );
-  const [avgBuyPrice, setAvgBuyPrice] = useState(
-    editingItem?.avgBuyPrice !== null && editingItem?.avgBuyPrice !== undefined
-      ? String(editingItem.avgBuyPrice)
-      : '',
+  const [holdingRows, setHoldingRows] = useState<EditableHoldingRow[]>(() =>
+    (editingItem?.holdingTranches ?? []).map((tr, i) => ({
+      id: `init_${i}`,
+      lots: String(tr.lots),
+      buyPrice: String(tr.buyPrice),
+    })),
   );
   const [targetBuyPrice, setTargetBuyPrice] = useState(
     editingItem?.targetBuyPrice !== null && editingItem?.targetBuyPrice !== undefined
@@ -183,15 +186,19 @@ function StockFormBody({
     setFieldErrors({});
     setFormError(null);
 
-    const parsedLots = ownedLots.trim() ? Math.max(0, Math.round(Number(ownedLots))) : 0;
+    const validHoldingTranches = holdingRows
+      .map((r) => ({
+        lots: r.lots.trim() ? Math.round(Number(r.lots)) : 0,
+        buyPrice: r.buyPrice.trim() ? Math.round(Number(r.buyPrice)) : 0,
+      }))
+      .filter((r) => r.lots >= 1 && r.buyPrice >= 1);
 
     const payloadCandidate = {
       ticker: ticker.trim().toUpperCase(),
       companyName: companyName.trim(),
       sector,
       currentPrice: Number(currentPrice),
-      ownedLots: parsedLots,
-      avgBuyPrice: parseOptionalInt(avgBuyPrice),
+      holdingTranches: validHoldingTranches,
       targetBuyPrice: parseOptionalInt(targetBuyPrice),
       investmentThesis: investmentThesis.trim() || null,
       fundamentals: {
@@ -395,46 +402,12 @@ function StockFormBody({
               </Field>
             </div>
 
-            {/* Position Holdings Section */}
-            <div className="rounded-md border border-border bg-surface/70 p-3.5">
-              <div className="mb-2.5 text-[11px] font-semibold tracking-wider text-muted uppercase">
-                {t.watchlist.form.positionSection}
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field
-                  label={t.watchlist.form.ownedLots}
-                  htmlFor="stock-owned-lots"
-                  error={fieldErrors.ownedLots}
-                >
-                  <Input
-                    id="stock-owned-lots"
-                    type="number"
-                    min={0}
-                    step={1}
-                    placeholder="0"
-                    value={ownedLots}
-                    onChange={(e) => setOwnedLots(e.target.value)}
-                    className="font-mono tabular-nums"
-                  />
-                </Field>
-                <Field
-                  label={t.watchlist.form.avgBuyPrice}
-                  htmlFor="stock-avg-buy"
-                  error={fieldErrors.avgBuyPrice}
-                >
-                  <Input
-                    id="stock-avg-buy"
-                    type="number"
-                    min={1}
-                    step={1}
-                    placeholder="5600"
-                    value={avgBuyPrice}
-                    onChange={(e) => setAvgBuyPrice(e.target.value)}
-                    className="font-mono tabular-nums"
-                  />
-                </Field>
-              </div>
-            </div>
+            {/* Position Holdings & Multi-Tranche Average Down Section */}
+            <HoldingTranchesEditor
+              rows={holdingRows}
+              onChange={setHoldingRows}
+              currentPrice={currentPrice.trim() ? Number(currentPrice) : 0}
+            />
 
             <Field label={t.watchlist.form.investmentThesis} htmlFor="stock-thesis">
               <Textarea

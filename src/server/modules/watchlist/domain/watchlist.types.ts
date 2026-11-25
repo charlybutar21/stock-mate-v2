@@ -28,6 +28,7 @@ export interface WatchlistItemRecord {
   currentPrice: number;
   ownedLots: number;
   avgBuyPrice: number | null;
+  holdingTranchesJson: string | null;
   targetBuyPrice: number | null;
   investmentThesis: string | null;
   createdAt: number;
@@ -51,6 +52,7 @@ export interface WatchlistRepository {
       currentPrice: number;
       ownedLots: number;
       avgBuyPrice: number | null;
+      holdingTranchesJson: string | null;
       targetBuyPrice: number | null;
       investmentThesis: string | null;
       updatedAt: number;
