@@ -35,7 +35,6 @@ import {
   Select,
   Skeleton,
   TermTooltip,
-  TickerAvatar,
   type BadgeTone,
 } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
@@ -493,32 +492,39 @@ export function WatchlistPage() {
             </Button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full table-fixed border-collapse text-left text-sm">
+              <colgroup>
+                <col className="w-[24%]" />
+                <col className="w-[13%]" />
+                <col className="w-[13%]" />
+                <col className="w-[18%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+              </colgroup>
               <thead>
-                <tr className="border-b border-border bg-surface/60 text-xs font-semibold text-muted">
-                  <th className="px-4 py-3 sm:px-5">{t.watchlist.colTicker}</th>
-                  <th className="px-4 py-3 text-right">{t.watchlist.colPrice}</th>
-                  <th className="px-4 py-3 text-right">
+                <tr className="border-b border-border bg-surface/70 text-xs font-semibold text-muted">
+                  <th className="py-3 pr-3 pl-5">{t.watchlist.colTicker}</th>
+                  <th className="px-3 py-3 text-right">{t.watchlist.colPrice}</th>
+                  <th className="px-3 py-3 text-right">
                     <TermTooltip
                       label={t.watchlist.colFairValue}
                       definition={t.glossary.fairValueMedian}
                     />
                   </th>
-                  <th className="px-4 py-3 text-right">
+                  <th className="px-3 py-3 text-right">
                     <TermTooltip
                       label={t.watchlist.colMos}
                       definition={t.glossary.marginOfSafety}
                     />
                   </th>
-                  <th className="px-4 py-3 text-right">
+                  <th className="px-3 py-3 text-right">
                     <TermTooltip
                       label={t.watchlist.colPosition}
                       definition={t.glossary.unrealizedPnL}
                     />
                   </th>
-                  <th className="px-4 py-3">{t.watchlist.colStatus}</th>
-                  <th className="px-4 py-3 text-right sm:px-5">{t.watchlist.colActions}</th>
+                  <th className="py-3 pr-5 pl-2 text-right">{t.watchlist.colActions}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/80">
@@ -541,135 +547,152 @@ export function WatchlistPage() {
                   return (
                     <tr
                       key={item.id}
-                      className="group transition-colors duration-150 hover:bg-brand-50/35"
+                      className="group transition-colors duration-150 hover:bg-brand-50/40"
                     >
-                      <td className="px-4 py-3 sm:px-5">
-                        <div className="flex items-center gap-3">
-                          <TickerAvatar ticker={item.ticker} />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <Link
-                                to={`/watchlist/${item.id}`}
-                                className="font-mono text-sm font-bold text-ink transition-colors group-hover:text-brand-600"
-                              >
-                                {item.ticker}
-                              </Link>
-                              {item.isStale && (
-                                <Badge tone="warning">
-                                  <Clock className="h-3 w-3" />
-                                  {t.watchlist.staleBadge}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="max-w-[220px] truncate text-xs text-muted">
-                              {item.companyName}
-                            </div>
-                          </div>
+                      {/* Symbol + Company Name (no circular logo) */}
+                      <td className="py-3.5 pr-3 pl-5 align-middle">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/watchlist/${item.id}`}
+                            className="font-mono text-sm font-bold tracking-tight text-ink transition-colors group-hover:text-brand-600"
+                          >
+                            {item.ticker}
+                          </Link>
+                          {item.isStale && (
+                            <span
+                              title={t.watchlist.staleBadge}
+                              className="inline-flex items-center text-warning-600"
+                            >
+                              <Clock className="h-3.5 w-3.5" />
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 truncate text-xs text-muted" title={item.companyName}>
+                          {item.companyName}
                         </div>
                       </td>
 
+                      {/* Current Price */}
                       <td
-                        className={`px-4 py-3 text-right font-mono text-sm font-bold tabular-nums ${priceColor}`}
+                        className={`px-3 py-3.5 text-right align-middle font-mono text-sm font-bold tabular-nums ${priceColor}`}
                       >
                         {formatIdr(item.currentPrice)}
                       </td>
 
-                      <td className="px-4 py-3 text-right font-mono text-sm font-semibold text-ink tabular-nums">
+                      {/* Moderate Fair Value */}
+                      <td className="px-3 py-3.5 text-right align-middle font-mono text-sm font-semibold text-ink tabular-nums">
                         {formatIdr(item.valuation.fairValue.moderate)}
                       </td>
 
-                      <td className="px-4 py-3 text-right">
-                        {mosVal !== null ? (
-                          <div className="inline-flex items-center justify-end gap-1 font-mono text-sm font-semibold tabular-nums">
-                            {mosVal >= 0 ? (
-                              <ArrowUpRight className="h-3.5 w-3.5 text-positive-600" />
-                            ) : (
-                              <ArrowDownRight className="h-3.5 w-3.5 text-negative-600" />
-                            )}
-                            <span
-                              className={
-                                mosVal >= 30
-                                  ? 'text-positive-600'
-                                  : mosVal >= 0
-                                    ? 'text-warning-600'
-                                    : 'text-negative-600'
-                              }
-                            >
-                              {formatPercent(mosVal, true)}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="font-mono text-xs text-muted">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3.5 text-right">
-                        {pos.ownedLots > 0 ? (
-                          <div className="space-y-0.5">
-                            <div className="font-mono text-xs font-bold text-ink tabular-nums">
-                              {formatNumber(pos.ownedLots)} {t.common.lots}
-                              {pos.avgBuyPrice ? ` · ${formatIdr(pos.avgBuyPrice)}` : ''}
-                            </div>
-                            <div className="font-mono text-[11px] text-muted tabular-nums">
-                              {t.watchlist.investedPrefix}: {formatIdr(pos.costBasis)}
-                            </div>
-                            {pos.unrealizedPnLPct !== null && (
-                              <div
-                                className={`font-mono text-[11px] font-semibold tabular-nums ${
-                                  pos.unrealizedPnLPct >= 0
+                      {/* Margin of Safety + Valuation Verdict Badge paired cleanly */}
+                      <td className="px-3 py-3.5 text-right align-middle">
+                        <div className="flex flex-col items-end gap-1">
+                          {mosVal !== null ? (
+                            <div className="inline-flex items-center gap-0.5 font-mono text-sm font-bold tabular-nums">
+                              {mosVal >= 0 ? (
+                                <ArrowUpRight className="h-3.5 w-3.5 text-positive-600" />
+                              ) : (
+                                <ArrowDownRight className="h-3.5 w-3.5 text-negative-600" />
+                              )}
+                              <span
+                                className={
+                                  mosVal >= 30
                                     ? 'text-positive-600'
-                                    : 'text-negative-600'
-                                }`}
+                                    : mosVal >= 0
+                                      ? 'text-warning-600'
+                                      : 'text-negative-600'
+                                }
                               >
-                                {pos.unrealizedPnL !== null
-                                  ? `${pos.unrealizedPnL >= 0 ? '+' : ''}${formatIdr(pos.unrealizedPnL)} `
-                                  : ''}
-                                ({formatPercent(pos.unrealizedPnLPct, true)})
-                              </div>
-                            )}
+                                {formatPercent(mosVal, true)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="font-mono text-xs text-muted">—</span>
+                          )}
+                          <Badge tone={statusTone(item.valuation.valuationStatus)}>
+                            {t.valuationStatus[item.valuation.valuationStatus]}
+                          </Badge>
+                        </div>
+                      </td>
+
+                      {/* Clean 2-Line Owned Position Cell */}
+                      <td className="px-3 py-3.5 text-right align-middle">
+                        {pos.ownedLots > 0 ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-baseline gap-1.5 font-mono text-xs tabular-nums">
+                              <span className="font-bold text-ink">
+                                {formatNumber(pos.ownedLots)} {t.common.lots}
+                              </span>
+                              {pos.avgBuyPrice && (
+                                <span className="text-[11px] text-muted">
+                                  @{formatNumber(pos.avgBuyPrice)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-[11px] text-muted tabular-nums">
+                                {formatIdr(pos.costBasis)}
+                              </span>
+                              {pos.unrealizedPnLPct !== null && (
+                                <span
+                                  className={cn(
+                                    'rounded-sm px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums',
+                                    pos.unrealizedPnLPct >= 0
+                                      ? 'bg-positive-50 text-positive-700'
+                                      : 'bg-negative-50 text-negative-700',
+                                  )}
+                                >
+                                  {formatPercent(pos.unrealizedPnLPct, true)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ) : (
-                          <span className="font-mono text-xs text-muted/60">
-                            {t.watchlist.noPosition}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(item)}
+                            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-[11px] font-medium text-muted transition-colors hover:border-brand-600 hover:bg-brand-50/50 hover:text-brand-700 cursor-pointer"
+                          >
+                            <Plus className="h-3 w-3" />
+                            {t.common.lots}
+                          </button>
                         )}
                       </td>
 
-                      <td className="px-4 py-3">
-                        <Badge tone={statusTone(item.valuation.valuationStatus)}>
-                          {t.valuationStatus[item.valuation.valuationStatus]}
-                        </Badge>
-                      </td>
-
-                      <td className="px-4 py-3 sm:px-5">
-                        <div className="flex items-center justify-end gap-1.5">
+                      {/* Compact Icon-Only Actions */}
+                      <td className="py-3.5 pr-5 pl-2 align-middle">
+                        <div className="flex items-center justify-end gap-1">
                           <Link
                             to={`/simulator?stockId=${item.id}`}
-                            className="inline-flex h-7 items-center gap-1 rounded-md border border-brand-600/45 bg-panel px-2.5 text-xs font-semibold text-brand-700 transition-all hover:border-brand-600 hover:bg-brand-50"
+                            title={t.watchlist.simulate}
+                            aria-label={t.watchlist.simulate}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-brand-600/35 bg-brand-50/50 text-brand-700 transition-colors hover:border-brand-600 hover:bg-brand-600 hover:text-white"
                           >
-                            <Calculator className="h-3 w-3" />
-                            {t.watchlist.simulate}
+                            <Calculator className="h-3.5 w-3.5" />
                           </Link>
                           <Link
                             to={`/watchlist/${item.id}`}
-                            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-semibold text-muted transition-colors hover:bg-subtle hover:text-ink"
+                            title={t.watchlist.analyze}
+                            aria-label={t.watchlist.analyze}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink"
                           >
                             <BarChart3 className="h-3.5 w-3.5" />
-                            {t.watchlist.analyze}
                           </Link>
                           <button
                             type="button"
                             onClick={() => openEdit(item)}
+                            title={t.common.edit}
                             aria-label={t.common.edit}
-                            className="rounded-md p-1.5 text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
                             type="button"
                             onClick={() => setDeletingItem(item)}
+                            title={t.common.delete}
                             aria-label={t.common.delete}
-                            className="rounded-md p-1.5 text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>

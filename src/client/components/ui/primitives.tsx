@@ -230,32 +230,6 @@ export function Badge({
   );
 }
 
-const AVATAR_PALETTE = [
-  'bg-emerald-600 text-white',
-  'bg-sky-600 text-white',
-  'bg-indigo-600 text-white',
-  'bg-teal-600 text-white',
-  'bg-amber-600 text-white',
-  'bg-rose-600 text-white',
-  'bg-slate-700 text-white',
-];
-
-export function TickerAvatar({ ticker }: { ticker: string }) {
-  const hash = ticker.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  const colorClass = AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-bold tracking-tight shadow-2xs',
-        colorClass,
-      )}
-    >
-      {ticker.slice(0, 2)}
-    </span>
-  );
-}
-
 export function Card({
   className,
   interactive = false,
