@@ -11,6 +11,7 @@ import { SimulatorPage } from './features/simulator/SimulatorPage';
 import { StockDetailPage } from './features/watchlist/StockDetailPage';
 import { WatchlistPage } from './features/watchlist/WatchlistPage';
 import { I18nProvider } from './i18n/useI18n';
+import { PrivacyProvider } from './lib/usePrivacy';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,7 +51,8 @@ export function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <I18nProvider>
-          <BrowserRouter>
+          <PrivacyProvider>
+            <BrowserRouter>
             <Routes>
               <Route
                 path="/login"
@@ -94,7 +96,8 @@ export function App() {
               />
               <Route path="*" element={<Navigate to="/watchlist" replace />} />
             </Routes>
-          </BrowserRouter>
+            </BrowserRouter>
+          </PrivacyProvider>
         </I18nProvider>
       </QueryClientProvider>
     </ErrorBoundary>

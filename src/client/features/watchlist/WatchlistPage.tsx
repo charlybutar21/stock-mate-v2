@@ -6,6 +6,8 @@ import {
   Briefcase,
   Calculator,
   Clock,
+  Eye,
+  EyeOff,
   Layers,
   Pencil,
   Plus,
@@ -40,6 +42,7 @@ import {
 import { useI18n } from '@/client/i18n/useI18n';
 import { ApiClientError } from '@/client/lib/apiClient';
 import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
+import { MASKED_IDR, MASKED_LOTS, usePrivacy } from '@/client/lib/usePrivacy';
 import { StockFormModal } from './StockFormModal';
 import {
   useCreateWatchlistItem,
@@ -60,6 +63,7 @@ type ViewFilter = 'all' | 'portfolio' | 'undervalued';
 
 export function WatchlistPage() {
   const { t } = useI18n();
+  const { hideBalances, toggleHideBalances } = usePrivacy();
   const [search, setSearch] = useState('');
   const [sector, setSector] = useState<IdxSector | ''>('');
   const [sort, setSort] = useState<'updated_desc' | 'mos_desc' | 'ticker_asc'>('updated_desc');
@@ -198,10 +202,21 @@ export function WatchlistPage() {
                   label={t.watchlist.kpiPositions}
                   definition={t.glossary.netMarketValue}
                 />
+                <button
+                  type="button"
+                  onClick={toggleHideBalances}
+                  title={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+                  aria-label={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+                >
+                  {hideBalances ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
               </div>
               <div className="mt-2 font-mono text-3xl font-bold tracking-tight text-ink tabular-nums">
                 {isLoading ? (
                   <Skeleton className="h-9 w-44" />
+                ) : hideBalances ? (
+                  MASKED_IDR
                 ) : (
                   formatIdr(kpis.portfolioMarketValue)
                 )}
@@ -231,8 +246,9 @@ export function WatchlistPage() {
                     <ArrowDownRight className="h-4 w-4" />
                   )}
                   <span>
-                    {kpis.totalNetPnL >= 0 ? '+' : ''}
-                    {formatIdr(kpis.totalNetPnL)}
+                    {hideBalances
+                      ? MASKED_IDR
+                      : `${kpis.totalNetPnL >= 0 ? '+' : ''}${formatIdr(kpis.totalNetPnL)}`}
                   </span>
                   <span className="text-xs font-semibold opacity-90">
                     ({formatPercent(kpis.totalNetPnLPct, true)})
@@ -251,6 +267,8 @@ export function WatchlistPage() {
               <span className="font-mono text-sm font-bold text-ink tabular-nums">
                 {isLoading ? (
                   <Skeleton className="inline-block h-4 w-28" />
+                ) : hideBalances ? (
+                  MASKED_IDR
                 ) : (
                   formatIdr(kpis.totalInvestedCapital)
                 )}
@@ -621,7 +639,8 @@ export function WatchlistPage() {
                           <div className="flex flex-col items-end gap-1">
                             <div className="flex items-baseline gap-1.5 font-mono text-xs tabular-nums">
                               <span className="font-bold text-ink">
-                                {formatNumber(pos.ownedLots)} {t.common.lots}
+                                {hideBalances ? MASKED_LOTS : formatNumber(pos.ownedLots)}{' '}
+                                {t.common.lots}
                               </span>
                               {pos.avgBuyPrice && (
                                 <span className="text-[11px] text-muted">
@@ -631,7 +650,7 @@ export function WatchlistPage() {
                             </div>
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono text-[11px] text-muted tabular-nums">
-                                {formatIdr(pos.costBasis)}
+                                {hideBalances ? MASKED_IDR : formatIdr(pos.costBasis)}
                               </span>
                               {pos.unrealizedPnLPct !== null && (
                                 <span

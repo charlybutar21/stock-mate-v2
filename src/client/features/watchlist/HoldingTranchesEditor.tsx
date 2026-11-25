@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
 import {
   aggregateHoldingTranches,
   calculatePositionSummary,
@@ -6,6 +6,7 @@ import {
 import { Button, Input, TermTooltip } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
+import { MASKED_IDR, usePrivacy } from '@/client/lib/usePrivacy';
 
 export interface EditableHoldingRow {
   id: string;
@@ -25,6 +26,7 @@ export function HoldingTranchesEditor({
   currentPrice,
 }: HoldingTranchesEditorProps) {
   const { t } = useI18n();
+  const { hideBalances, toggleHideBalances } = usePrivacy();
 
   const parsedTranches = rows
     .map((r) => ({
@@ -62,9 +64,20 @@ export function HoldingTranchesEditor({
   return (
     <div className="space-y-3 rounded-lg border border-border bg-surface/70 p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-          {t.watchlist.form.positionSection}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">
+            {t.watchlist.form.positionSection}
+          </span>
+          <button
+            type="button"
+            onClick={toggleHideBalances}
+            title={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+            aria-label={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+          >
+            {hideBalances ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+        </div>
         <Button
           variant="outlineBrand"
           size="sm"
@@ -153,10 +166,12 @@ export function HoldingTranchesEditor({
               />
             </div>
             <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
-              {formatIdr(pos.costBasis)}
+              {hideBalances ? MASKED_IDR : formatIdr(pos.costBasis)}
             </div>
             <div className="font-mono text-[10px] text-muted tabular-nums">
-              +{formatIdr(pos.estimatedBuyFee)} ({t.watchlist.form.stockbitBuyFeeNote})
+              {hideBalances
+                ? t.watchlist.form.stockbitBuyFeeNote
+                : `+${formatIdr(pos.estimatedBuyFee)} (${t.watchlist.form.stockbitBuyFeeNote})`}
             </div>
           </div>
 
@@ -168,13 +183,16 @@ export function HoldingTranchesEditor({
               />
             </div>
             <div className="mt-0.5 font-mono text-xs font-bold text-brand-900 tabular-nums">
-              {formatIdr(pos.marketValue)}
+              {hideBalances ? MASKED_IDR : formatIdr(pos.marketValue)}
             </div>
             <div className="font-mono text-[10px] text-brand-700/80 tabular-nums">
-              -{formatIdr(pos.estimatedSellFee)}
-              {pos.estimatedSellStampDuty > 0
-                ? ` ${t.watchlist.form.stampDutyShort}`
-                : ` (${t.watchlist.form.stockbitSellFeeNote})`}
+              {hideBalances
+                ? t.watchlist.form.stockbitSellFeeNote
+                : `-${formatIdr(pos.estimatedSellFee)}${
+                    pos.estimatedSellStampDuty > 0
+                      ? ` ${t.watchlist.form.stampDutyShort}`
+                      : ` (${t.watchlist.form.stockbitSellFeeNote})`
+                  }`}
             </div>
           </div>
 
@@ -195,7 +213,9 @@ export function HoldingTranchesEditor({
               }`}
             >
               {pos.unrealizedPnL !== null
-                ? `${pos.unrealizedPnL >= 0 ? '+' : ''}${formatIdr(pos.unrealizedPnL)}`
+                ? hideBalances
+                  ? MASKED_IDR
+                  : `${pos.unrealizedPnL >= 0 ? '+' : ''}${formatIdr(pos.unrealizedPnL)}`
                 : '—'}
             </div>
             <div className="font-mono text-[10px] text-muted tabular-nums">

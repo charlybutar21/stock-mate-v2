@@ -177,6 +177,8 @@ export const en = {
     kpiInvested: 'Total Invested Capital',
     kpiTotalPnL: 'Total Net Profit / Loss',
     kpiStale: 'Needs Refresh (> 14 Days)',
+    hideBalances: 'Hide portfolio values',
+    showBalances: 'Show portfolio values',
     investedPrefix: 'Invested',
     filterByUndervaluedHint: 'Click to filter undervalued stocks',
     searchPlaceholder: 'Search symbol or company...',

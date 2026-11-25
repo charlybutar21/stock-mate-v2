@@ -179,6 +179,8 @@ export const id: I18nDictionary = {
     kpiInvested: 'Total Modal Diinvestasikan',
     kpiTotalPnL: 'Total Laba / Rugi Bersih',
     kpiStale: 'Perlu Update (> 14 Hari)',
+    hideBalances: 'Sembunyikan nilai portofolio',
+    showBalances: 'Tampilkan nilai portofolio',
     investedPrefix: 'Modal',
     filterByUndervaluedHint: 'Klik untuk filter saham undervalued',
     searchPlaceholder: 'Cari kode saham atau nama perusahaan...',
