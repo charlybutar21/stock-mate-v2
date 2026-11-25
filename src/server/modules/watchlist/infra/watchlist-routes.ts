@@ -7,7 +7,11 @@ import {
 import type { AuthRepository, PasswordHasher } from '@/server/modules/auth/domain/auth.types';
 import type { IdxMarketDataProvider } from '@/server/modules/market-data/domain/market-data.types';
 import { createAuthMiddleware } from '@/server/shared/http/auth-mw';
-import { validationError, zodToValidationError } from '@/server/shared/http/problem';
+import {
+  notFoundError,
+  validationError,
+  zodToValidationError,
+} from '@/server/shared/http/problem';
 import type { AppEnv } from '@/server/shared/types';
 import {
   CreateWatchlistItemUseCase,
@@ -17,6 +21,15 @@ import {
   UpdateWatchlistItemUseCase,
 } from '../application/watchlist-use-cases';
 import type { WatchlistRepository } from '../domain/watchlist.types';
+
+const VALID_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
+
+function assertValidItemId(id: string): string {
+  if (!VALID_ID_REGEX.test(id)) {
+    throw notFoundError('Watchlist item not found.');
+  }
+  return id;
+}
 
 export function createWatchlistRoutes(
   getDeps: (
@@ -114,7 +127,7 @@ export function createWatchlistRoutes(
 
   router.get('/:id', async (c) => {
     const user = c.get('user')!;
-    const id = c.req.param('id');
+    const id = assertValidItemId(c.req.param('id'));
     const { watchlistRepo } = getDeps(c.env.DB);
     const useCase = new GetWatchlistItemUseCase(watchlistRepo);
     const item = await useCase.execute(user.id, id);
@@ -123,6 +136,7 @@ export function createWatchlistRoutes(
   });
 
   router.patch('/:id', async (c) => {
+    const id = assertValidItemId(c.req.param('id'));
     let rawBody: unknown;
     try {
       rawBody = await c.req.json();
@@ -136,7 +150,6 @@ export function createWatchlistRoutes(
     }
 
     const user = c.get('user')!;
-    const id = c.req.param('id');
     const { watchlistRepo } = getDeps(c.env.DB);
     const useCase = new UpdateWatchlistItemUseCase(watchlistRepo);
     const item = await useCase.execute(user.id, id, parsed.data);
@@ -146,7 +159,7 @@ export function createWatchlistRoutes(
 
   router.delete('/:id', async (c) => {
     const user = c.get('user')!;
-    const id = c.req.param('id');
+    const id = assertValidItemId(c.req.param('id'));
     const { watchlistRepo } = getDeps(c.env.DB);
     const useCase = new SoftDeleteWatchlistItemUseCase(watchlistRepo);
     await useCase.execute(user.id, id);

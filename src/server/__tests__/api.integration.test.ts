@@ -405,4 +405,189 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(body.quote.ticker).toBe('BBCA');
     expect(body.quote.currentPrice).toBe(5550);
   });
+
+  it('enforces OWASP security controls: CSP, no-store, CSRF, 413/415 body guards, log-injection, session fixation rotation, and 429 rate limiting', async () => {
+    const { d1, sqlite } = createTestD1();
+    const app = createApp({
+      authRateLimitMax: 4,
+      authRateLimitWindowMs: 60_000,
+    });
+
+    // 1. Security Headers, Cache-Control: no-store, and Log-Injection Correlation ID Sanitization
+    const maliciousCorrelationRes = await app.request(
+      'http://localhost/api/v1/health',
+      {
+        headers: {
+          'x-correlation-id': 'evil","level":"error","injected":true',
+        },
+      },
+      { DB: d1 },
+    );
+    expect(maliciousCorrelationRes.status).toBe(200);
+    expect(maliciousCorrelationRes.headers.get('x-correlation-id')).toMatch(
+      /^req_[a-f0-9]{16}$/,
+    );
+    expect(maliciousCorrelationRes.headers.get('x-frame-options')).toBe('DENY');
+    expect(maliciousCorrelationRes.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(maliciousCorrelationRes.headers.get('cache-control')).toContain('no-store');
+    expect(maliciousCorrelationRes.headers.get('content-security-policy')).toContain(
+      "frame-ancestors 'none'",
+    );
+
+    // 2. Cross-Origin CSRF attack blocked with 403 RFC 7807
+    const csrfAttack = await app.request(
+      'http://localhost/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'https://evil-phishing.example.com',
+          'Sec-Fetch-Site': 'cross-site',
+        },
+        body: JSON.stringify({ email: 'a@example.com', password: 'Password123' }),
+      },
+      { DB: d1 },
+    );
+    expect(csrfAttack.status).toBe(403);
+    expect(csrfAttack.headers.get('content-type')).toContain('application/problem+json');
+
+    // 3. Content-Type text/plain form-CSRF bypass blocked with 415 RFC 7807
+    const textPlainAttack = await app.request(
+      'http://localhost/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: '{"email":"a@example.com","password":"Password123"}',
+      },
+      { DB: d1 },
+    );
+    expect(textPlainAttack.status).toBe(415);
+    expect(textPlainAttack.headers.get('content-type')).toContain('application/problem+json');
+
+    // 4. Oversized payload (> 64 KB) blocked with 413 RFC 7807
+    const oversizedAttack = await app.request(
+      'http://localhost/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': '100000',
+        },
+        body: JSON.stringify({ email: 'a@example.com', password: 'Password123' }),
+      },
+      { DB: d1 },
+    );
+    expect(oversizedAttack.status).toBe(413);
+    expect(oversizedAttack.headers.get('content-type')).toContain('application/problem+json');
+
+    // 5. Session Fixation Rotation: logging in while presenting an existing session invalidates the old session
+    const regRes = await app.request(
+      'http://localhost/api/v1/auth/register',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'cf-connecting-ip': '10.0.0.1',
+        },
+        body: JSON.stringify({
+          email: 'sec@example.com',
+          name: 'Sec Tester',
+          password: 'Password123',
+        }),
+      },
+      { DB: d1 },
+    );
+    expect(regRes.status).toBe(201);
+    const firstCookie = extractSessionCookie(regRes);
+
+    // Insert an expired session for the user to verify automatic pruning on login
+    const userRow = sqlite
+      .prepare('SELECT id FROM users WHERE email = ?')
+      .get('sec@example.com') as { id: string };
+    sqlite
+      .prepare(
+        'INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run('exp_1', userRow.id, 'expired_hash_123', Date.now() - 10_000, Date.now() - 20_000);
+
+    const loginRes = await app.request(
+      'http://localhost/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: firstCookie,
+          'cf-connecting-ip': '10.0.0.1',
+        },
+        body: JSON.stringify({
+          email: 'sec@example.com',
+          password: 'Password123',
+        }),
+      },
+      { DB: d1 },
+    );
+    expect(loginRes.status).toBe(200);
+    const rotatedCookie = extractSessionCookie(loginRes);
+    expect(rotatedCookie).not.toBe(firstCookie);
+
+    // Old session cookie must now be rejected (401), and expired session must be pruned
+    const oldSessionCheck = await app.request(
+      'http://localhost/api/v1/auth/me',
+      { headers: { Cookie: firstCookie } },
+      { DB: d1 },
+    );
+    expect(oldSessionCheck.status).toBe(401);
+
+    const remainingSessions = sqlite
+      .prepare('SELECT COUNT(*) as cnt FROM sessions WHERE user_id = ?')
+      .get(userRow.id) as { cnt: number };
+    expect(remainingSessions.cnt).toBe(1);
+
+    // 6. Malformed Watchlist ID param rejected cleanly with 404 RFC 7807
+    const malformedIdRes = await app.request(
+      'http://localhost/api/v1/watchlist/invalid$$id!!',
+      { headers: { Cookie: rotatedCookie } },
+      { DB: d1 },
+    );
+    expect(malformedIdRes.status).toBe(404);
+
+    // 7. Brute-Force Rate Limiter on /api/v1/auth/login triggers 429 Too Many Requests + Retry-After
+    for (let i = 0; i < 4; i++) {
+      const attempt = await app.request(
+        'http://localhost/api/v1/auth/login',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'cf-connecting-ip': '203.0.113.99',
+          },
+          body: JSON.stringify({
+            email: 'nonexistent@example.com',
+            password: 'WrongPassword123',
+          }),
+        },
+        { DB: d1 },
+      );
+      expect(attempt.status).toBe(401);
+    }
+
+    const rateLimitedRes = await app.request(
+      'http://localhost/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'cf-connecting-ip': '203.0.113.99',
+        },
+        body: JSON.stringify({
+          email: 'nonexistent@example.com',
+          password: 'WrongPassword123',
+        }),
+      },
+      { DB: d1 },
+    );
+    expect(rateLimitedRes.status).toBe(429);
+    expect(rateLimitedRes.headers.get('retry-after')).toBeTruthy();
+    expect(rateLimitedRes.headers.get('content-type')).toContain('application/problem+json');
+  });
 });

@@ -45,6 +45,17 @@ export function unauthorizedError(detail = 'Authentication required.'): AppError
   });
 }
 
+export function forbiddenError(
+  detail = 'Request rejected by security policy.',
+): AppError {
+  return new AppError({
+    status: 403,
+    type: 'https://stock-mate-v2/errors/forbidden',
+    title: 'Forbidden',
+    detail,
+  });
+}
+
 export function notFoundError(detail = 'Resource not found.'): AppError {
   return new AppError({
     status: 404,
@@ -59,6 +70,39 @@ export function conflictError(detail: string): AppError {
     status: 409,
     type: 'https://stock-mate-v2/errors/conflict',
     title: 'Conflict',
+    detail,
+  });
+}
+
+export function payloadTooLargeError(
+  detail = 'Request payload exceeds the maximum allowed size (64 KB).',
+): AppError {
+  return new AppError({
+    status: 413,
+    type: 'https://stock-mate-v2/errors/payload-too-large',
+    title: 'Payload Too Large',
+    detail,
+  });
+}
+
+export function unsupportedMediaTypeError(
+  detail = 'Content-Type must be application/json.',
+): AppError {
+  return new AppError({
+    status: 415,
+    type: 'https://stock-mate-v2/errors/unsupported-media-type',
+    title: 'Unsupported Media Type',
+    detail,
+  });
+}
+
+export function tooManyRequestsError(
+  detail = 'Too many authentication attempts. Please try again shortly.',
+): AppError {
+  return new AppError({
+    status: 429,
+    type: 'https://stock-mate-v2/errors/rate-limit-exceeded',
+    title: 'Too Many Requests',
     detail,
   });
 }

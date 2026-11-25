@@ -4,7 +4,14 @@ import { csrf } from 'hono/csrf';
 import { HTTPException } from 'hono/http-exception';
 import { secureHeaders } from 'hono/secure-headers';
 import * as schema from './shared/db/schema';
-import { AppError, notFoundError, problemResponse } from './shared/http/problem';
+import {
+  AppError,
+  forbiddenError,
+  notFoundError,
+  payloadTooLargeError,
+  problemResponse,
+  unsupportedMediaTypeError,
+} from './shared/http/problem';
 import { logJson } from './shared/logger';
 import type { AppEnv } from './shared/types';
 import { D1AuthRepository } from './modules/auth/infra/d1-auth-repository';
@@ -21,7 +28,18 @@ import { TradingViewIdxProvider } from './modules/market-data/infra/tradingview-
 import { YahooFinanceIdxProvider } from './modules/market-data/infra/yahoo-finance-provider';
 import { createMarketDataRoutes } from './modules/market-data/infra/market-data-routes';
 
-export function createApp(options?: { marketDataProvider?: IdxMarketDataProvider }) {
+const SAFE_CORRELATION_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
+const MAX_JSON_BODY_BYTES = 64 * 1024; // 64 KB
+const JSON_BODY_FREE_POST_PATHS = new Set([
+  '/api/v1/auth/logout',
+  '/api/v1/watchlist/sync-all',
+]);
+
+export function createApp(options?: {
+  marketDataProvider?: IdxMarketDataProvider;
+  authRateLimitMax?: number;
+  authRateLimitWindowMs?: number;
+}) {
   const app = new Hono<AppEnv>();
   const hasher = new WebCryptoHasher();
   const tradingViewProvider = new TradingViewIdxProvider();
@@ -50,25 +68,16 @@ export function createApp(options?: { marketDataProvider?: IdxMarketDataProvider
     };
   };
 
-  // Security Headers & Same-Origin CSRF Protection (Hono built-in standard middlewares)
-  app.use('/api/*', secureHeaders());
+  // 1. Correlation ID Sanitization & Structured Request Logging (zero PII, anti-log-injection)
   app.use('/api/*', async (c, next) => {
-    const hasOrigin = Boolean(c.req.header('origin'));
-    const fetchSite = c.req.header('sec-fetch-site');
-    if (hasOrigin || fetchSite === 'cross-site') {
-      return csrf({
-        origin: (origin, ctx) => origin === new URL(ctx.req.url).origin,
-      })(c, next);
-    }
-    await next();
-  });
-
-  // Correlation ID & Structured Request Logging (zero PII)
-  app.use('/api/*', async (c, next) => {
+    const incomingId = c.req.header('x-correlation-id');
     const correlationId =
-      c.req.header('x-correlation-id') ?? `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      incomingId && SAFE_CORRELATION_ID_REGEX.test(incomingId)
+        ? incomingId
+        : `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
     c.set('correlationId', correlationId);
     c.header('x-correlation-id', correlationId);
+    c.header('Cache-Control', 'no-store, no-cache, must-revalidate, private');
 
     const start = Date.now();
     await next();
@@ -80,6 +89,72 @@ export function createApp(options?: { marketDataProvider?: IdxMarketDataProvider
       status: c.res.status,
       durationMs,
     });
+  });
+
+  // 2. Hardened Security Headers (CSP, X-Frame-Options: DENY, nosniff, Referrer-Policy)
+  app.use(
+    '/api/*',
+    secureHeaders({
+      xFrameOptions: 'DENY',
+      referrerPolicy: 'strict-origin-when-cross-origin',
+      contentSecurityPolicy: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        imgSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    }),
+  );
+
+  // 3. Defense-in-Depth Same-Origin CSRF, Fetch Metadata, Body Size & Content-Type Guard
+  app.use('/api/*', async (c, next) => {
+    const method = c.req.method.toUpperCase();
+    const isMutating =
+      method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+
+    if (isMutating) {
+      const expectedOrigin = new URL(c.req.url).origin;
+      const originHeader = c.req.header('origin');
+      const fetchSite = c.req.header('sec-fetch-site')?.toLowerCase();
+
+      if (originHeader && originHeader !== expectedOrigin) {
+        throw forbiddenError('Cross-origin state-changing request blocked by CSRF policy.');
+      }
+      if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+        throw forbiddenError('Cross-site request blocked by Fetch Metadata policy.');
+      }
+      if (originHeader) {
+        await csrf({
+          origin: (origin) => origin === expectedOrigin,
+        })(c, async () => {});
+      }
+    }
+
+    if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+      const contentLengthHeader = c.req.header('content-length');
+      if (contentLengthHeader) {
+        const contentLength = Number.parseInt(contentLengthHeader, 10);
+        if (Number.isFinite(contentLength) && contentLength > MAX_JSON_BODY_BYTES) {
+          throw payloadTooLargeError();
+        }
+      }
+
+      const pathname = new URL(c.req.url).pathname;
+      if (!JSON_BODY_FREE_POST_PATHS.has(pathname)) {
+        const contentType = c.req.header('content-type') ?? '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+          throw unsupportedMediaTypeError();
+        }
+      }
+    }
+
+    await next();
   });
 
   // Health Check (Liveness & D1 Readiness)
@@ -101,7 +176,13 @@ export function createApp(options?: { marketDataProvider?: IdxMarketDataProvider
   });
 
   // Module Routes
-  app.route('/api/v1/auth', createAuthRoutes(getDeps));
+  app.route(
+    '/api/v1/auth',
+    createAuthRoutes(getDeps, {
+      rateLimitMaxRequests: options?.authRateLimitMax,
+      rateLimitWindowMs: options?.authRateLimitWindowMs,
+    }),
+  );
   app.route('/api/v1/watchlist', createWatchlistRoutes(getDeps));
   app.route('/api/v1/market-data', createMarketDataRoutes(getDeps));
 

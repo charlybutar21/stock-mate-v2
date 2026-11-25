@@ -5,6 +5,14 @@ import type { AuthRepository, PasswordHasher } from '../domain/auth.types';
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days (604800s)
 export const SESSION_TTL_MS = SESSION_TTL_SECONDS * 1000;
 
+/**
+ * Valid dummy PBKDF2-SHA256 hash (100,000 iterations) used when an email is not found
+ * so LoginUseCase always performs identical 100k-iteration cryptographic work,
+ * preventing timing-based account enumeration.
+ */
+const DUMMY_PBKDF2_HASH =
+  'pbkdf2_sha256$100000$000102030405060708090a0b0c0d0e0f$9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
+
 export interface AuthSessionResult {
   user: AuthUserDto;
   rawSessionToken: string;
@@ -16,7 +24,10 @@ export class RegisterUseCase {
     private readonly hasher: PasswordHasher,
   ) {}
 
-  async execute(input: RegisterRequest): Promise<AuthSessionResult> {
+  async execute(
+    input: RegisterRequest,
+    existingTokenHash?: string,
+  ): Promise<AuthSessionResult> {
     const normalizedEmail = input.email.trim().toLowerCase();
     const existing = await this.authRepo.findActiveUserByEmail(normalizedEmail);
     if (existing) {
@@ -42,6 +53,10 @@ export class RegisterUseCase {
         throw conflictError('An account with this email already exists.');
       }
       throw err;
+    }
+
+    if (existingTokenHash) {
+      await this.authRepo.deleteSessionByTokenHash(existingTokenHash);
     }
 
     const rawSessionToken = this.hasher.generateSessionToken();
@@ -72,11 +87,15 @@ export class LoginUseCase {
     private readonly hasher: PasswordHasher,
   ) {}
 
-  async execute(input: LoginRequest): Promise<AuthSessionResult> {
+  async execute(
+    input: LoginRequest,
+    existingTokenHash?: string,
+  ): Promise<AuthSessionResult> {
     const normalizedEmail = input.email.trim().toLowerCase();
     const user = await this.authRepo.findActiveUserByEmail(normalizedEmail);
 
     if (!user) {
+      await this.hasher.verify(input.password, DUMMY_PBKDF2_HASH);
       throw unauthorizedError('Invalid email or password.');
     }
 
@@ -86,6 +105,11 @@ export class LoginUseCase {
     }
 
     const now = Date.now();
+    if (existingTokenHash) {
+      await this.authRepo.deleteSessionByTokenHash(existingTokenHash);
+    }
+    await this.authRepo.deleteExpiredSessionsForUser(user.id, now);
+
     const rawSessionToken = this.hasher.generateSessionToken();
     const tokenHash = await this.hasher.hashToken(rawSessionToken);
 

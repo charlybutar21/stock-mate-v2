@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, lte } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import * as schema from '@/server/shared/db/schema';
 import type {
@@ -94,5 +94,13 @@ export class D1AuthRepository implements AuthRepository {
     await this.db
       .delete(schema.sessions)
       .where(eq(schema.sessions.tokenHash, tokenHash));
+  }
+
+  async deleteExpiredSessionsForUser(userId: string, nowMs: number): Promise<void> {
+    await this.db
+      .delete(schema.sessions)
+      .where(
+        and(eq(schema.sessions.userId, userId), lte(schema.sessions.expiresAt, nowMs)),
+      );
   }
 }
