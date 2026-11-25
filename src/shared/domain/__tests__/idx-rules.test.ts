@@ -3,6 +3,7 @@ import {
   ceilToIdxTick,
   DEFAULT_BUY_FEE_PCT,
   DEFAULT_SELL_FEE_PCT,
+  floorToIdxTick,
   getIdxTickSize,
   IDX_SECTORS,
   isStaleTimestamp,
@@ -62,6 +63,16 @@ describe('idx-rules', () => {
     for (const [input, expected] of cases) {
       expect(ceilToIdxTick(input)).toBe(expected);
     }
+  });
+
+  it('rounds down limit buy orders to valid IDX ticks (floorToIdxTick)', () => {
+    expect(floorToIdxTick(0)).toBe(1);
+    expect(floorToIdxTick(1)).toBe(1);
+    expect(floorToIdxTick(199.9)).toBe(199);
+    expect(floorToIdxTick(203.9)).toBe(202);
+    expect(floorToIdxTick(504)).toBe(500);
+    expect(floorToIdxTick(2019)).toBe(2010);
+    expect(floorToIdxTick(5049)).toBe(5025);
   });
 
   it('evaluates 14-day staleness correctly', () => {

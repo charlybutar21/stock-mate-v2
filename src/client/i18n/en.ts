@@ -74,6 +74,10 @@ export const en = {
       'Total capital you have already invested across your owned lots, including the Stockbit Buy Fee (0.15%).',
     stampDuty:
       'Indonesian Stamp Duty (Bea Materai): Rp 10,000 flat fee applied per transaction side when gross value exceeds Rp 10,000,000.',
+    valueTrapShield:
+      'Automated IDX quality filter that checks whether an apparently cheap stock (high Margin of Safety or low Price-to-Book) is masking cyclical peak earnings, shrinking profit, weak Return on Equity, or excessive debt.',
+    portfolioXray:
+      'Measures your Net Market Value weight per stock and per IDX sector. Flags single-stock concentration (>25%) and single-sector concentration (>40%) across multi-stock portfolios.',
   },
   auth: {
     loginTitle: 'Sign in to Stock-Mate',
@@ -132,6 +136,32 @@ export const en = {
       UNKNOWN: 'Debt-to-Equity Unavailable',
     },
   },
+  valueTrapShield: {
+    title: 'IHSG Value Trap Shield',
+    subtitle: 'Automated quality & cyclical check against false undervaluation.',
+    levels: {
+      CLEAR: 'Value Trap Check: Clear',
+      WATCH: 'Value Trap Check: Caution',
+      HIGH_RISK: 'Value Trap Alert: High Risk',
+    },
+    shortBadges: {
+      CLEAR: 'Quality Clear',
+      WATCH: 'Cyclical / Quality Caution',
+      HIGH_RISK: 'Value Trap Risk',
+    },
+    clearBody:
+      'No cyclical peak, shrinking earnings, low Return on Equity, or high leverage traps detected.',
+    warnings: {
+      CYCLICAL_PEAK_WARNING:
+        'Cyclical Sector Caution: Low Price-to-Earnings or wide Margin of Safety in Energy / Basic Materials often reflects peak commodity cycle profit rather than sustainable discount.',
+      SHRINKING_EARNINGS_TRAP:
+        'Shrinking Earnings Trap: Stock appears cheap on Margin of Safety or Price-to-Book (<1.0x), but Earnings Growth is negative or loss-making.',
+      LOW_ROE_VALUE_TRAP:
+        'Low Return on Equity Trap: Despite a +15% Margin of Safety discount, Return on Equity is below 8% (underperforming Indonesia’s equity cost of capital).',
+      HIGH_LEVERAGE_TRAP:
+        'High Leverage Risk: Appears undervalued on headline multiples, but non-bank Debt-to-Equity Ratio exceeds 1.5x.',
+    },
+  },
   methods: {
     relativePer: 'Relative Price-to-Earnings',
     relativePbv: 'Relative Price-to-Book',
@@ -179,6 +209,18 @@ export const en = {
     kpiStale: 'Needs Refresh (> 14 Days)',
     hideBalances: 'Hide portfolio values',
     showBalances: 'Show portfolio values',
+    xray: {
+      toggleBtn: 'Portfolio Risk & Sector X-Ray',
+      title: 'Portfolio Risk & Sector Allocation X-Ray',
+      subtitle: 'Weights based on Net Market Value after Stockbit sell fees.',
+      byStockTitle: 'Allocation by Stock (Max 25% Rule)',
+      bySectorTitle: 'Allocation by IDX Sector (Max 40% Rule)',
+      healthyBadge: 'Well Diversified',
+      alertBadge: 'Concentration Alert',
+      singleStockAlert: 'exceeds 25% single-stock limit',
+      sectorAlert: 'sector exceeds 40% sector limit',
+      singleHoldingNote: 'Single-stock portfolio (add more holdings to evaluate concentration limits).',
+    },
     investedPrefix: 'Invested',
     filterByUndervaluedHint: 'Click to filter undervalued stocks',
     searchPlaceholder: 'Search symbol or company...',
@@ -292,6 +334,8 @@ export const en = {
     linkedFairValue: 'Fair Value (Median)',
     linkedMos: 'Margin of Safety',
     tabForward: 'Average Down & Sell Plan',
+    tabPyramiding: 'Pyramiding Buy Planner',
+    tabTakeProfit: 'Take-Profit Ladder (Exit)',
     tabGoalSeek: 'Target Average Calculator',
     feeSettings: 'Broker Fee & Tax Settings (Stockbit 2026)',
     buyFeePct: 'Buy Broker Fee (%)',
@@ -334,6 +378,57 @@ export const en = {
     resultingPureAvg: 'Resulting Average Price',
     cashRequired: 'Total Cash Needed (incl. fee)',
     invalidInputs: 'Adjust inputs to see valid simulation results.',
+    pyramiding: {
+      title: 'Capital Allocation & Pyramiding Buy Planner',
+      subtitle:
+        'Splits your cash budget into 3 staged buy zones rounded down to official IDX price ticks so you never go all-in at the top.',
+      totalBudget: 'Total Cash Budget to Deploy (Rp)',
+      referencePrice: 'Stage 1 Entry Price (Rp)',
+      stepDiscountPct: 'Price Drop Between Stages (%)',
+      strategyLabel: 'Capital Sizing Strategy',
+      strategies: {
+        PYRAMID_20_30_50: 'Pyramid 20% → 30% → 50% (Recommended Anti-Knife-Catch)',
+        EQUAL_33_33_34: 'Equal Split 33% → 33% → 34%',
+        AGGRESSIVE_15_35_50: 'Deep Value 15% → 35% → 50%',
+      },
+      stageCol: 'Buy Stage',
+      weightCol: 'Budget Share',
+      triggerPriceCol: 'Limit Buy Price (IDX Tick)',
+      lotsCol: 'Executable Lots',
+      cashUsedCol: 'Cash Deployed (incl. Fee)',
+      cumAvgCol: 'Cumulative Pure Average',
+      totalDeployed: 'Total Cash Deployed',
+      idleCash: 'Remaining Unallocated Cash',
+      resultingBep: 'Final Break-Even Price (IDX Tick)',
+      projectedNetPnL: 'Projected Net Profit / Loss at Target',
+    },
+    takeProfit: {
+      title: 'Take-Profit Ladder & Partial Exit Simulator',
+      subtitle:
+        'Plan staged selling across multiple price targets, calculate net realized profit after Stockbit fees, and track Free-Ride remaining lots.',
+      ownedPositionHeader: 'Position to Exit',
+      totalOwnedLots: 'Total Owned Lots',
+      avgBuyPrice: 'Average Buy Price (Rp)',
+      rungsTitle: 'Staged Sell Targets (Up to 5 Rungs)',
+      autoFillFairValue: 'Auto-Fill from Fair Value Range',
+      addRung: 'Add Sell Rung',
+      rungLots: 'Lots to Sell',
+      rungPrice: 'Target Sell Price (Rp)',
+      totalRealizedPnL: 'Total Realized Net Profit / Loss',
+      totalNetProceeds: 'Total Net Cash Received',
+      lotsSoldSummary: 'Lots Sold vs Remaining',
+      remainingLotsLabel: 'Remaining Lots Held',
+      unrecoveredCapitalLabel: 'Unrecovered Initial Capital',
+      effectiveRemainingCostLabel: 'Effective Cost Basis of Remaining Shares',
+      freeRideBadge: '100% Free-Ride Position Unlocked!',
+      freeRideBody:
+        'Your net cash proceeds from partial selling already exceed your entire initial investment. Your remaining lots are now risk-free house money.',
+      rungCol: 'Sell Rung',
+      lotsShareCol: 'Lots Sold (% of Position)',
+      targetPriceCol: 'Sell Price',
+      netProceedsCol: 'Net Proceeds (After Fee)',
+      realizedProfitCol: 'Realized Net Profit / Loss',
+    },
   },
 } as const;
 

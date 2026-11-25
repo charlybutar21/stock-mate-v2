@@ -35,6 +35,19 @@ export type DerQualityFlag =
   | 'NOT_APPLICABLE_BANKING'
   | 'UNKNOWN';
 
+export type ValueTrapRiskLevel = 'CLEAR' | 'WATCH' | 'HIGH_RISK';
+
+export type ValueTrapWarningCode =
+  | 'CYCLICAL_PEAK_WARNING'
+  | 'SHRINKING_EARNINGS_TRAP'
+  | 'LOW_ROE_VALUE_TRAP'
+  | 'HIGH_LEVERAGE_TRAP';
+
+export interface ValueTrapShield {
+  riskLevel: ValueTrapRiskLevel;
+  warnings: ValueTrapWarningCode[];
+}
+
 export interface ValuationInput {
   sector: IdxSector;
   currentPrice: number;
@@ -72,6 +85,7 @@ export interface ValuationSummary {
     roeFlag: RoeQualityFlag;
     derFlag: DerQualityFlag;
   };
+  valueTrapShield: ValueTrapShield;
   assumptionsUsed: {
     discountRatePct: number;
     projectionYears: number;
@@ -105,6 +119,72 @@ function evaluateDerFlag(sector: IdxSector, der: number | null): DerQualityFlag 
   if (der < 1.0) return 'HEALTHY';
   if (der <= 2.0) return 'MODERATE';
   return 'HIGH_LEVERAGE';
+}
+
+function evaluateValueTrapShield(params: {
+  sector: IdxSector;
+  eps: number | null;
+  roePct: number | null;
+  der: number | null;
+  epsGrowthPct: number | null;
+  currentPer: number | null;
+  currentPbv: number | null;
+  mosPct: number | null;
+}): ValueTrapShield {
+  const warnings: ValueTrapWarningCode[] = [];
+  const isCyclicalSector =
+    params.sector === 'ENERGY' || params.sector === 'BASIC_MATERIALS';
+  const looksCheapOnPerOrMos =
+    (params.currentPer !== null && params.currentPer <= 6) ||
+    (params.mosPct !== null && params.mosPct >= 25);
+
+  if (isCyclicalSector && looksCheapOnPerOrMos) {
+    warnings.push('CYCLICAL_PEAK_WARNING');
+  }
+
+  const looksCheapOnMosOrPbv =
+    (params.mosPct !== null && params.mosPct >= 0) ||
+    (params.currentPbv !== null && params.currentPbv < 1);
+  const hasShrinkingOrNegativeEarnings =
+    (params.epsGrowthPct !== null && params.epsGrowthPct < 0) ||
+    (params.eps !== null && params.eps <= 0);
+
+  if (looksCheapOnMosOrPbv && hasShrinkingOrNegativeEarnings) {
+    warnings.push('SHRINKING_EARNINGS_TRAP');
+  }
+
+  if (
+    params.mosPct !== null &&
+    params.mosPct >= 15 &&
+    params.roePct !== null &&
+    params.roePct < 8
+  ) {
+    warnings.push('LOW_ROE_VALUE_TRAP');
+  }
+
+  if (
+    params.sector !== 'FINANCIALS' &&
+    params.der !== null &&
+    params.der > 1.5 &&
+    params.mosPct !== null &&
+    params.mosPct >= 0
+  ) {
+    warnings.push('HIGH_LEVERAGE_TRAP');
+  }
+
+  if (warnings.length === 0) {
+    return { riskLevel: 'CLEAR', warnings };
+  }
+
+  const isHighRisk =
+    warnings.length >= 2 ||
+    warnings.includes('SHRINKING_EARNINGS_TRAP') ||
+    warnings.includes('HIGH_LEVERAGE_TRAP');
+
+  return {
+    riskLevel: isHighRisk ? 'HIGH_RISK' : 'WATCH',
+    warnings,
+  };
 }
 
 export function calculateValuation(input: ValuationInput): ValuationSummary {
@@ -238,6 +318,16 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
       roeFlag: evaluateRoeFlag(roePct),
       derFlag: evaluateDerFlag(input.sector, der),
     },
+    valueTrapShield: evaluateValueTrapShield({
+      sector: input.sector,
+      eps,
+      roePct,
+      der,
+      epsGrowthPct,
+      currentPer,
+      currentPbv,
+      mosPct,
+    }),
     assumptionsUsed: {
       discountRatePct,
       projectionYears,

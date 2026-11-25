@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   aggregateHoldingTranches,
+  analyzePortfolioRisk,
   calculateGoalSeekAverageDown,
   calculatePositionSummary,
+  planPyramidingAllocation,
   simulateForwardAverageDown,
+  simulateTakeProfitLadder,
 } from '../simulator';
 
 describe('simulator engine', () => {
@@ -273,5 +276,270 @@ describe('simulator engine', () => {
       unrealizedPnL: 947_500,
       unrealizedPnLPct: 9.46,
     });
+  });
+
+  it('analyzes Portfolio Risk & Sector X-Ray weights and concentration alerts (Use Case 1)', () => {
+    expect(
+      analyzePortfolioRisk([
+        {
+          ticker: 'BBCA',
+          companyName: 'Bank Central Asia',
+          sector: 'FINANCIALS',
+          ownedLots: 0,
+          avgBuyPrice: null,
+          currentPrice: 9000,
+        },
+      ]),
+    ).toEqual({
+      activeHoldingsCount: 0,
+      totalInvestedCapital: 0,
+      totalNetMarketValue: 0,
+      totalUnrealizedPnL: 0,
+      totalUnrealizedPnLPct: 0,
+      stockWeights: [],
+      sectorWeights: [],
+      alerts: [],
+    });
+
+    const risk = analyzePortfolioRisk([
+      {
+        ticker: 'BBCA',
+        companyName: 'Bank Central Asia',
+        sector: 'FINANCIALS',
+        ownedLots: 10,
+        avgBuyPrice: 8000,
+        currentPrice: 9000, // ~9M
+      },
+      {
+        ticker: 'BBRI',
+        companyName: 'Bank Rakyat Indonesia',
+        sector: 'FINANCIALS',
+        ownedLots: 10,
+        avgBuyPrice: 4000,
+        currentPrice: 4500, // ~4.5M
+      },
+      {
+        ticker: 'ICBP',
+        companyName: 'Indofood CBP',
+        sector: 'CONSUMER_NON_CYCLICALS',
+        ownedLots: 2,
+        avgBuyPrice: 10000,
+        currentPrice: 10000, // ~2M
+      },
+    ]);
+
+    expect(risk.activeHoldingsCount).toBe(3);
+    expect(risk.stockWeights).toHaveLength(3);
+    expect(risk.stockWeights[0]?.ticker).toBe('BBCA');
+    expect(risk.stockWeights[0]?.isOverweight).toBe(true);
+    expect(risk.sectorWeights).toHaveLength(2);
+    expect(risk.sectorWeights[0]?.sector).toBe('FINANCIALS');
+    expect(risk.sectorWeights[0]?.isOverconcentrated).toBe(true);
+    expect(risk.alerts.map((a) => a.code)).toEqual([
+      'SINGLE_STOCK_CONCENTRATION',
+      'SINGLE_STOCK_CONCENTRATION',
+      'SECTOR_CONCENTRATION',
+    ]);
+  });
+
+  it('plans Pyramiding Buy Allocation across 3 IDX tick-aligned stages (Use Case 3)', () => {
+    const plan = planPyramidingAllocation({
+      existingLots: 10,
+      existingAvgPrice: 5000,
+      totalCashBudget: 20_000_000,
+      referencePrice: 4500,
+      stepDiscountPct: 5,
+      strategy: 'PYRAMID_20_30_50',
+      targetSellPrice: 5000,
+    });
+    expect(plan.valid).toBe(true);
+    if (plan.valid) {
+      expect(plan.stages).toHaveLength(3);
+      expect(plan.stages[0]?.allocationWeightPct).toBe(20);
+      expect(plan.stages[1]?.allocationWeightPct).toBe(30);
+      expect(plan.stages[2]?.allocationWeightPct).toBe(50);
+      expect(plan.plannedTranches.length).toBeGreaterThan(0);
+      expect(plan.totalCashUsed).toBeLessThanOrEqual(20_000_000);
+      expect(plan.simulation.valid).toBe(true);
+    }
+
+    // Fresh position (existingLots = 0) with tiny stage 1 budget (0 lots in stage 1)
+    const freshSmallStage1 = planPyramidingAllocation({
+      existingLots: 0,
+      existingAvgPrice: 0,
+      totalCashBudget: 1_500_000,
+      referencePrice: 4000, // 1 lot = ~400,600 -> stage 1 (15% = 225,000) gets 0 lots, stage 2 & 3 get lots
+      stepDiscountPct: 5,
+      strategy: 'AGGRESSIVE_15_35_50',
+      targetSellPrice: 4400,
+    });
+    expect(freshSmallStage1.valid).toBe(true);
+    if (freshSmallStage1.valid) {
+      expect(freshSmallStage1.stages[0]?.lots).toBe(0);
+      expect(freshSmallStage1.stages[0]?.cumulativePureAvg).toBe(0);
+      expect(freshSmallStage1.stages[2]?.lots).toBeGreaterThan(0);
+    }
+
+    // Validation errors for Pyramiding Planner
+    expect(
+      planPyramidingAllocation({
+        existingLots: 0,
+        existingAvgPrice: 0,
+        totalCashBudget: 10_000_000,
+        referencePrice: 1000,
+        stepDiscountPct: 5,
+        strategy: 'EQUAL_33_33_34',
+        targetSellPrice: 1200,
+        buyFeePct: -1,
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_FEE_RATE' });
+
+    expect(
+      planPyramidingAllocation({
+        existingLots: -1,
+        existingAvgPrice: 0,
+        totalCashBudget: 10_000_000,
+        referencePrice: 1000,
+        stepDiscountPct: 5,
+        strategy: 'EQUAL_33_33_34',
+        targetSellPrice: 1200,
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_POSITION' });
+
+    expect(
+      planPyramidingAllocation({
+        existingLots: 5,
+        existingAvgPrice: 0,
+        totalCashBudget: 10_000_000,
+        referencePrice: 1000,
+        stepDiscountPct: 5,
+        strategy: 'EQUAL_33_33_34',
+        targetSellPrice: 1200,
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_EXISTING_PRICE' });
+
+    expect(
+      planPyramidingAllocation({
+        existingLots: 0,
+        existingAvgPrice: 0,
+        totalCashBudget: 0,
+        referencePrice: 1000,
+        stepDiscountPct: 5,
+        strategy: 'EQUAL_33_33_34',
+        targetSellPrice: 1200,
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_TRANCHE' });
+
+    expect(
+      planPyramidingAllocation({
+        existingLots: 0,
+        existingAvgPrice: 0,
+        totalCashBudget: 10_000_000,
+        referencePrice: 1000,
+        stepDiscountPct: 5,
+        strategy: 'EQUAL_33_33_34',
+        targetSellPrice: 0,
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_TARGET_SELL_PRICE' });
+
+    // Budget too small to buy even 1 lot across all stages
+    expect(
+      planPyramidingAllocation({
+        existingLots: 0,
+        existingAvgPrice: 0,
+        totalCashBudget: 10_000,
+        referencePrice: 5000,
+        stepDiscountPct: 5,
+        strategy: 'EQUAL_33_33_34',
+        targetSellPrice: 5500,
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_TRANCHE' });
+  });
+
+  it('simulates Take-Profit Ladder & Free-Ride remaining position (Use Case 4)', () => {
+    // Partial exit where net proceeds exceed total initial cost basis -> Free-Ride Shares!
+    const partialFreeRide = simulateTakeProfitLadder({
+      totalOwnedLots: 20,
+      avgBuyPrice: 5000, // total initial cost = 10,000,000 + 15,000 = 10,015,000
+      rungs: [
+        { lotsToSell: 8, targetSellPrice: 6500 }, // 5.2M gross
+        { lotsToSell: 8, targetSellPrice: 7500 }, // 6.0M gross -> total net proceeds > 10.015M
+      ],
+      includeStampDuty: true,
+    });
+    expect(partialFreeRide.valid).toBe(true);
+    if (partialFreeRide.valid) {
+      expect(partialFreeRide.totalLotsSold).toBe(16);
+      expect(partialFreeRide.remainingLots).toBe(4);
+      expect(partialFreeRide.unrecoveredCapital).toBe(0);
+      expect(partialFreeRide.remainingEffectiveCostPerShare).toBe(0);
+      expect(partialFreeRide.isFreeRidePosition).toBe(true);
+      expect(partialFreeRide.totalRealizedNetPnL).toBeGreaterThan(0);
+    }
+
+    // Full exit with > Rp 10M single rung (triggers stamp duty)
+    const fullExit = simulateTakeProfitLadder({
+      totalOwnedLots: 20,
+      avgBuyPrice: 5000,
+      rungs: [{ lotsToSell: 20, targetSellPrice: 5500 }], // 11M gross -> stampDuty 10,000
+      includeStampDuty: true,
+    });
+    expect(fullExit.valid).toBe(true);
+    if (fullExit.valid) {
+      expect(fullExit.remainingLots).toBe(0);
+      expect(fullExit.remainingEffectiveCostPerShare).toBe(0);
+      expect(fullExit.isFreeRidePosition).toBe(false);
+      expect(fullExit.rungs[0]?.stampDuty).toBe(10_000);
+    }
+
+    // Validation error branches
+    expect(
+      simulateTakeProfitLadder({
+        totalOwnedLots: 10,
+        avgBuyPrice: 1000,
+        rungs: [{ lotsToSell: 5, targetSellPrice: 1200 }],
+        sellFeePct: -1,
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_FEE_RATE' });
+
+    expect(
+      simulateTakeProfitLadder({
+        totalOwnedLots: 0,
+        avgBuyPrice: 1000,
+        rungs: [{ lotsToSell: 1, targetSellPrice: 1200 }],
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_POSITION' });
+
+    expect(
+      simulateTakeProfitLadder({
+        totalOwnedLots: 10,
+        avgBuyPrice: 0,
+        rungs: [{ lotsToSell: 1, targetSellPrice: 1200 }],
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_EXISTING_PRICE' });
+
+    expect(
+      simulateTakeProfitLadder({
+        totalOwnedLots: 10,
+        avgBuyPrice: 1000,
+        rungs: [],
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_TRANCHE' });
+
+    expect(
+      simulateTakeProfitLadder({
+        totalOwnedLots: 10,
+        avgBuyPrice: 1000,
+        rungs: [{ lotsToSell: 0, targetSellPrice: 1200 }],
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_TRANCHE' });
+
+    expect(
+      simulateTakeProfitLadder({
+        totalOwnedLots: 10,
+        avgBuyPrice: 1000,
+        rungs: [{ lotsToSell: 11, targetSellPrice: 1200 }],
+      }),
+    ).toEqual({ valid: false, errorCode: 'INVALID_TRANCHE' });
   });
 });

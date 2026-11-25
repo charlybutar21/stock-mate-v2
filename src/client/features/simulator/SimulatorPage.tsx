@@ -18,6 +18,10 @@ import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatPercent } from '@/client/lib/formatters';
 import { ForwardTab } from './ForwardTab';
 import { GoalSeekTab } from './GoalSeekTab';
+import { PyramidingTab } from './PyramidingTab';
+import { TakeProfitTab } from './TakeProfitTab';
+
+type SimulatorTabMode = 'forward' | 'pyramiding' | 'takeProfit' | 'goalSeek';
 
 export function SimulatorPage() {
   const { t } = useI18n();
@@ -26,7 +30,7 @@ export function SimulatorPage() {
 
   const requestedId = searchParams.get('stockId');
   const [selectedId, setSelectedId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'forward' | 'goalSeek'>('forward');
+  const [activeTab, setActiveTab] = useState<SimulatorTabMode>('forward');
 
   const [buyFeePct, setBuyFeePct] = useState(String(DEFAULT_BUY_FEE_PCT));
   const [sellFeePct, setSellFeePct] = useState(String(DEFAULT_SELL_FEE_PCT));
@@ -194,23 +198,43 @@ export function SimulatorPage() {
       </Card>
 
       {/* Mode Switcher Tabs */}
-      <div className="inline-flex rounded-lg border border-border bg-subtle p-1">
+      <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-subtle p-1">
         <button
           type="button"
           onClick={() => setActiveTab('forward')}
           className={cn(
-            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors cursor-pointer',
-            activeTab === 'forward' ? 'bg-panel text-ink shadow-xs' : 'text-muted hover:text-ink',
+            'rounded-md px-3.5 py-1.5 text-xs sm:text-sm font-semibold transition-colors cursor-pointer',
+            activeTab === 'forward' ? 'bg-panel text-brand-700 shadow-xs' : 'text-muted hover:text-ink',
           )}
         >
           {t.simulator.tabForward}
         </button>
         <button
           type="button"
+          onClick={() => setActiveTab('pyramiding')}
+          className={cn(
+            'rounded-md px-3.5 py-1.5 text-xs sm:text-sm font-semibold transition-colors cursor-pointer',
+            activeTab === 'pyramiding' ? 'bg-panel text-brand-700 shadow-xs' : 'text-muted hover:text-ink',
+          )}
+        >
+          {t.simulator.tabPyramiding}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('takeProfit')}
+          className={cn(
+            'rounded-md px-3.5 py-1.5 text-xs sm:text-sm font-semibold transition-colors cursor-pointer',
+            activeTab === 'takeProfit' ? 'bg-panel text-brand-700 shadow-xs' : 'text-muted hover:text-ink',
+          )}
+        >
+          {t.simulator.tabTakeProfit}
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab('goalSeek')}
           className={cn(
-            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors cursor-pointer',
-            activeTab === 'goalSeek' ? 'bg-panel text-ink shadow-xs' : 'text-muted hover:text-ink',
+            'rounded-md px-3.5 py-1.5 text-xs sm:text-sm font-semibold transition-colors cursor-pointer',
+            activeTab === 'goalSeek' ? 'bg-panel text-brand-700 shadow-xs' : 'text-muted hover:text-ink',
           )}
         >
           {t.simulator.tabGoalSeek}
@@ -219,7 +243,27 @@ export function SimulatorPage() {
 
       {linkedStock && activeTab === 'forward' && (
         <ForwardTab
-          key={`${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
+          key={`fwd-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
+          linkedStock={linkedStock}
+          buyFeePct={Number(buyFeePct || 0)}
+          sellFeePct={Number(sellFeePct || 0)}
+          includeStampDuty={includeStampDuty}
+        />
+      )}
+
+      {linkedStock && activeTab === 'pyramiding' && (
+        <PyramidingTab
+          key={`pyr-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
+          linkedStock={linkedStock}
+          buyFeePct={Number(buyFeePct || 0)}
+          sellFeePct={Number(sellFeePct || 0)}
+          includeStampDuty={includeStampDuty}
+        />
+      )}
+
+      {linkedStock && activeTab === 'takeProfit' && (
+        <TakeProfitTab
+          key={`tp-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
           linkedStock={linkedStock}
           buyFeePct={Number(buyFeePct || 0)}
           sellFeePct={Number(sellFeePct || 0)}
@@ -229,7 +273,7 @@ export function SimulatorPage() {
 
       {linkedStock && activeTab === 'goalSeek' && (
         <GoalSeekTab
-          key={`${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
+          key={`gs-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
           linkedStock={linkedStock}
           buyFeePct={Number(buyFeePct || 0)}
           includeStampDuty={includeStampDuty}

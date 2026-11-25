@@ -8,6 +8,8 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
@@ -15,6 +17,7 @@ import {
   calculateValuation,
   type DerQualityFlag,
   type RoeQualityFlag,
+  type ValueTrapRiskLevel,
 } from '@/shared/domain';
 import {
   Badge,
@@ -55,6 +58,12 @@ function derTone(flag: DerQualityFlag): BadgeTone {
   if (flag === 'MODERATE') return 'warning';
   if (flag === 'HIGH_LEVERAGE') return 'negative';
   return 'neutral';
+}
+
+function shieldTone(level: ValueTrapRiskLevel): BadgeTone {
+  if (level === 'CLEAR') return 'positive';
+  if (level === 'WATCH') return 'warning';
+  return 'negative';
 }
 
 export function StockDetailPage() {
@@ -293,6 +302,14 @@ export function StockDetailPage() {
                 )}
                 {t.qualityFlags.der[liveValuation.qualityFlags.derFlag]}
               </Badge>
+              <Badge tone={shieldTone(liveValuation.valueTrapShield.riskLevel)}>
+                {liveValuation.valueTrapShield.riskLevel === 'CLEAR' ? (
+                  <ShieldCheck className="h-3 w-3" />
+                ) : (
+                  <ShieldAlert className="h-3 w-3" />
+                )}
+                {t.valueTrapShield.levels[liveValuation.valueTrapShield.riskLevel]}
+              </Badge>
             </div>
           </div>
 
@@ -353,6 +370,54 @@ export function StockDetailPage() {
             optimistic={liveValuation.fairValue.optimistic}
             currentPrice={item.currentPrice}
           />
+        </div>
+
+        {/* Use Case 5: IHSG Value Trap Shield Card */}
+        <div
+          className={`rounded-xl border p-4 ${
+            liveValuation.valueTrapShield.riskLevel === 'CLEAR'
+              ? 'border-positive-600/20 bg-positive-50/50'
+              : liveValuation.valueTrapShield.riskLevel === 'WATCH'
+                ? 'border-warning-600/25 bg-warning-50/60'
+                : 'border-negative-600/25 bg-negative-50/60'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {liveValuation.valueTrapShield.riskLevel === 'CLEAR' ? (
+                <ShieldCheck className="h-4 w-4 text-positive-600" />
+              ) : (
+                <ShieldAlert
+                  className={`h-4 w-4 ${
+                    liveValuation.valueTrapShield.riskLevel === 'HIGH_RISK'
+                      ? 'text-negative-600'
+                      : 'text-warning-600'
+                  }`}
+                />
+              )}
+              <span className="text-xs font-bold text-ink">
+                <TermTooltip
+                  label={t.valueTrapShield.title}
+                  definition={t.glossary.valueTrapShield}
+                />
+              </span>
+            </div>
+            <Badge tone={shieldTone(liveValuation.valueTrapShield.riskLevel)}>
+              {t.valueTrapShield.levels[liveValuation.valueTrapShield.riskLevel]}
+            </Badge>
+          </div>
+          {liveValuation.valueTrapShield.warnings.length === 0 ? (
+            <p className="mt-1.5 text-xs text-positive-700">{t.valueTrapShield.clearBody}</p>
+          ) : (
+            <ul className="mt-2 space-y-1.5 text-xs text-ink">
+              {liveValuation.valueTrapShield.warnings.map((w) => (
+                <li key={w} className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+                  <span>{t.valueTrapShield.warnings[w]}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </Card>
 

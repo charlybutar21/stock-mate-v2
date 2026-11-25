@@ -21,6 +21,7 @@
 - **Quick Auto-Add (1-Click):** Enter any 4-letter IDX ticker (e.g. `BBCA`, `BBRI`, `ICBP`, `TLKM`, `ASII`) to automatically fetch near real-time price and TTM key stats via **TradingView Indonesia Scanner** (free, zero API key) with automatic fallback to Yahoo Finance (and optional Sectors.app support via `SECTORS_API_KEY`).
 - **Batch Sync All:** Refresh every stock in your watchlist in 1 single batch request (`POST /api/v1/watchlist/sync-all`) while preserving your personal valuation benchmarks, owned lots, tranches, and thesis.
 - **Multi-Entry Average Down Position Tracking:** Record multiple buy entries at different prices (`+ Add Buy / Average Down` stored in `holding_tranches_json`) and automatically compute **Combined Lots**, **Weighted Average Buy Price**, **Total Invested Capital** (incl. `0.15%` Stockbit buy fee), **Net Market Value** (net of `0.25%` Stockbit sell fee + `Rp 10.000` Bea Materai if gross `> Rp 10M`), and **Net Unrealized P/L (`Rp` & `%`)**.
+- **Portfolio Risk & Sector Allocation X-Ray:** Automatically analyzes your portfolio's Net Market Value weight per stock and across the 11 IDX sectors, flagging single-stock concentration (`> 25%`) and single-sector over-concentration (`> 40%`).
 - **Stockbit-Style Privacy Toggle & UX:** One-click **Eye (`Hide / Show Balances`)** toggle masks Rupiah portfolio balances and lot counts while keeping `%` returns visible; zero cryptic abbreviations with interactive hover glossary tooltips; compact no-horizontal-scroll Stockbit-inspired watchlist table.
 - **6 Essential Industry-Standard Key Stats:** Streamlined strictly to the metrics that matter — `Earnings Per Share (TTM)`, `Book Value Per Share`, `Return on Equity (%)`, `Debt-to-Equity Ratio (x)`, `Earnings Growth (YoY %)`, and `Dividend Per Share (Annual)` — plus 3 sector-prefilled benchmarks (`Target P/E`, `Target P/B`, `Discount Rate / WACC`).
 
@@ -33,13 +34,15 @@ Focuses on the **3 most accurate and relevant valuation anchors** for modern IDX
 Includes:
 - **Fair Value Range Bar:** Conservative (Min) / **Moderate (Median)** / Optimistic (Max) vs Market Price.
 - **Margin of Safety (MoS %):** `≥ 30%` Undervalued · `0–29.99%` Fairly Valued · `< 0%` Overvalued.
-- **Sector-Aware Quality Flags:** ROE strength and DER health (with banking-aware `NOT_APPLICABLE_BANKING` badge for `FINANCIALS`).
+- **Sector-Aware Quality Flags & IHSG Value Trap Shield:** ROE strength, DER health (with banking-aware `NOT_APPLICABLE_BANKING` badge for `FINANCIALS`), and an automated **IHSG Value Trap Shield** (`CLEAR` / `WATCH` / `HIGH_RISK`) that detects cyclical commodity peak earnings (`ENERGY` / `BASIC_MATERIALS`), shrinking earnings traps (`EPS Growth < 0%` despite low P/B or positive Margin of Safety), weak ROE (`< 8%`), and high non-bank leverage (`DER > 1.5x`).
 - **Interactive What-If Tuning:** Adjust Target P/E, Target P/B, and WACC in real time, with Save/Reset controls.
 
-### 4. Position-Linked Average Down & Sell Simulator
+### 4. Position-Linked Average Down, Pyramiding & Take-Profit Exit Simulator
 Automatically pre-loads your saved **Owned Lots** and **Avg Buy Price** from the selected Watchlist stock (client-side < 50ms recalculation via shared pure domain engine):
 - **Mode 1 — Multi-Tranche Forward:** Existing position + up to 5 planned buy tranches + target sell price → outputs Pure Avg, Effective Avg (incl. buy fee), **Real BEP rounded up to IDX Tick Size (`ceilToIdxTick`)**, Additional Cash Required, Total Capital, Projected Net P/L (`Rp` & `%`), and Before/After Gain-to-BEP comparison.
-- **Mode 2 — Goal-Seek Target Average:** Calculates exact **Lots Needed** and **Total Cash Required** to reach a desired average price.
+- **Mode 2 — Capital Allocation & Pyramiding Buy Planner:** Splits a fixed cash budget into 3 staged buy zones (`Pyramid 20%→30%→50%`, `Equal 33%→33%→34%`, or `Deep Value 15%→35%→50%`) with limit buy prices automatically rounded down to official IDX tick brackets (`floorToIdxTick`).
+- **Mode 3 — Take-Profit Ladder & Partial Exit Simulator:** Plan staged selling across up to 5 price targets (with 1-click auto-fill from Conservative / Moderate / Optimistic Fair Value), computing net realized profit after Stockbit fees and tracking **100% Free-Ride remaining shares** once net proceeds recover initial capital.
+- **Mode 4 — Goal-Seek Target Average:** Calculates exact **Lots Needed** and **Total Cash Required** to reach a desired average price.
 - **Stockbit 2026 Fee Defaults:** `0.15%` Buy / `0.25%` Sell (customizable) + optional **Bea Materai `Rp 10.000`** toggle for gross transactions `> Rp 10.000.000`.
 - **Investment Guardrails:** Automatic warning banners if simulated average still exceeds Watchlist Moderate Fair Value or if planned tranches result in an Average Up.
 

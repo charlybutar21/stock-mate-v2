@@ -2,11 +2,13 @@ import {
   ceilToIdxTick,
   DEFAULT_BUY_FEE_PCT,
   DEFAULT_SELL_FEE_PCT,
+  floorToIdxTick,
   MIN_IDX_PRICE,
   round2,
   SHARES_PER_LOT,
   STAMP_DUTY_IDR,
   STAMP_DUTY_THRESHOLD_IDR,
+  type IdxSector,
 } from './idx-rules';
 
 export interface PlannedTranche {
@@ -384,5 +386,496 @@ export function calculateGoalSeekAverageDown(input: GoalSeekInput): GoalSeekOutp
     cashBuyFee,
     cashStampDuty,
     totalCashRequired,
+  };
+}
+
+export const MAX_SINGLE_STOCK_WEIGHT_PCT = 25;
+export const MAX_SECTOR_WEIGHT_PCT = 40;
+
+export interface PortfolioHoldingInput {
+  ticker: string;
+  companyName: string;
+  sector: IdxSector;
+  ownedLots: number;
+  avgBuyPrice: number | null;
+  currentPrice: number;
+}
+
+export interface PortfolioStockWeight {
+  ticker: string;
+  companyName: string;
+  sector: IdxSector;
+  ownedLots: number;
+  investedCapital: number;
+  netMarketValue: number;
+  unrealizedPnL: number;
+  unrealizedPnLPct: number;
+  weightPct: number;
+  isOverweight: boolean;
+}
+
+export interface PortfolioSectorWeight {
+  sector: IdxSector;
+  stockCount: number;
+  investedCapital: number;
+  netMarketValue: number;
+  weightPct: number;
+  isOverconcentrated: boolean;
+}
+
+export type PortfolioRiskAlertCode =
+  | 'SINGLE_STOCK_CONCENTRATION'
+  | 'SECTOR_CONCENTRATION';
+
+export interface PortfolioRiskAlert {
+  code: PortfolioRiskAlertCode;
+  target: string;
+  weightPct: number;
+  thresholdPct: number;
+}
+
+export interface PortfolioRiskSummary {
+  activeHoldingsCount: number;
+  totalInvestedCapital: number;
+  totalNetMarketValue: number;
+  totalUnrealizedPnL: number;
+  totalUnrealizedPnLPct: number;
+  stockWeights: PortfolioStockWeight[];
+  sectorWeights: PortfolioSectorWeight[];
+  alerts: PortfolioRiskAlert[];
+}
+
+export function analyzePortfolioRisk(
+  holdings: PortfolioHoldingInput[],
+): PortfolioRiskSummary {
+  const active = holdings
+    .map((h) => ({
+      holding: h,
+      summary: calculatePositionSummary(h.ownedLots, h.avgBuyPrice, h.currentPrice),
+    }))
+    .filter((entry) => entry.summary.ownedLots > 0 && entry.summary.costBasis > 0);
+
+  if (active.length === 0) {
+    return {
+      activeHoldingsCount: 0,
+      totalInvestedCapital: 0,
+      totalNetMarketValue: 0,
+      totalUnrealizedPnL: 0,
+      totalUnrealizedPnLPct: 0,
+      stockWeights: [],
+      sectorWeights: [],
+      alerts: [],
+    };
+  }
+
+  const totalInvestedCapital = active.reduce((sum, e) => sum + e.summary.costBasis, 0);
+  const totalNetMarketValue = active.reduce((sum, e) => sum + e.summary.marketValue, 0);
+  const totalUnrealizedPnL = totalNetMarketValue - totalInvestedCapital;
+  const totalUnrealizedPnLPct = round2((totalUnrealizedPnL / totalInvestedCapital) * 100);
+
+  const hasMultipleHoldings = active.length >= 2;
+  const alerts: PortfolioRiskAlert[] = [];
+
+  const stockWeights: PortfolioStockWeight[] = active
+    .map(({ holding, summary }) => {
+      const weightPct = round2((summary.marketValue / totalNetMarketValue) * 100);
+      const isOverweight = hasMultipleHoldings && weightPct > MAX_SINGLE_STOCK_WEIGHT_PCT;
+      if (isOverweight) {
+        alerts.push({
+          code: 'SINGLE_STOCK_CONCENTRATION',
+          target: holding.ticker,
+          weightPct,
+          thresholdPct: MAX_SINGLE_STOCK_WEIGHT_PCT,
+        });
+      }
+      return {
+        ticker: holding.ticker,
+        companyName: holding.companyName,
+        sector: holding.sector,
+        ownedLots: summary.ownedLots,
+        investedCapital: summary.costBasis,
+        netMarketValue: summary.marketValue,
+        unrealizedPnL: summary.unrealizedPnL!,
+        unrealizedPnLPct: summary.unrealizedPnLPct!,
+        weightPct,
+        isOverweight,
+      };
+    })
+    .sort((a, b) => b.netMarketValue - a.netMarketValue);
+
+  const sectorMap = new Map<
+    IdxSector,
+    { stockCount: number; investedCapital: number; netMarketValue: number }
+  >();
+  for (const item of stockWeights) {
+    const existing = sectorMap.get(item.sector);
+    if (existing) {
+      existing.stockCount += 1;
+      existing.investedCapital += item.investedCapital;
+      existing.netMarketValue += item.netMarketValue;
+    } else {
+      sectorMap.set(item.sector, {
+        stockCount: 1,
+        investedCapital: item.investedCapital,
+        netMarketValue: item.netMarketValue,
+      });
+    }
+  }
+
+  const sectorWeights: PortfolioSectorWeight[] = Array.from(sectorMap.entries())
+    .map(([sector, data]) => {
+      const weightPct = round2((data.netMarketValue / totalNetMarketValue) * 100);
+      const isOverconcentrated = hasMultipleHoldings && weightPct > MAX_SECTOR_WEIGHT_PCT;
+      if (isOverconcentrated) {
+        alerts.push({
+          code: 'SECTOR_CONCENTRATION',
+          target: sector,
+          weightPct,
+          thresholdPct: MAX_SECTOR_WEIGHT_PCT,
+        });
+      }
+      return {
+        sector,
+        stockCount: data.stockCount,
+        investedCapital: data.investedCapital,
+        netMarketValue: data.netMarketValue,
+        weightPct,
+        isOverconcentrated,
+      };
+    })
+    .sort((a, b) => b.netMarketValue - a.netMarketValue);
+
+  return {
+    activeHoldingsCount: active.length,
+    totalInvestedCapital,
+    totalNetMarketValue,
+    totalUnrealizedPnL,
+    totalUnrealizedPnLPct,
+    stockWeights,
+    sectorWeights,
+    alerts,
+  };
+}
+
+export type PyramidingStrategy =
+  | 'PYRAMID_20_30_50'
+  | 'EQUAL_33_33_34'
+  | 'AGGRESSIVE_15_35_50';
+
+export interface PyramidingPlanInput {
+  existingLots: number;
+  existingAvgPrice: number;
+  totalCashBudget: number;
+  referencePrice: number;
+  stepDiscountPct: number;
+  strategy: PyramidingStrategy;
+  targetSellPrice: number;
+  buyFeePct?: number;
+  sellFeePct?: number;
+  includeStampDuty?: boolean;
+  fairValueModerate?: number | null;
+}
+
+export interface PyramidingStage {
+  stageNumber: number;
+  allocationWeightPct: number;
+  allocatedBudget: number;
+  triggerPrice: number;
+  lots: number;
+  shares: number;
+  grossCost: number;
+  buyFee: number;
+  cashUsed: number;
+  unusedCash: number;
+  cumulativeLots: number;
+  cumulativePureAvg: number;
+}
+
+export interface PyramidingPlanResult {
+  valid: true;
+  strategy: PyramidingStrategy;
+  totalCashBudget: number;
+  totalCashUsed: number;
+  remainingIdleCash: number;
+  stages: PyramidingStage[];
+  plannedTranches: PlannedTranche[];
+  simulation: ForwardSimulationResult;
+}
+
+export type PyramidingPlanOutput = PyramidingPlanResult | SimulationInvalidResult;
+
+const PYRAMID_WEIGHTS: Record<PyramidingStrategy, readonly [number, number, number]> = {
+  PYRAMID_20_30_50: [20, 30, 50],
+  EQUAL_33_33_34: [33, 33, 34],
+  AGGRESSIVE_15_35_50: [15, 35, 50],
+};
+
+export function planPyramidingAllocation(
+  input: PyramidingPlanInput,
+): PyramidingPlanOutput {
+  const buyFeePct = input.buyFeePct ?? DEFAULT_BUY_FEE_PCT;
+  const sellFeePct = input.sellFeePct ?? DEFAULT_SELL_FEE_PCT;
+  const includeStampDuty = input.includeStampDuty ?? false;
+
+  if (buyFeePct < 0 || sellFeePct < 0 || sellFeePct >= 100) {
+    return { valid: false, errorCode: 'INVALID_FEE_RATE' };
+  }
+
+  if (!Number.isInteger(input.existingLots) || input.existingLots < 0) {
+    return { valid: false, errorCode: 'INVALID_POSITION' };
+  }
+
+  if (input.existingLots > 0 && input.existingAvgPrice < MIN_IDX_PRICE) {
+    return { valid: false, errorCode: 'INVALID_EXISTING_PRICE' };
+  }
+
+  if (
+    input.totalCashBudget <= 0 ||
+    input.referencePrice < MIN_IDX_PRICE ||
+    input.stepDiscountPct < 1 ||
+    input.stepDiscountPct > 30
+  ) {
+    return { valid: false, errorCode: 'INVALID_TRANCHE' };
+  }
+
+  if (input.targetSellPrice < MIN_IDX_PRICE) {
+    return { valid: false, errorCode: 'INVALID_TARGET_SELL_PRICE' };
+  }
+
+  const weights = PYRAMID_WEIGHTS[input.strategy];
+  const fBuy = buyFeePct / 100;
+
+  let runningLots = input.existingLots;
+  let runningGross =
+    input.existingLots > 0
+      ? input.existingLots * SHARES_PER_LOT * input.existingAvgPrice
+      : 0;
+  let totalCashUsed = 0;
+
+  const stages: PyramidingStage[] = [];
+  const plannedTranches: PlannedTranche[] = [];
+
+  for (let i = 0; i < weights.length; i++) {
+    const weightPct = weights[i]!;
+    const allocatedBudget = Math.floor((input.totalCashBudget * weightPct) / 100);
+    const rawTrigger = input.referencePrice * (1 - (i * input.stepDiscountPct) / 100);
+    const triggerPrice = floorToIdxTick(rawTrigger);
+    const costPerLotWithFee = triggerPrice * SHARES_PER_LOT * (1 + fBuy);
+    const lots = Math.max(0, Math.floor(allocatedBudget / costPerLotWithFee));
+    const shares = lots * SHARES_PER_LOT;
+    const grossCost = shares * triggerPrice;
+    const buyFee = Math.round(grossCost * fBuy);
+    const cashUsed = grossCost + buyFee;
+    const unusedCash = Math.max(0, allocatedBudget - cashUsed);
+
+    if (lots > 0) {
+      runningLots += lots;
+      runningGross += grossCost;
+      totalCashUsed += cashUsed;
+      plannedTranches.push({ lots, buyPrice: triggerPrice });
+    }
+
+    const cumulativePureAvg =
+      runningLots > 0 ? round2(runningGross / (runningLots * SHARES_PER_LOT)) : 0;
+
+    stages.push({
+      stageNumber: i + 1,
+      allocationWeightPct: weightPct,
+      allocatedBudget,
+      triggerPrice,
+      lots,
+      shares,
+      grossCost,
+      buyFee,
+      cashUsed,
+      unusedCash,
+      cumulativeLots: runningLots,
+      cumulativePureAvg,
+    });
+  }
+
+  if (plannedTranches.length === 0) {
+    return { valid: false, errorCode: 'INVALID_TRANCHE' };
+  }
+
+  const simOut = simulateForwardAverageDown({
+    existingLots: input.existingLots,
+    existingAvgPrice: input.existingAvgPrice,
+    plannedTranches,
+    targetSellPrice: input.targetSellPrice,
+    buyFeePct,
+    sellFeePct,
+    includeStampDuty,
+    fairValueModerate: input.fairValueModerate,
+    referenceCurrentPrice: input.referencePrice,
+  }) as ForwardSimulationResult;
+
+  return {
+    valid: true,
+    strategy: input.strategy,
+    totalCashBudget: input.totalCashBudget,
+    totalCashUsed,
+    remainingIdleCash: Math.max(0, input.totalCashBudget - totalCashUsed),
+    stages,
+    plannedTranches,
+    simulation: simOut,
+  };
+}
+
+export interface TakeProfitRungInput {
+  lotsToSell: number;
+  targetSellPrice: number;
+}
+
+export interface TakeProfitLadderInput {
+  totalOwnedLots: number;
+  avgBuyPrice: number;
+  rungs: TakeProfitRungInput[];
+  buyFeePct?: number;
+  sellFeePct?: number;
+  includeStampDuty?: boolean;
+}
+
+export interface TakeProfitRungResult {
+  rungNumber: number;
+  lotsSold: number;
+  sharesSold: number;
+  sellPctOfTotal: number;
+  targetSellPrice: number;
+  grossProceeds: number;
+  sellFee: number;
+  stampDuty: number;
+  netProceeds: number;
+  allocatedCostBasis: number;
+  realizedNetPnL: number;
+  realizedPnLPct: number;
+}
+
+export interface TakeProfitLadderResult {
+  valid: true;
+  totalOwnedLots: number;
+  totalLotsSold: number;
+  remainingLots: number;
+  totalInitialCostBasis: number;
+  totalAllocatedCostBasis: number;
+  totalNetProceeds: number;
+  totalRealizedNetPnL: number;
+  totalRealizedPnLPct: number;
+  unrecoveredCapital: number;
+  remainingEffectiveCostPerShare: number;
+  isFreeRidePosition: boolean;
+  rungs: TakeProfitRungResult[];
+}
+
+export type TakeProfitLadderOutput = TakeProfitLadderResult | SimulationInvalidResult;
+
+export function simulateTakeProfitLadder(
+  input: TakeProfitLadderInput,
+): TakeProfitLadderOutput {
+  const buyFeePct = input.buyFeePct ?? DEFAULT_BUY_FEE_PCT;
+  const sellFeePct = input.sellFeePct ?? DEFAULT_SELL_FEE_PCT;
+  const includeStampDuty = input.includeStampDuty ?? false;
+
+  if (buyFeePct < 0 || sellFeePct < 0 || sellFeePct >= 100) {
+    return { valid: false, errorCode: 'INVALID_FEE_RATE' };
+  }
+
+  if (!Number.isInteger(input.totalOwnedLots) || input.totalOwnedLots < 1) {
+    return { valid: false, errorCode: 'INVALID_POSITION' };
+  }
+
+  if (input.avgBuyPrice < MIN_IDX_PRICE) {
+    return { valid: false, errorCode: 'INVALID_EXISTING_PRICE' };
+  }
+
+  if (input.rungs.length < 1 || input.rungs.length > 5) {
+    return { valid: false, errorCode: 'INVALID_TRANCHE' };
+  }
+
+  let totalLotsSold = 0;
+  for (const rung of input.rungs) {
+    if (
+      !Number.isInteger(rung.lotsToSell) ||
+      rung.lotsToSell < 1 ||
+      rung.targetSellPrice < MIN_IDX_PRICE
+    ) {
+      return { valid: false, errorCode: 'INVALID_TRANCHE' };
+    }
+    totalLotsSold += rung.lotsToSell;
+  }
+
+  if (totalLotsSold > input.totalOwnedLots) {
+    return { valid: false, errorCode: 'INVALID_TRANCHE' };
+  }
+
+  const fBuy = buyFeePct / 100;
+  const fSell = sellFeePct / 100;
+
+  const totalOwnedShares = input.totalOwnedLots * SHARES_PER_LOT;
+  const totalInitialGross = totalOwnedShares * input.avgBuyPrice;
+  const totalInitialCostBasis = totalInitialGross + Math.round(totalInitialGross * fBuy);
+
+  let totalAllocatedCostBasis = 0;
+  let totalNetProceeds = 0;
+
+  const rungs: TakeProfitRungResult[] = input.rungs.map((rung, idx) => {
+    const sharesSold = rung.lotsToSell * SHARES_PER_LOT;
+    const sellPctOfTotal = round2((rung.lotsToSell / input.totalOwnedLots) * 100);
+    const grossProceeds = sharesSold * rung.targetSellPrice;
+    const sellFee = Math.round(grossProceeds * fSell);
+    const stampDuty =
+      includeStampDuty && grossProceeds > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
+    const netProceeds = grossProceeds - sellFee - stampDuty;
+
+    const rungGrossCost = sharesSold * input.avgBuyPrice;
+    const allocatedCostBasis = rungGrossCost + Math.round(rungGrossCost * fBuy);
+    const realizedNetPnL = netProceeds - allocatedCostBasis;
+    const realizedPnLPct = round2((realizedNetPnL / allocatedCostBasis) * 100);
+
+    totalAllocatedCostBasis += allocatedCostBasis;
+    totalNetProceeds += netProceeds;
+
+    return {
+      rungNumber: idx + 1,
+      lotsSold: rung.lotsToSell,
+      sharesSold,
+      sellPctOfTotal,
+      targetSellPrice: rung.targetSellPrice,
+      grossProceeds,
+      sellFee,
+      stampDuty,
+      netProceeds,
+      allocatedCostBasis,
+      realizedNetPnL,
+      realizedPnLPct,
+    };
+  });
+
+  const totalRealizedNetPnL = totalNetProceeds - totalAllocatedCostBasis;
+  const totalRealizedPnLPct = round2(
+    (totalRealizedNetPnL / totalAllocatedCostBasis) * 100,
+  );
+  const remainingLots = input.totalOwnedLots - totalLotsSold;
+  const unrecoveredCapital = Math.max(0, totalInitialCostBasis - totalNetProceeds);
+  const remainingEffectiveCostPerShare =
+    remainingLots > 0
+      ? Math.round(unrecoveredCapital / (remainingLots * SHARES_PER_LOT))
+      : 0;
+  const isFreeRidePosition = remainingLots > 0 && unrecoveredCapital === 0;
+
+  return {
+    valid: true,
+    totalOwnedLots: input.totalOwnedLots,
+    totalLotsSold,
+    remainingLots,
+    totalInitialCostBasis,
+    totalAllocatedCostBasis,
+    totalNetProceeds,
+    totalRealizedNetPnL,
+    totalRealizedPnLPct,
+    unrecoveredCapital,
+    remainingEffectiveCostPerShare,
+    isFreeRidePosition,
+    rungs,
   };
 }

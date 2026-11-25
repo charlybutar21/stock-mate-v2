@@ -76,6 +76,10 @@ export const id: I18nDictionary = {
       'Total seluruh uang modal yang sudah Anda investasikan pada lot yang dimiliki, sudah termasuk Fee Beli Stockbit (0,15%).',
     stampDuty:
       'Bea Materai Rp 10.000 yang dikenakan pada setiap sisi transaksi (beli atau jual) dengan nilai bruto di atas Rp 10.000.000.',
+    valueTrapShield:
+      'Filter kualitas otomatis khusus saham IDX yang memeriksa apakah saham yang terlihat murah (Margin of Safety tinggi atau PBV rendah) sebenarnya menyimpan jebakan puncak siklus komoditas, penurunan laba, ROE lemah, atau utang berlebih.',
+    portfolioXray:
+      'Mengukur bobot Nilai Pasar Bersih per saham dan per sektor IDX. Memberi peringatan jika konsentrasi 1 saham >25% atau 1 sektor >40% pada portofolio multi-saham.',
   },
   auth: {
     loginTitle: 'Masuk ke Stock-Mate',
@@ -134,6 +138,32 @@ export const id: I18nDictionary = {
       UNKNOWN: 'Rasio Utang Belum Tersedia',
     },
   },
+  valueTrapShield: {
+    title: 'Perisai Value Trap IHSG',
+    subtitle: 'Pemeriksaan otomatis kualitas & siklus komoditas terhadap diskon semu.',
+    levels: {
+      CLEAR: 'Cek Value Trap: Aman',
+      WATCH: 'Cek Value Trap: Waspada Siklus / Kualitas',
+      HIGH_RISK: 'Peringatan Value Trap: Risiko Tinggi',
+    },
+    shortBadges: {
+      CLEAR: 'Kualitas Aman',
+      WATCH: 'Waspada Siklus / Kualitas',
+      HIGH_RISK: 'Risiko Value Trap',
+    },
+    clearBody:
+      'Tidak terdeteksi jebakan puncak siklus komoditas, penyusutan laba, Return on Equity lemah, maupun utang berlebih.',
+    warnings: {
+      CYCLICAL_PEAK_WARNING:
+        'Waspada Siklus Komoditas: PER rendah atau Margin of Safety besar di sektor Energi / Barang Baku sering mencerminkan laba puncak siklus komoditas, bukan diskon permanen.',
+      SHRINKING_EARNINGS_TRAP:
+        'Jebakan Penurunan Laba: Saham terlihat murah secara Margin of Safety atau PBV (<1,0x), tetapi Pertumbuhan Laba negatif atau merugi.',
+      LOW_ROE_VALUE_TRAP:
+        'Jebakan Return on Equity Rendah: Meski memiliki diskon Margin of Safety ≥15%, Return on Equity di bawah 8% (di bawah biaya modal wajar ekuitas Indonesia).',
+      HIGH_LEVERAGE_TRAP:
+        'Risiko Utang Tinggi: Terlihat murah secara rasio harga, namun Rasio Utang terhadap Ekuitas (non-bank) melebihi 1,5x.',
+    },
+  },
   methods: {
     relativePer: 'Relative Price-to-Earnings (PER)',
     relativePbv: 'Relative Price-to-Book (PBV)',
@@ -181,6 +211,18 @@ export const id: I18nDictionary = {
     kpiStale: 'Perlu Update (> 14 Hari)',
     hideBalances: 'Sembunyikan nilai portofolio',
     showBalances: 'Tampilkan nilai portofolio',
+    xray: {
+      toggleBtn: 'X-Ray Risiko & Alokasi Sektor',
+      title: 'X-Ray Risiko Portofolio & Alokasi Sektor IDX',
+      subtitle: 'Bobot dihitung dari Nilai Pasar Bersih setelah fee jual Stockbit.',
+      byStockTitle: 'Alokasi per Saham (Batas Maks. 25%)',
+      bySectorTitle: 'Alokasi per Sektor IDX (Batas Maks. 40%)',
+      healthyBadge: 'Terdiversifikasi Baik',
+      alertBadge: 'Peringatan Konsentrasi',
+      singleStockAlert: 'melebihi batas 25% per emiten',
+      sectorAlert: 'melebihi batas 40% per sektor',
+      singleHoldingNote: 'Portofolio 1 saham (tambahkan saham lain untuk evaluasi batas konsentrasi).',
+    },
     investedPrefix: 'Modal',
     filterByUndervaluedHint: 'Klik untuk filter saham undervalued',
     searchPlaceholder: 'Cari kode saham atau nama perusahaan...',
@@ -293,6 +335,8 @@ export const id: I18nDictionary = {
     linkedFairValue: 'Harga Wajar (Median)',
     linkedMos: 'Margin of Safety',
     tabForward: 'Rencana Average Down & Jual',
+    tabPyramiding: 'Perencana Beli Pyramiding',
+    tabTakeProfit: 'Tangga Take-Profit (Jual Bertahap)',
     tabGoalSeek: 'Kalkulator Target Harga Rata-Rata',
     feeSettings: 'Pengaturan Fee Sekuritas & Pajak (Stockbit 2026)',
     buyFeePct: 'Fee Beli Sekuritas (%)',
@@ -335,5 +379,56 @@ export const id: I18nDictionary = {
     resultingPureAvg: 'Harga Rata-Rata Akhir',
     cashRequired: 'Total Dana Dibutuhkan (termasuk fee)',
     invalidInputs: 'Sesuaikan input untuk melihat hasil simulasi yang valid.',
+    pyramiding: {
+      title: 'Perencana Alokasi Modal & Beli Pyramiding',
+      subtitle:
+        'Membagi budget kas Anda ke 3 zona harga beli bertahap (dibulatkan ke bawah sesuai fraksi harga BEI) agar tidak kehabisan peluru di harga atas.',
+      totalBudget: 'Total Budget Kas Siap Beli (Rp)',
+      referencePrice: 'Harga Entri Tahap 1 (Rp)',
+      stepDiscountPct: 'Jarak Penurunan Harga Antar Tahap (%)',
+      strategyLabel: 'Strategi Pembagian Porsi Modal',
+      strategies: {
+        PYRAMID_20_30_50: 'Pyramiding 20% → 30% → 50% (Rekomendasi Anti-All-In)',
+        EQUAL_33_33_34: 'Bagi Rata 33% → 33% → 34%',
+        AGGRESSIVE_15_35_50: 'Fokus Harga Bawah 15% → 35% → 50%',
+      },
+      stageCol: 'Tahap Beli',
+      weightCol: 'Porsi Budget',
+      triggerPriceCol: 'Harga Antre Beli (Fraksi BEI)',
+      lotsCol: 'Jumlah Lot Dapat Dibeli',
+      cashUsedCol: 'Dana Terpakai (termasuk Fee)',
+      cumAvgCol: 'Rata-Rata Murni Kumulatif',
+      totalDeployed: 'Total Dana Terpakai',
+      idleCash: 'Sisa Kas Belum Terpakai',
+      resultingBep: 'Harga Impas Akhir (Fraksi BEI)',
+      projectedNetPnL: 'Estimasi Laba / Rugi Bersih di Target Jual',
+    },
+    takeProfit: {
+      title: 'Simulator Tangga Take-Profit & Jual Bertahap',
+      subtitle:
+        'Rencanakan penjualan bertahap di beberapa target harga, hitung laba bersih terealisasi setelah fee Stockbit, dan pantau sisa lot Free-Ride.',
+      ownedPositionHeader: 'Posisi Saham yang Akan Dijual',
+      totalOwnedLots: 'Total Lot Dimiliki',
+      avgBuyPrice: 'Harga Rata-Rata Beli (Rp)',
+      rungsTitle: 'Target Jual Bertahap (Maks. 5 Tahap)',
+      autoFillFairValue: 'Isi Otomatis dari Rentang Harga Wajar',
+      addRung: 'Tambah Tahap Jual',
+      rungLots: 'Lot Dijual',
+      rungPrice: 'Target Harga Jual (Rp)',
+      totalRealizedPnL: 'Total Laba / Rugi Bersih Terealisasi',
+      totalNetProceeds: 'Total Uang Bersih Diterima',
+      lotsSoldSummary: 'Lot Terjual vs Tersisa',
+      remainingLotsLabel: 'Sisa Lot Masih Dipegang',
+      unrecoveredCapitalLabel: 'Sisa Modal Awal Belum Kembali',
+      effectiveRemainingCostLabel: 'Modal Efektif Sisa Saham per Lembar',
+      freeRideBadge: '100% Posisi Free-Ride Terbuka!',
+      freeRideBody:
+        'Uang bersih dari penjualan sebagian sudah menutup seluruh modal awal Anda. Sisa lot yang Anda pegang kini 100% bebas risiko modal.',
+      rungCol: 'Tahap Jual',
+      lotsShareCol: 'Lot Dijual (% Posisi)',
+      targetPriceCol: 'Harga Jual',
+      netProceedsCol: 'Hasil Bersih (Setelah Fee)',
+      realizedProfitCol: 'Laba / Rugi Bersih Terealisasi',
+    },
   },
 };

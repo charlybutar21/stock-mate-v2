@@ -142,5 +142,62 @@ describe('Core-3 2026 valuation engine', () => {
     expect(empty.mosPct).toBeNull();
     expect(empty.valuationStatus).toBe('INSUFFICIENT_DATA');
     expect(empty.qualityFlags.derFlag).toBe('UNKNOWN');
+    expect(empty.valueTrapShield).toEqual({
+      riskLevel: 'CLEAR',
+      warnings: [],
+    });
+  });
+
+  it('detects IHSG Value Trap Shield warnings (Cyclical Peak, Shrinking Earnings, Low ROE, High Leverage)', () => {
+    // 1. WATCH: Single cyclical peak warning (BASIC_MATERIALS with MoS >= 25% & healthy ROE/growth/DER)
+    const cyclicalWatch = calculateValuation({
+      sector: 'BASIC_MATERIALS',
+      currentPrice: 1000,
+      eps: 125, // currentPer = 8 (> 6, so triggered by mosPct >= 25)
+      bvps: 1000,
+      roePct: 16,
+      der: 0.5,
+      epsGrowthPct: 10,
+      targetPer: 12, // 1500 -> MoS = 33.33%
+      targetPbv: 1.5, // 1500
+    });
+    expect(cyclicalWatch.valueTrapShield).toEqual({
+      riskLevel: 'WATCH',
+      warnings: ['CYCLICAL_PEAK_WARNING'],
+    });
+
+    // 2. WATCH: Low ROE trap only (non-cyclical, positive growth, low DER, ROE < 8%, MoS >= 15%)
+    const lowRoeWatch = calculateValuation({
+      sector: 'CONSUMER_CYCLICALS',
+      currentPrice: 800,
+      eps: 80,
+      bvps: 1200,
+      roePct: 6.5,
+      der: 0.4,
+      epsGrowthPct: 5,
+      targetPer: 13, // 1040 -> MoS = 23.08%
+      targetPbv: 1.0, // 1200
+    });
+    expect(lowRoeWatch.valueTrapShield).toEqual({
+      riskLevel: 'WATCH',
+      warnings: ['LOW_ROE_VALUE_TRAP'],
+    });
+
+    // 3. HIGH_RISK: Shrinking earnings + High leverage on non-bank stock
+    const highRiskTrap = calculateValuation({
+      sector: 'PROPERTY_REAL_ESTATE',
+      currentPrice: 500,
+      eps: 60,
+      bvps: 900,
+      roePct: 10,
+      der: 1.8,
+      epsGrowthPct: -15,
+      targetPer: 10, // 600
+      targetPbv: 0.8, // 720
+    });
+    expect(highRiskTrap.valueTrapShield).toEqual({
+      riskLevel: 'HIGH_RISK',
+      warnings: ['SHRINKING_EARNINGS_TRAP', 'HIGH_LEVERAGE_TRAP'],
+    });
   });
 });

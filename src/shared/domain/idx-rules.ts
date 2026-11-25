@@ -42,6 +42,13 @@ export function ceilToIdxTick(rawPrice: number): number {
   return Math.ceil(pInt / tick) * tick;
 }
 
+export function floorToIdxTick(rawPrice: number): number {
+  const pInt = Math.floor(rawPrice);
+  if (pInt <= MIN_IDX_PRICE) return MIN_IDX_PRICE;
+  const tick = getIdxTickSize(pInt);
+  return Math.max(MIN_IDX_PRICE, Math.floor(pInt / tick) * tick);
+}
+
 export function isStaleTimestamp(updatedAtMs: number, nowMs: number = Date.now()): boolean {
   return nowMs - updatedAtMs > STALE_THRESHOLD_MS;
 }

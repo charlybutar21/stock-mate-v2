@@ -10,9 +10,11 @@ import {
   EyeOff,
   Layers,
   Pencil,
+  PieChart,
   Plus,
   RefreshCw,
   Search,
+  ShieldAlert,
   Sparkles,
   Trash2,
   TrendingUp,
@@ -22,6 +24,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import type { WatchlistItemDto } from '@/shared/contracts';
 import {
+  analyzePortfolioRisk,
   calculatePositionSummary,
   IDX_SECTORS,
   type IdxSector,
@@ -43,6 +46,7 @@ import { useI18n } from '@/client/i18n/useI18n';
 import { ApiClientError } from '@/client/lib/apiClient';
 import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
 import { MASKED_IDR, MASKED_LOTS, usePrivacy } from '@/client/lib/usePrivacy';
+import { PortfolioRiskXrayCard } from './PortfolioRiskXrayCard';
 import { StockFormModal } from './StockFormModal';
 import {
   useCreateWatchlistItem,
@@ -68,6 +72,7 @@ export function WatchlistPage() {
   const [sector, setSector] = useState<IdxSector | ''>('');
   const [sort, setSort] = useState<'updated_desc' | 'mos_desc' | 'ticker_asc'>('updated_desc');
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
+  const [showXray, setShowXray] = useState(true);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<WatchlistItemDto | null>(null);
@@ -159,6 +164,20 @@ export function WatchlistPage() {
       totalNetPnLPct,
       stale: list.filter((i) => i.isStale).length,
     };
+  }, [items]);
+
+  const portfolioRisk = useMemo(() => {
+    const list = items ?? [];
+    return analyzePortfolioRisk(
+      list.map((i) => ({
+        ticker: i.ticker,
+        companyName: i.companyName,
+        sector: i.sector,
+        ownedLots: i.ownedLots,
+        avgBuyPrice: i.avgBuyPrice,
+        currentPrice: i.currentPrice,
+      })),
+    );
   }, [items]);
 
   const filteredItems = useMemo(() => {
@@ -275,15 +294,33 @@ export function WatchlistPage() {
               </span>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setViewFilter(viewFilter === 'portfolio' ? 'all' : 'portfolio')}
-              className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:bg-brand-50 hover:text-brand-700 cursor-pointer"
-            >
-              <Briefcase className="h-3.5 w-3.5 text-brand-600" />
-              <span className="font-mono">{kpis.portfolioCount}</span>
-              <span>{t.watchlist.pillPortfolio}</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {portfolioRisk.activeHoldingsCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowXray((v) => !v)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer',
+                    showXray
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'bg-surface text-ink hover:bg-brand-50 hover:text-brand-700',
+                  )}
+                >
+                  <PieChart className="h-3.5 w-3.5 text-brand-600" />
+                  <span>{t.watchlist.xray.toggleBtn}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setViewFilter(viewFilter === 'portfolio' ? 'all' : 'portfolio')}
+                className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:bg-brand-50 hover:text-brand-700 cursor-pointer"
+              >
+                <Briefcase className="h-3.5 w-3.5 text-brand-600" />
+                <span className="font-mono">{kpis.portfolioCount}</span>
+                <span>{t.watchlist.pillPortfolio}</span>
+              </button>
+            </div>
           </div>
         </Card>
 
@@ -335,6 +372,11 @@ export function WatchlistPage() {
           </Card>
         </div>
       </div>
+
+      {/* Use Case 1: Portfolio Risk & Sector Allocation X-Ray */}
+      {!isLoading && showXray && portfolioRisk.activeHoldingsCount > 0 && (
+        <PortfolioRiskXrayCard risk={portfolioRisk} />
+      )}
 
       {/* Stockbit-Style Unified Watchlist Workspace Card */}
       <div className="overflow-hidden rounded-xl border border-border bg-panel surface-elevated animate-fade-up">
@@ -630,6 +672,22 @@ export function WatchlistPage() {
                           <Badge tone={statusTone(item.valuation.valuationStatus)}>
                             {t.valuationStatus[item.valuation.valuationStatus]}
                           </Badge>
+                          {item.valuation.valueTrapShield.riskLevel !== 'CLEAR' && (
+                            <span
+                              title={item.valuation.valueTrapShield.warnings
+                                .map((w) => t.valueTrapShield.warnings[w])
+                                .join(' • ')}
+                              className={cn(
+                                'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold',
+                                item.valuation.valueTrapShield.riskLevel === 'HIGH_RISK'
+                                  ? 'bg-negative-50 text-negative-700'
+                                  : 'bg-warning-50 text-warning-700',
+                              )}
+                            >
+                              <ShieldAlert className="h-3 w-3 shrink-0" />
+                              {t.valueTrapShield.shortBadges[item.valuation.valueTrapShield.riskLevel]}
+                            </span>
+                          )}
                         </div>
                       </td>
 
