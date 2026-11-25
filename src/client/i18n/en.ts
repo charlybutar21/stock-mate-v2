@@ -70,6 +70,8 @@ export const en = {
       'Net paper profit or loss after deducting Stockbit Buy Fee (0.15%), Stockbit Sell Fee (0.25%), and Stamp Duty (Rp 10,000 if gross > Rp 10,000,000).',
     netMarketValue:
       'Clean cash value you would actually receive if sold today at current Market Price, after deducting Stockbit Sell Fee (0.25%) and Stamp Duty (Rp 10,000 if gross > Rp 10,000,000).',
+    totalInvested:
+      'Total capital you have already invested across your owned lots, including the Stockbit Buy Fee (0.15%).',
     stampDuty:
       'Indonesian Stamp Duty (Bea Materai): Rp 10,000 flat fee applied per transaction side when gross value exceeds Rp 10,000,000.',
   },
@@ -172,7 +174,11 @@ export const en = {
     kpiTotal: 'Tracked Stocks',
     kpiUndervalued: 'Undervalued Stocks',
     kpiPositions: 'Net Portfolio Value (After Sell Fee)',
+    kpiInvested: 'Total Invested Capital',
+    kpiTotalPnL: 'Total Net Profit / Loss',
     kpiStale: 'Needs Refresh (> 14 Days)',
+    investedPrefix: 'Invested',
+    filterByUndervaluedHint: 'Click to filter undervalued stocks',
     searchPlaceholder: 'Search symbol or company...',
     allSectors: 'All Sectors',
     sortUpdated: 'Recently Updated',
@@ -212,6 +218,8 @@ export const en = {
       buyEntryPrice: 'Buy Price (Rp)',
       noHoldingsYet: 'No owned lots yet. Click "Add Buy / Average Down" to track your position.',
       combinedSummary: 'Combined Position Summary',
+      totalInvestedLabel: 'Total Invested Capital',
+      stockbitBuyFeeNote: 'Incl. 0.15% buy fee',
       netMarketValueLabel: 'Net Market Value (After Stockbit Sell Fee)',
       stockbitSellFeeNote: 'After 0.25% sell fee',
       stampDutyShort: '+ Rp 10,000 stamp duty',

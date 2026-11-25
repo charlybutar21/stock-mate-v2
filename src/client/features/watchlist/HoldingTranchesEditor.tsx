@@ -132,10 +132,12 @@ export function HoldingTranchesEditor({
       )}
 
       {pos.ownedLots > 0 && (
-        <div className="grid grid-cols-1 gap-2.5 border-t border-border pt-3 sm:grid-cols-3">
-          <div className="rounded-md border border-border bg-panel px-3 py-2">
-            <div className="text-[11px] text-muted">{t.watchlist.form.combinedSummary}</div>
-            <div className="font-mono text-xs font-bold text-ink tabular-nums">
+        <div className="grid grid-cols-1 gap-2.5 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border border-border bg-panel px-3 py-2.5">
+            <div className="text-[11px] font-medium text-muted">
+              {t.watchlist.form.combinedSummary}
+            </div>
+            <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
               {formatNumber(pos.ownedLots)} {t.common.lots} · {formatIdr(pos.avgBuyPrice)}
             </div>
             <div className="font-mono text-[10px] text-muted tabular-nums">
@@ -143,14 +145,29 @@ export function HoldingTranchesEditor({
             </div>
           </div>
 
-          <div className="rounded-md border border-brand-600/20 bg-brand-50/50 px-3 py-2">
-            <div className="text-[11px] text-brand-700">
+          <div className="rounded-lg border border-border bg-panel px-3 py-2.5">
+            <div className="text-[11px] font-medium text-muted">
+              <TermTooltip
+                label={t.watchlist.form.totalInvestedLabel}
+                definition={t.glossary.totalInvested}
+              />
+            </div>
+            <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
+              {formatIdr(pos.costBasis)}
+            </div>
+            <div className="font-mono text-[10px] text-muted tabular-nums">
+              +{formatIdr(pos.estimatedBuyFee)} ({t.watchlist.form.stockbitBuyFeeNote})
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-brand-600/25 bg-brand-50/60 px-3 py-2.5">
+            <div className="text-[11px] font-medium text-brand-700">
               <TermTooltip
                 label={t.watchlist.form.netMarketValueLabel}
                 definition={t.glossary.netMarketValue}
               />
             </div>
-            <div className="font-mono text-xs font-bold text-brand-900 tabular-nums">
+            <div className="mt-0.5 font-mono text-xs font-bold text-brand-900 tabular-nums">
               {formatIdr(pos.marketValue)}
             </div>
             <div className="font-mono text-[10px] text-brand-700/80 tabular-nums">
@@ -161,15 +178,15 @@ export function HoldingTranchesEditor({
             </div>
           </div>
 
-          <div className="rounded-md border border-border bg-panel px-3 py-2">
-            <div className="text-[11px] text-muted">
+          <div className="rounded-lg border border-border bg-panel px-3 py-2.5">
+            <div className="text-[11px] font-medium text-muted">
               <TermTooltip
                 label={t.detail.unrealizedPnL}
                 definition={t.glossary.unrealizedPnL}
               />
             </div>
             <div
-              className={`font-mono text-xs font-bold tabular-nums ${
+              className={`mt-0.5 font-mono text-xs font-bold tabular-nums ${
                 pos.unrealizedPnL === null
                   ? 'text-muted'
                   : pos.unrealizedPnL >= 0

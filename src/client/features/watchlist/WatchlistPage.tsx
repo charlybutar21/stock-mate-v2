@@ -6,12 +6,15 @@ import {
   Briefcase,
   Calculator,
   Clock,
+  Layers,
   Pencil,
   Plus,
   RefreshCw,
   Search,
   Sparkles,
   Trash2,
+  TrendingUp,
+  Wallet,
 } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
@@ -127,16 +130,30 @@ export function WatchlistPage() {
   const kpis = useMemo(() => {
     const list = items ?? [];
     const portfolioItems = list.filter((i) => i.ownedLots > 0);
-    const portfolioMarketValue = portfolioItems.reduce(
-      (sum, item) =>
-        sum + calculatePositionSummary(item.ownedLots, item.avgBuyPrice, item.currentPrice).marketValue,
-      0,
-    );
+    let portfolioMarketValue = 0;
+    let totalInvestedCapital = 0;
+
+    for (const item of portfolioItems) {
+      const pos = calculatePositionSummary(item.ownedLots, item.avgBuyPrice, item.currentPrice);
+      portfolioMarketValue += pos.marketValue;
+      totalInvestedCapital += pos.costBasis;
+    }
+
+    const totalNetPnL =
+      totalInvestedCapital > 0 ? portfolioMarketValue - totalInvestedCapital : null;
+    const totalNetPnLPct =
+      totalNetPnL !== null && totalInvestedCapital > 0
+        ? Math.round((totalNetPnL / totalInvestedCapital) * 10000) / 100
+        : null;
+
     return {
       total: list.length,
       portfolioCount: portfolioItems.length,
       undervalued: list.filter((i) => i.valuation.valuationStatus === 'UNDERVALUED').length,
       portfolioMarketValue,
+      totalInvestedCapital,
+      totalNetPnL,
+      totalNetPnLPct,
       stale: list.filter((i) => i.isStale).length,
     };
   }, [items]);
@@ -167,43 +184,139 @@ export function WatchlistPage() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* Compact KPI Summary Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 animate-fade-up">
-        <Card interactive className="p-4">
-          <div className="text-xs font-medium text-muted">{t.watchlist.kpiTotal}</div>
-          <div className="mt-1 font-mono text-2xl font-bold text-ink tabular-nums">
-            {isLoading ? <Skeleton className="h-7 w-12" /> : kpis.total}
+    <div className="space-y-6">
+      {/* Executive Portfolio Summary + Watchlist Insights */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 animate-fade-up">
+        {/* Primary Portfolio Financial Card (Invested Capital vs Net Market Value vs Net P/L) */}
+        <Card className="border-t-2 border-t-brand-600 p-5 lg:col-span-7">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-muted">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-50 text-brand-600">
+                  <Wallet className="h-3.5 w-3.5" />
+                </span>
+                <TermTooltip
+                  label={t.watchlist.kpiPositions}
+                  definition={t.glossary.netMarketValue}
+                />
+              </div>
+              <div className="mt-2 font-mono text-3xl font-bold tracking-tight text-ink tabular-nums">
+                {isLoading ? (
+                  <Skeleton className="h-9 w-44" />
+                ) : (
+                  formatIdr(kpis.portfolioMarketValue)
+                )}
+              </div>
+            </div>
+
+            {!isLoading && kpis.totalNetPnL !== null && (
+              <div
+                className={cn(
+                  'inline-flex flex-col items-start rounded-lg border px-3.5 py-2 sm:items-end',
+                  kpis.totalNetPnL >= 0
+                    ? 'border-positive-600/20 bg-positive-50 text-positive-700'
+                    : 'border-negative-600/20 bg-negative-50 text-negative-700',
+                )}
+              >
+                <span className="text-[11px] font-medium opacity-85">
+                  <TermTooltip
+                    label={t.watchlist.kpiTotalPnL}
+                    definition={t.glossary.unrealizedPnL}
+                    className="border-current/40 hover:text-current"
+                  />
+                </span>
+                <div className="mt-0.5 flex items-center gap-1 font-mono text-sm font-bold tabular-nums">
+                  {kpis.totalNetPnL >= 0 ? (
+                    <ArrowUpRight className="h-4 w-4" />
+                  ) : (
+                    <ArrowDownRight className="h-4 w-4" />
+                  )}
+                  <span>
+                    {kpis.totalNetPnL >= 0 ? '+' : ''}
+                    {formatIdr(kpis.totalNetPnL)}
+                  </span>
+                  <span className="text-xs font-semibold opacity-90">
+                    ({formatPercent(kpis.totalNetPnLPct, true)})
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/80 pt-3.5">
+            <div className="flex items-center gap-2 text-xs text-muted">
+              <TermTooltip
+                label={t.watchlist.kpiInvested}
+                definition={t.glossary.totalInvested}
+              />
+              <span className="font-mono text-sm font-bold text-ink tabular-nums">
+                {isLoading ? (
+                  <Skeleton className="inline-block h-4 w-28" />
+                ) : (
+                  formatIdr(kpis.totalInvestedCapital)
+                )}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setViewFilter(viewFilter === 'portfolio' ? 'all' : 'portfolio')}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:bg-brand-50 hover:text-brand-700 cursor-pointer"
+            >
+              <Briefcase className="h-3.5 w-3.5 text-brand-600" />
+              <span className="font-mono">{kpis.portfolioCount}</span>
+              <span>{t.watchlist.pillPortfolio}</span>
+            </button>
           </div>
         </Card>
-        <Card interactive className="p-4">
-          <div className="text-xs font-medium text-muted">
-            <TermTooltip
-              label={t.watchlist.kpiUndervalued}
-              definition={t.glossary.marginOfSafety}
-            />
-          </div>
-          <div className="mt-1 font-mono text-2xl font-bold text-positive-600 tabular-nums">
-            {isLoading ? <Skeleton className="h-7 w-12" /> : kpis.undervalued}
-          </div>
-        </Card>
-        <Card interactive className="p-4">
-          <div className="text-xs font-medium text-muted">
-            <TermTooltip
-              label={t.watchlist.kpiPositions}
-              definition={t.glossary.netMarketValue}
-            />
-          </div>
-          <div className="mt-1 font-mono text-2xl font-bold text-ink tabular-nums">
-            {isLoading ? <Skeleton className="h-7 w-24" /> : formatIdr(kpis.portfolioMarketValue)}
-          </div>
-        </Card>
-        <Card interactive className="p-4">
-          <div className="text-xs font-medium text-muted">{t.watchlist.kpiStale}</div>
-          <div className="mt-1 font-mono text-2xl font-bold text-warning-600 tabular-nums">
-            {isLoading ? <Skeleton className="h-7 w-12" /> : kpis.stale}
-          </div>
-        </Card>
+
+        {/* Secondary Insight Cards */}
+        <div className="grid grid-cols-2 gap-4 lg:col-span-5">
+          <Card
+            interactive
+            onClick={() => setViewFilter(viewFilter === 'undervalued' ? 'all' : 'undervalued')}
+            className="flex cursor-pointer flex-col justify-between p-5"
+            title={t.watchlist.filterByUndervaluedHint}
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-positive-50 text-positive-600">
+                <TrendingUp className="h-4 w-4" />
+              </span>
+              {viewFilter === 'undervalued' && <Badge tone="positive">Active</Badge>}
+            </div>
+            <div className="mt-4">
+              <div className="text-xs font-medium text-muted">
+                <TermTooltip
+                  label={t.watchlist.kpiUndervalued}
+                  definition={t.glossary.marginOfSafety}
+                />
+              </div>
+              <div className="mt-1 font-mono text-3xl font-bold text-positive-600 tabular-nums">
+                {isLoading ? <Skeleton className="h-8 w-12" /> : kpis.undervalued}
+              </div>
+            </div>
+          </Card>
+
+          <Card interactive className="flex flex-col justify-between p-5">
+            <div className="flex items-center justify-between">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface text-ink">
+                <Layers className="h-4 w-4" />
+              </span>
+              {!isLoading && kpis.stale > 0 && (
+                <Badge tone="warning">
+                  <Clock className="h-3 w-3" />
+                  {kpis.stale} {t.watchlist.staleBadge}
+                </Badge>
+              )}
+            </div>
+            <div className="mt-4">
+              <div className="text-xs font-medium text-muted">{t.watchlist.kpiTotal}</div>
+              <div className="mt-1 font-mono text-3xl font-bold text-ink tabular-nums">
+                {isLoading ? <Skeleton className="h-8 w-12" /> : kpis.total}
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
 
       {/* Stockbit-Style Unified Watchlist Workspace Card */}
@@ -490,12 +603,15 @@ export function WatchlistPage() {
                         )}
                       </td>
 
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3.5 text-right">
                         {pos.ownedLots > 0 ? (
-                          <div>
-                            <div className="font-mono text-xs font-semibold text-ink tabular-nums">
+                          <div className="space-y-0.5">
+                            <div className="font-mono text-xs font-bold text-ink tabular-nums">
                               {formatNumber(pos.ownedLots)} {t.common.lots}
                               {pos.avgBuyPrice ? ` · ${formatIdr(pos.avgBuyPrice)}` : ''}
+                            </div>
+                            <div className="font-mono text-[11px] text-muted tabular-nums">
+                              {t.watchlist.investedPrefix}: {formatIdr(pos.costBasis)}
                             </div>
                             {pos.unrealizedPnLPct !== null && (
                               <div
@@ -505,7 +621,10 @@ export function WatchlistPage() {
                                     : 'text-negative-600'
                                 }`}
                               >
-                                {formatPercent(pos.unrealizedPnLPct, true)}
+                                {pos.unrealizedPnL !== null
+                                  ? `${pos.unrealizedPnL >= 0 ? '+' : ''}${formatIdr(pos.unrealizedPnL)} `
+                                  : ''}
+                                ({formatPercent(pos.unrealizedPnLPct, true)})
                               </div>
                             )}
                           </div>

@@ -72,6 +72,8 @@ export const id: I18nDictionary = {
       'Laba atau rugi bersih berjalan setelah memperhitungkan Fee Beli Stockbit (0,15%), Fee Jual Stockbit (0,25%), serta Bea Materai (Rp 10.000 jika transaksi bruto > Rp 10.000.000).',
     netMarketValue:
       'Nilai bersih uang yang masuk ke RDN jika seluruh lot dijual di Harga Pasar saat ini, sudah dipotong Fee Jual Stockbit (0,25%) dan Bea Materai (Rp 10.000 jika nilai bruto > Rp 10.000.000).',
+    totalInvested:
+      'Total seluruh uang modal yang sudah Anda investasikan pada lot yang dimiliki, sudah termasuk Fee Beli Stockbit (0,15%).',
     stampDuty:
       'Bea Materai Rp 10.000 yang dikenakan pada setiap sisi transaksi (beli atau jual) dengan nilai bruto di atas Rp 10.000.000.',
   },
@@ -174,7 +176,11 @@ export const id: I18nDictionary = {
     kpiTotal: 'Total Emiten',
     kpiUndervalued: 'Saham Undervalued',
     kpiPositions: 'Nilai Bersih Portofolio (Setelah Fee Jual)',
+    kpiInvested: 'Total Modal Diinvestasikan',
+    kpiTotalPnL: 'Total Laba / Rugi Bersih',
     kpiStale: 'Perlu Update (> 14 Hari)',
+    investedPrefix: 'Modal',
+    filterByUndervaluedHint: 'Klik untuk filter saham undervalued',
     searchPlaceholder: 'Cari kode saham atau nama perusahaan...',
     allSectors: 'Semua Sektor',
     sortUpdated: 'Terbaru Diperbarui',
@@ -213,6 +219,8 @@ export const id: I18nDictionary = {
       buyEntryPrice: 'Harga Beli (Rp)',
       noHoldingsYet: 'Belum ada kepemilikan lot. Klik "Tambah Beli / Average Down" untuk mencatat posisi Anda.',
       combinedSummary: 'Ringkasan Posisi Gabungan',
+      totalInvestedLabel: 'Total Modal Diinvestasikan',
+      stockbitBuyFeeNote: 'Termasuk fee beli 0,15%',
       netMarketValueLabel: 'Nilai Pasar Bersih (Setelah Fee Jual Stockbit)',
       stockbitSellFeeNote: 'Sudah dipotong fee jual 0,25%',
       stampDutyShort: '+ Bea Materai Rp 10.000',
