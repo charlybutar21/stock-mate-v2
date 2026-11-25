@@ -254,7 +254,7 @@ export function StockDetailPage() {
           </Button>
           <Link
             to={`/simulator?stockId=${item.id}`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-xs font-medium text-surface transition-colors hover:bg-brand-700"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 text-xs font-semibold text-white shadow-xs transition-all hover:bg-brand-700"
           >
             <Calculator className="h-3.5 w-3.5" />
             {t.detail.openSimulator}

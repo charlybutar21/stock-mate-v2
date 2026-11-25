@@ -1,43 +1,43 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Newsreader", Georgia, Cambria, "Times New Roman", serif;
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Warm Archival Editorial Financial Palette with Tonal Depth */
-  --color-surface: #f2efe8;
+  /* Stockbit-Inspired Clean Modern IDX Trading Workspace */
+  --color-surface: #f5f7f9;
   --color-panel: #ffffff;
-  --color-subtle: #eae6dc;
-  --color-border: #dad4c8;
-  --color-ink: #161513;
-  --color-muted: #5e5951;
+  --color-subtle: #f0f3f6;
+  --color-border: #e3e8ee;
+  --color-ink: #111827;
+  --color-muted: #64748b;
 
-  /* Deliberate Institutional Accent: Deep Forest Pine */
-  --color-brand-50: #eaf6ef;
-  --color-brand-100: #cee9d9;
-  --color-brand-600: #166534;
-  --color-brand-700: #14532d;
-  --color-brand-900: #0a2e19;
+  /* Signature Stockbit Mint Emerald Accent */
+  --color-brand-50: #e9f9f2;
+  --color-brand-100: #c6f0dd;
+  --color-brand-600: #00ab6b;
+  --color-brand-700: #00925b;
+  --color-brand-900: #005c39;
 
-  /* Editorial Semantic Signals */
-  --color-positive-50: #ecf8f0;
-  --color-positive-600: #15803d;
-  --color-positive-700: #166534;
+  /* Market Semantic Signals */
+  --color-positive-50: #e9f9f2;
+  --color-positive-600: #00ab6b;
+  --color-positive-700: #008a56;
 
-  --color-warning-50: #fef6e4;
-  --color-warning-600: #b45309;
-  --color-warning-700: #92400e;
+  --color-warning-50: #fffbeb;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
 
-  --color-negative-50: #fef0f0;
-  --color-negative-600: #b91c1c;
-  --color-negative-700: #991b1b;
+  --color-negative-50: #fef2f2;
+  --color-negative-600: #e53e3e;
+  --color-negative-700: #c53030;
 }
 
 @keyframes fadeUpIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(5px);
   }
   to {
     opacity: 1;
@@ -61,27 +61,27 @@
   }
 
   .animate-fade-up {
-    animation: fadeUpIn 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: fadeUpIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .surface-elevated {
     box-shadow:
-      0 1px 2px rgba(22, 21, 19, 0.05),
-      0 8px 24px -12px rgba(22, 21, 19, 0.08);
+      0 1px 2px rgba(15, 23, 42, 0.04),
+      0 6px 18px -10px rgba(15, 23, 42, 0.07);
   }
 
   .surface-interactive {
     transition:
-      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 180ms ease;
+      transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 160ms ease;
   }
 
   .surface-interactive:hover {
     transform: translateY(-2px);
-    border-color: #c7bfb0;
+    border-color: #b7e6d1;
     box-shadow:
-      0 4px 10px -2px rgba(22, 21, 19, 0.07),
-      0 14px 30px -14px rgba(22, 21, 19, 0.12);
+      0 4px 12px -3px rgba(0, 171, 107, 0.08),
+      0 12px 24px -12px rgba(15, 23, 42, 0.1);
   }
 }

@@ -1,4 +1,4 @@
-import { Calculator, Layers, LogOut } from 'lucide-react';
+import { Calculator, LogOut, Star, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useI18n } from '@/client/i18n/useI18n';
@@ -9,7 +9,7 @@ export function LanguageSwitcher() {
   const { lang, setLang } = useI18n();
   return (
     <div
-      className="inline-flex items-center rounded-sm border border-border bg-surface p-0.5 font-mono text-[11px] font-medium"
+      className="inline-flex items-center rounded-lg border border-border bg-surface p-0.5 text-xs font-semibold"
       role="group"
       aria-label="Language switcher"
     >
@@ -17,8 +17,8 @@ export function LanguageSwitcher() {
         type="button"
         onClick={() => setLang('en')}
         className={cn(
-          'rounded-xs px-2 py-0.5 transition-colors cursor-pointer',
-          lang === 'en' ? 'bg-ink text-surface' : 'text-muted hover:text-ink',
+          'rounded-md px-2.5 py-1 transition-all cursor-pointer',
+          lang === 'en' ? 'bg-brand-600 text-white shadow-2xs' : 'text-muted hover:text-ink',
         )}
       >
         EN
@@ -27,8 +27,8 @@ export function LanguageSwitcher() {
         type="button"
         onClick={() => setLang('id')}
         className={cn(
-          'rounded-xs px-2 py-0.5 transition-colors cursor-pointer',
-          lang === 'id' ? 'bg-ink text-surface' : 'text-muted hover:text-ink',
+          'rounded-md px-2.5 py-1 transition-all cursor-pointer',
+          lang === 'id' ? 'bg-brand-600 text-white shadow-2xs' : 'text-muted hover:text-ink',
         )}
       >
         ID
@@ -44,21 +44,29 @@ export function AppShell({ children }: { children: ReactNode }) {
   const logout = useLogout();
 
   const navItems = [
-    { to: '/watchlist', label: t.nav.watchlist, icon: Layers },
+    { to: '/watchlist', label: t.nav.watchlist, icon: Star },
     { to: '/simulator', label: t.nav.simulator, icon: Calculator },
   ];
 
+  const initials = (user?.name ?? 'U')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]!.toUpperCase())
+    .join('');
+
   return (
     <div className="min-h-screen bg-surface">
+      {/* Stockbit-Inspired Clean Dual-Zone Top Header */}
       <header className="sticky top-0 z-30 border-b border-border bg-panel">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <div className="flex h-full items-center gap-7">
-            <Link to="/watchlist" className="flex items-baseline gap-2 text-ink">
-              <span className="font-display text-lg font-semibold tracking-tight">
-                {t.appName}
+          <div className="flex h-full items-center gap-6">
+            <Link to="/watchlist" className="flex items-center gap-2 text-ink">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-2xs">
+                <TrendingUp className="h-4 w-4" />
               </span>
-              <span className="hidden font-mono text-[10px] tracking-widest text-muted uppercase sm:inline">
-                IDX DESK
+              <span className="font-display text-lg font-bold tracking-tight text-ink">
+                {t.appName}
               </span>
             </Link>
 
@@ -71,13 +79,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                     key={item.to}
                     to={item.to}
                     className={cn(
-                      'relative inline-flex h-full items-center gap-1.5 px-3 text-sm font-medium transition-colors',
+                      'relative inline-flex h-full items-center gap-1.5 px-3.5 text-sm font-semibold transition-colors',
                       active
-                        ? 'text-ink after:absolute after:right-0 after:bottom-0 after:left-0 after:h-[2px] after:bg-brand-700'
+                        ? 'text-brand-600 after:absolute after:right-2 after:bottom-0 after:left-2 after:h-[2.5px] after:rounded-t-full after:bg-brand-600'
                         : 'text-muted hover:text-ink',
                     )}
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="h-4 w-4" />
                     {item.label}
                   </Link>
                 );
@@ -89,7 +97,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <LanguageSwitcher />
             {user && (
               <div className="hidden items-center gap-2 border-l border-border pl-3 sm:flex">
-                <span className="max-w-[140px] truncate text-xs font-medium text-muted">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-700 border border-brand-600/20">
+                  {initials}
+                </span>
+                <span className="max-w-[130px] truncate text-xs font-medium text-ink">
                   {user.name}
                 </span>
               </div>
@@ -101,14 +112,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               disabled={logout.isPending}
               aria-label={t.nav.logout}
             >
-              <LogOut className="h-3.5 w-3.5" />
+              <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">{t.nav.logout}</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-7 sm:px-6">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">{children}</main>
     </div>
   );
 }
