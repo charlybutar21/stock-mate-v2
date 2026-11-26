@@ -6,10 +6,14 @@ import {
   Bookmark,
   Briefcase,
   Calculator,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Eye,
   EyeOff,
   Filter,
+  FolderPlus,
+  Globe,
   Layers,
   Pencil,
   PieChart,
@@ -18,15 +22,20 @@ import {
   RotateCcw,
   Search,
   ShieldAlert,
-  Sparkles,
   Trash2,
   TrendingUp,
   Wallet,
   X,
 } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
-import { Link } from 'react-router';
-import type { WatchlistItemDto } from '@/shared/contracts';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
+import type {
+  CatalogSortOption,
+  CustomWatchlistGroupDto,
+  MarketStockDto,
+  ValuationStatusFilter,
+  WatchlistItemDto,
+} from '@/shared/contracts';
 import {
   analyzePortfolioRisk,
   calculatePositionSummary,
@@ -44,7 +53,6 @@ import {
   cn,
   Input,
   Modal,
-  RolePill,
   SectionHeader,
   Select,
   Skeleton,
@@ -52,17 +60,24 @@ import {
   type BadgeTone,
 } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
-import { ApiClientError } from '@/client/lib/apiClient';
-import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
+import { formatIdr, formatNumber, formatPercent, formatShortDate } from '@/client/lib/formatters';
 import { useCalcMode } from '@/client/lib/useCalcMode';
 import { MASKED_IDR, MASKED_LOTS, usePrivacy } from '@/client/lib/usePrivacy';
+import { AddToWatchlistMenu } from './AddToWatchlistMenu';
+import { CustomWatchlistModal } from './CustomWatchlistModal';
+import { CustomWatchlistQuickAdd } from './CustomWatchlistQuickAdd';
 import { PortfolioRiskXrayCard } from './PortfolioRiskXrayCard';
 import { StockFormModal } from './StockFormModal';
 import {
-  useCreateWatchlistItem,
+  useCustomWatchlists,
+  useCustomWatchlistStocks,
+  useDeleteCustomWatchlist,
   useDeleteWatchlistItem,
-  useFetchIdxQuote,
+  useEnsureWatchlistItem,
+  useIdxCatalog,
+  useRemoveStockFromCustomWatchlist,
   useSyncAllWatchlist,
+  useSyncIdxCatalog,
   useWatchlist,
 } from './useWatchlist';
 
@@ -73,41 +88,93 @@ export function statusTone(status: ValuationStatus): BadgeTone {
   return 'neutral';
 }
 
-type ViewFilter = 'all' | 'portfolio' | 'watching' | 'undervalued';
+type ActiveTab = { kind: 'all' } | { kind: 'my_stocks' } | { kind: 'custom'; groupId: string };
+type MosPreset = 'any' | 'gte50' | 'gte30' | 'gte15' | 'fair0to30' | 'lt0' | 'custom';
 
-interface WatchlistTableProps {
-  items: WatchlistItemDto[];
-  mode: 'portfolio' | 'watching' | 'mixed';
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+function parseOptionalNumericFilter(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  const num = Number(trimmed);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+function mapWatchlistItemToMarket(
+  item: WatchlistItemDto,
+  customWatchlistIds: string[],
+): MarketStockDto {
+  return {
+    watchlistItemId: item.id,
+    ticker: item.ticker,
+    companyName: item.companyName,
+    sector: item.sector,
+    currentPrice: item.currentPrice,
+    ownedLots: item.ownedLots,
+    avgBuyPrice: item.avgBuyPrice,
+    holdingTranches: item.holdingTranches,
+    targetBuyPrice: item.targetBuyPrice,
+    investmentThesis: item.investmentThesis,
+    updatedAt: item.updatedAt,
+    isStale: item.isStale,
+    fundamentals: item.fundamentals,
+    valuation: item.valuation,
+    customWatchlistIds,
+  };
+}
+
+interface MarketStockTableProps {
+  items: MarketStockDto[];
+  tabKind: 'all' | 'my_stocks' | 'custom';
   sector: IdxSector | '';
   onToggleSector: (next: IdxSector | '') => void;
   hideBalances: boolean;
-  onEdit: (item: WatchlistItemDto) => void;
-  onDelete: (item: WatchlistItemDto) => void;
+  customGroups: CustomWatchlistGroupDto[];
+  openingTicker: string | null;
+  onOpenDetail: (stock: MarketStockDto) => void;
+  onOpenSimulator: (stock: MarketStockDto) => void;
+  onEdit: (stock: MarketStockDto) => void;
+  onDeletePersonal?: (stock: MarketStockDto) => void;
+  onRemoveFromCustom?: (ticker: string) => void;
+  onCreateWatchlistWithTicker: (ticker: string) => void;
 }
 
-function WatchlistTable({
+function MarketStockTable({
   items,
-  mode,
+  tabKind,
   sector,
   onToggleSector,
   hideBalances,
+  customGroups,
+  openingTicker,
+  onOpenDetail,
+  onOpenSimulator,
   onEdit,
-  onDelete,
-}: WatchlistTableProps) {
+  onDeletePersonal,
+  onRemoveFromCustom,
+  onCreateWatchlistWithTicker,
+}: MarketStockTableProps) {
   const { t } = useI18n();
   const { calcMode, isBrokerGross } = useCalcMode();
 
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full min-w-[880px] table-fixed border-collapse text-left text-sm">
+      <table className="w-full min-w-[920px] table-fixed border-collapse text-left text-sm">
         <colgroup>
-          <col className="w-[20%]" />
-          <col className="w-[15%]" />
+          <col className="w-[21%]" />
+          <col className="w-[14%]" />
           <col className="w-[11%]" />
           <col className="w-[11%]" />
           <col className="w-[15%]" />
-          <col className="w-[17%]" />
-          <col className="w-[11%]" />
+          <col className="w-[16%]" />
+          <col className="w-[12%]" />
         </colgroup>
         <thead>
           <tr className="border-b border-border bg-subtle/70 text-xs font-semibold text-muted">
@@ -127,16 +194,12 @@ function WatchlistTable({
               />
             </th>
             <th className="px-3 py-3 text-right">
-              {mode === 'watching' ? (
-                <span>{t.watchlist.colTargetBuy}</span>
-              ) : (
-                <TermTooltip
-                  label={t.watchlist.colPosition}
-                  definition={
-                    isBrokerGross ? t.glossary.grossUnrealizedPnL : t.glossary.unrealizedPnL
-                  }
-                />
-              )}
+              <TermTooltip
+                label={t.watchlist.colPosition}
+                definition={
+                  isBrokerGross ? t.glossary.grossUnrealizedPnL : t.glossary.unrealizedPnL
+                }
+              />
             </th>
             <th className="py-3 pr-5 pl-2 text-right">{t.watchlist.colActions}</th>
           </tr>
@@ -161,21 +224,29 @@ function WatchlistTable({
                     ? 'text-negative-600'
                     : 'text-ink';
             const isSectorActive = sector === item.sector;
+            const isOpening = openingTicker === item.ticker;
 
             return (
               <tr
-                key={item.id}
+                key={item.ticker}
                 className="group transition-colors duration-150 hover:bg-brand-50/40"
               >
-                {/* Symbol + Company Name */}
+                {/* Ticker + Company Name */}
                 <td className="py-3.5 pr-3 pl-5 align-middle">
-                  <div className="flex items-center gap-2">
-                    <Link
-                      to={`/watchlist/${item.id}`}
-                      className="font-mono text-sm font-bold tracking-tight text-ink transition-colors group-hover:text-brand-700"
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={isOpening}
+                      onClick={() => onOpenDetail(item)}
+                      className="font-mono text-sm font-bold tracking-tight text-ink transition-colors group-hover:text-brand-700 disabled:opacity-60 cursor-pointer"
                     >
                       {item.ticker}
-                    </Link>
+                    </button>
+                    {tabKind !== 'my_stocks' && item.ownedLots > 0 && (
+                      <span className="rounded border border-brand-600/30 bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">
+                        {t.watchlist.ownedBadge}
+                      </span>
+                    )}
                     {item.isStale && (
                       <span
                         title={t.watchlist.staleBadge}
@@ -223,7 +294,7 @@ function WatchlistTable({
                   {formatIdr(item.valuation.fairValue.moderate)}
                 </td>
 
-                {/* Margin of Safety + Valuation Verdict Badge */}
+                {/* Margin of Safety + Valuation Badge */}
                 <td className="px-3 py-3.5 text-right align-middle">
                   <div className="flex flex-col items-end gap-1">
                     {mosVal !== null ? (
@@ -328,43 +399,68 @@ function WatchlistTable({
                   )}
                 </td>
 
-                {/* Compact Icon-Only Actions */}
+                {/* Contextual Actions */}
                 <td className="py-3.5 pr-5 pl-2 align-middle">
                   <div className="flex items-center justify-end gap-1">
-                    <Link
-                      to={`/simulator?stockId=${item.id}`}
+                    {tabKind !== 'custom' && (
+                      <AddToWatchlistMenu
+                        ticker={item.ticker}
+                        memberGroupIds={item.customWatchlistIds}
+                        groups={customGroups}
+                        onCreateWithTicker={onCreateWatchlistWithTicker}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      disabled={isOpening}
+                      onClick={() => onOpenSimulator(item)}
                       title={t.watchlist.simulate}
-                      aria-label={t.watchlist.simulate}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-brand-600/35 bg-brand-50/70 text-brand-700 transition-colors hover:border-brand-solid hover:bg-brand-solid hover:text-white"
+                      aria-label={`${t.watchlist.simulate} ${item.ticker}`}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-brand-600/35 bg-brand-50/70 text-brand-700 transition-colors hover:border-brand-solid hover:bg-brand-solid hover:text-white disabled:opacity-50 cursor-pointer"
                     >
                       <Calculator className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Link>
-                    <Link
-                      to={`/watchlist/${item.id}`}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isOpening}
+                      onClick={() => onOpenDetail(item)}
                       title={t.watchlist.analyze}
-                      aria-label={t.watchlist.analyze}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink"
+                      aria-label={`${t.watchlist.analyze} ${item.ticker}`}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink disabled:opacity-50 cursor-pointer"
                     >
                       <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Link>
+                    </button>
                     <button
                       type="button"
                       onClick={() => onEdit(item)}
                       title={t.common.edit}
-                      aria-label={t.common.edit}
+                      aria-label={`${t.common.edit} ${item.ticker}`}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
                     >
                       <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(item)}
-                      title={t.common.delete}
-                      aria-label={t.common.delete}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
+                    {tabKind === 'my_stocks' && onDeletePersonal && item.watchlistItemId && (
+                      <button
+                        type="button"
+                        onClick={() => onDeletePersonal(item)}
+                        title={t.common.delete}
+                        aria-label={`${t.common.delete} ${item.ticker}`}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    )}
+                    {tabKind === 'custom' && onRemoveFromCustom && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveFromCustom(item.ticker)}
+                        title={t.watchlist.removeFromWatchlist}
+                        aria-label={`${t.watchlist.removeFromWatchlist} ${item.ticker}`}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -377,99 +473,130 @@ function WatchlistTable({
 }
 
 export function WatchlistPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const navigate = useNavigate();
   const { hideBalances, toggleHideBalances } = usePrivacy();
   const { calcMode, isBrokerGross } = useCalcMode();
-  const [search, setSearch] = useState('');
-  const [sector, setSector] = useState<IdxSector | ''>('');
-  const [sort, setSort] = useState<'updated_desc' | 'mos_desc' | 'ticker_asc'>('updated_desc');
-  const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>({ kind: 'all' });
   const [showXray, setShowXray] = useState(true);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<WatchlistItemDto | null>(null);
-  const [deletingItem, setDeletingItem] = useState<WatchlistItemDto | null>(null);
-  const [quickTicker, setQuickTicker] = useState('');
-  const [quickError, setQuickError] = useState<string | null>(null);
+  // Screener & filter controls
+  const [search, setSearch] = useState('');
+  const [sector, setSector] = useState<IdxSector | ''>('');
+  const [valuationStatus, setValuationStatus] = useState<ValuationStatusFilter | ''>('');
+  const [mosPreset, setMosPreset] = useState<MosPreset>('any');
+  const [minMosInput, setMinMosInput] = useState('');
+  const [maxMosInput, setMaxMosInput] = useState('');
+  const [sort, setSort] = useState<CatalogSortOption>('mos_desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
-  const { data: items, isLoading, isError } = useWatchlist({
-    search: search.trim() || undefined,
+  // Modals & action states
+  const [stockModalOpen, setStockModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<WatchlistItemDto | null>(null);
+  const [prefillStock, setPrefillStock] = useState<MarketStockDto | null>(null);
+  const [deletingPersonalStock, setDeletingPersonalStock] = useState<MarketStockDto | null>(null);
+
+  const [customModalOpen, setCustomModalOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<CustomWatchlistGroupDto | null>(null);
+  const [initialTickerForNewGroup, setInitialTickerForNewGroup] = useState<string | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState<CustomWatchlistGroupDto | null>(null);
+  const [openingTicker, setOpeningTicker] = useState<string | null>(null);
+
+  const debouncedSearch = useDebouncedValue(search.trim(), 220);
+  const debouncedMinMos = useDebouncedValue(parseOptionalNumericFilter(minMosInput), 250);
+  const debouncedMaxMos = useDebouncedValue(parseOptionalNumericFilter(maxMosInput), 250);
+
+  // Queries
+  const { data: personalItems, isLoading: isPersonalLoading } = useWatchlist();
+  const { data: customGroups = [], isLoading: isGroupsLoading } = useCustomWatchlists();
+
+  const activeCustomGroupId = activeTab.kind === 'custom' ? activeTab.groupId : null;
+  const activeCustomGroup = useMemo(
+    () => customGroups.find((g) => g.id === activeCustomGroupId) ?? null,
+    [customGroups, activeCustomGroupId],
+  );
+
+  // Always keep catalog summary fresh (lightweight when on another tab: still cached for 2 min)
+  const {
+    data: catalogData,
+    isLoading: isCatalogLoading,
+    isFetching: isCatalogFetching,
+    isError: isCatalogError,
+  } = useIdxCatalog({
+    search: activeTab.kind === 'all' ? debouncedSearch || undefined : undefined,
+    sector: activeTab.kind === 'all' ? sector || undefined : undefined,
+    valuationStatus: activeTab.kind === 'all' ? valuationStatus || undefined : undefined,
+    minMos: activeTab.kind === 'all' ? debouncedMinMos : undefined,
+    maxMos: activeTab.kind === 'all' ? debouncedMaxMos : undefined,
+    sort: activeTab.kind === 'all' ? sort : 'mos_desc',
+    page: activeTab.kind === 'all' ? page : 1,
+    pageSize: activeTab.kind === 'all' ? pageSize : 25,
+  });
+
+  const {
+    data: customStocksData,
+    isLoading: isCustomStocksLoading,
+    isError: isCustomStocksError,
+  } = useCustomWatchlistStocks(activeCustomGroupId, {
+    search: debouncedSearch || undefined,
     sector: sector || undefined,
+    valuationStatus: valuationStatus || undefined,
+    minMos: debouncedMinMos,
+    maxMos: debouncedMaxMos,
     sort,
   });
 
-  const deleteMutation = useDeleteWatchlistItem();
-  const fetchQuoteMutation = useFetchIdxQuote();
-  const createMutation = useCreateWatchlistItem();
+  // Mutations
+  const syncCatalogMutation = useSyncIdxCatalog();
   const syncAllMutation = useSyncAllWatchlist();
-  const isQuickAdding = fetchQuoteMutation.isPending || createMutation.isPending;
+  const ensureItemMutation = useEnsureWatchlistItem();
+  const deleteItemMutation = useDeleteWatchlistItem();
+  const deleteGroupMutation = useDeleteCustomWatchlist();
+  const removeFromGroupMutation = useRemoveStockFromCustomWatchlist();
 
-  const handleQuickAdd = async (e: FormEvent) => {
-    e.preventDefault();
-    setQuickError(null);
-    const clean = quickTicker.trim().toUpperCase();
-    if (!/^[A-Z]{4}$/.test(clean)) {
-      setQuickError('Must be a 4-letter IDX symbol (e.g. BBCA)');
-      return;
-    }
-
-    try {
-      const quote = await fetchQuoteMutation.mutateAsync(clean);
-      await createMutation.mutateAsync({
-        ticker: quote.ticker,
-        companyName: quote.companyName,
-        sector: quote.sector,
-        currentPrice: quote.currentPrice,
-        ownedLots: 0,
-        fundamentals: {
-          periodLabel: quote.periodLabel,
-          eps: quote.fundamentals.eps,
-          bvps: quote.fundamentals.bvps,
-          dps: quote.fundamentals.dps,
-          roePct: quote.fundamentals.roePct,
-          der: quote.fundamentals.der,
-          epsGrowthPct: quote.fundamentals.epsGrowthPct,
-          targetPer: quote.fundamentals.targetPer,
-          targetPbv: quote.fundamentals.targetPbv,
-          discountRatePct: 12,
-          projectionYears: 5,
-          terminalGrowthPct: 4,
-          dividendGrowthPct: null,
-        },
-      });
-      setQuickTicker('');
-    } catch (err) {
-      if (err instanceof ApiClientError) {
-        setQuickError(err.message);
-      } else {
-        setQuickError(t.common.unexpectedError);
+  // Map ticker -> customWatchlistIds for My Stocks table
+  const tickerMembershipMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const g of customGroups) {
+      for (const ticker of g.tickers) {
+        const list = map.get(ticker) ?? [];
+        list.push(g.id);
+        map.set(ticker, list);
       }
     }
-  };
+    return map;
+  }, [customGroups]);
 
-  const { portfolioItems, watchingItems, kpis } = useMemo(() => {
-    const list = items ?? [];
-    const owned: WatchlistItemDto[] = [];
-    const watching: WatchlistItemDto[] = [];
+  const { personalItemById, personalItemByTicker } = useMemo(() => {
+    const byId = new Map<string, WatchlistItemDto>();
+    const byTicker = new Map<string, WatchlistItemDto>();
+    for (const item of personalItems ?? []) {
+      byId.set(item.id, item);
+      byTicker.set(item.ticker, item);
+    }
+    return { personalItemById: byId, personalItemByTicker: byTicker };
+  }, [personalItems]);
+
+  // Owned positions ("My Stocks") + Portfolio KPIs
+  const { myStocksAll, kpis, portfolioRisk } = useMemo(() => {
+    const list = personalItems ?? [];
+    const owned = list.filter((i) => i.ownedLots > 0);
     let portfolioMarketValue = 0;
     let totalInvestedCapital = 0;
 
-    for (const item of list) {
-      if (item.ownedLots > 0) {
-        owned.push(item);
-        const pos = calculatePositionSummary(
-          item.ownedLots,
-          item.avgBuyPrice,
-          item.currentPrice,
-          DEFAULT_BUY_FEE_PCT,
-          DEFAULT_SELL_FEE_PCT,
-          calcMode,
-        );
-        portfolioMarketValue += pos.marketValue;
-        totalInvestedCapital += pos.costBasis;
-      } else {
-        watching.push(item);
-      }
+    for (const item of owned) {
+      const pos = calculatePositionSummary(
+        item.ownedLots,
+        item.avgBuyPrice,
+        item.currentPrice,
+        DEFAULT_BUY_FEE_PCT,
+        DEFAULT_SELL_FEE_PCT,
+        calcMode,
+      );
+      portfolioMarketValue += pos.marketValue;
+      totalInvestedCapital += pos.costBasis;
     }
 
     const totalNetPnL =
@@ -479,27 +606,8 @@ export function WatchlistPage() {
         ? Math.round((totalNetPnL / totalInvestedCapital) * 10000) / 100
         : null;
 
-    return {
-      portfolioItems: owned,
-      watchingItems: watching,
-      kpis: {
-        total: list.length,
-        portfolioCount: owned.length,
-        watchingCount: watching.length,
-        undervalued: list.filter((i) => i.valuation.valuationStatus === 'UNDERVALUED').length,
-        portfolioMarketValue,
-        totalInvestedCapital,
-        totalNetPnL,
-        totalNetPnLPct,
-        stale: list.filter((i) => i.isStale).length,
-      },
-    };
-  }, [items, calcMode]);
-
-  const portfolioRisk = useMemo(() => {
-    const list = items ?? [];
-    return analyzePortfolioRisk(
-      list.map((i) => ({
+    const risk = analyzePortfolioRisk(
+      owned.map((i) => ({
         ticker: i.ticker,
         companyName: i.companyName,
         sector: i.sector,
@@ -509,39 +617,218 @@ export function WatchlistPage() {
       })),
       calcMode,
     );
-  }, [items, calcMode]);
 
-  const filteredItems = useMemo(() => {
-    const list = items ?? [];
-    if (viewFilter === 'portfolio') return portfolioItems;
-    if (viewFilter === 'watching') return watchingItems;
-    if (viewFilter === 'undervalued') {
-      return list.filter((i) => i.valuation.valuationStatus === 'UNDERVALUED');
+    return {
+      myStocksAll: owned,
+      kpis: {
+        myStocksCount: owned.length,
+        portfolioMarketValue,
+        totalInvestedCapital,
+        totalNetPnL,
+        totalNetPnLPct,
+      },
+      portfolioRisk: risk,
+    };
+  }, [personalItems, calcMode]);
+
+  // Filtered & sorted My Stocks view
+  const filteredMyStocks = useMemo(() => {
+    let list = myStocksAll.map((item) =>
+      mapWatchlistItemToMarket(item, tickerMembershipMap.get(item.ticker) ?? []),
+    );
+    if (sector) {
+      list = list.filter((i) => i.sector === sector);
     }
-    return list;
-  }, [items, portfolioItems, watchingItems, viewFilter]);
+    if (debouncedSearch) {
+      const needle = debouncedSearch.toLowerCase();
+      list = list.filter(
+        (i) =>
+          i.ticker.toLowerCase().includes(needle) ||
+          i.companyName.toLowerCase().includes(needle),
+      );
+    }
+    const sorted = [...list];
+    sorted.sort((a, b) => {
+      if (sort === 'mos_desc') {
+        return (b.valuation.mosPct ?? -Infinity) - (a.valuation.mosPct ?? -Infinity);
+      }
+      if (sort === 'mos_asc') {
+        return (a.valuation.mosPct ?? Infinity) - (b.valuation.mosPct ?? Infinity);
+      }
+      if (sort === 'ticker_asc') return a.ticker.localeCompare(b.ticker);
+      if (sort === 'ticker_desc') return b.ticker.localeCompare(a.ticker);
+      if (sort === 'price_asc') return a.currentPrice - b.currentPrice;
+      if (sort === 'price_desc') return b.currentPrice - a.currentPrice;
+      if (sort === 'fair_value_desc') {
+        return (b.valuation.fairValue.moderate ?? -Infinity) - (a.valuation.fairValue.moderate ?? -Infinity);
+      }
+      return a.ticker.localeCompare(b.ticker);
+    });
+    return sorted;
+  }, [myStocksAll, tickerMembershipMap, sector, debouncedSearch, sort]);
 
-  const openAdd = () => {
+  // Filter helpers
+  const applyMosPreset = (preset: MosPreset) => {
+    setMosPreset(preset);
+    setPage(1);
+    if (preset === 'any') {
+      setMinMosInput('');
+      setMaxMosInput('');
+    } else if (preset === 'gte50') {
+      setMinMosInput('50');
+      setMaxMosInput('');
+    } else if (preset === 'gte30') {
+      setMinMosInput('30');
+      setMaxMosInput('');
+    } else if (preset === 'gte15') {
+      setMinMosInput('15');
+      setMaxMosInput('');
+    } else if (preset === 'fair0to30') {
+      setMinMosInput('0');
+      setMaxMosInput('29.99');
+    } else if (preset === 'lt0') {
+      setMinMosInput('');
+      setMaxMosInput('-0.01');
+    }
+  };
+
+  const resetFilters = () => {
+    setSearch('');
+    setSector('');
+    setValuationStatus('');
+    setMosPreset('any');
+    setMinMosInput('');
+    setMaxMosInput('');
+    setPage(1);
+  };
+
+  const hasActiveFilters =
+    search.trim() !== '' ||
+    sector !== '' ||
+    valuationStatus !== '' ||
+    minMosInput.trim() !== '' ||
+    maxMosInput.trim() !== '';
+
+  const switchTab = (next: ActiveTab) => {
+    setActiveTab(next);
+    setPage(1);
+  };
+
+  // Row Actions
+  const handleOpenDetail = async (stock: MarketStockDto) => {
+    if (stock.watchlistItemId) {
+      navigate(`/watchlist/${stock.watchlistItemId}`);
+      return;
+    }
+    setOpeningTicker(stock.ticker);
+    try {
+      const ensured = await ensureItemMutation.mutateAsync(stock.ticker);
+      navigate(`/watchlist/${ensured.id}`);
+    } finally {
+      setOpeningTicker(null);
+    }
+  };
+
+  const handleOpenSimulator = async (stock: MarketStockDto) => {
+    if (stock.watchlistItemId) {
+      navigate(`/simulator?stockId=${stock.watchlistItemId}`);
+      return;
+    }
+    setOpeningTicker(stock.ticker);
+    try {
+      const ensured = await ensureItemMutation.mutateAsync(stock.ticker);
+      navigate(`/simulator?stockId=${ensured.id}`);
+    } finally {
+      setOpeningTicker(null);
+    }
+  };
+
+  const handleOpenEditStock = (stock: MarketStockDto) => {
+    const existing =
+      (stock.watchlistItemId ? personalItemById.get(stock.watchlistItemId) : undefined) ??
+      personalItemByTicker.get(stock.ticker) ??
+      null;
+    if (existing) {
+      setEditingItem(existing);
+      setPrefillStock(null);
+      setStockModalOpen(true);
+      return;
+    }
     setEditingItem(null);
-    setModalOpen(true);
+    setPrefillStock(stock);
+    setStockModalOpen(true);
   };
 
-  const openEdit = (item: WatchlistItemDto) => {
-    setEditingItem(item);
-    setModalOpen(true);
+  const handleOpenManualAdd = () => {
+    setEditingItem(null);
+    setPrefillStock(null);
+    setStockModalOpen(true);
   };
 
-  const confirmDelete = async () => {
-    if (!deletingItem) return;
-    await deleteMutation.mutateAsync(deletingItem.id);
-    setDeletingItem(null);
+  const handleOpenCreateWatchlist = (ticker?: string) => {
+    setEditingGroup(null);
+    setInitialTickerForNewGroup(ticker ?? null);
+    setCustomModalOpen(true);
   };
 
-  const showSplitSections = viewFilter === 'all' && (items?.length ?? 0) > 0;
+  const handleOpenEditWatchlist = (group: CustomWatchlistGroupDto) => {
+    setEditingGroup(group);
+    setInitialTickerForNewGroup(null);
+    setCustomModalOpen(true);
+  };
+
+  const confirmDeletePersonal = async () => {
+    if (!deletingPersonalStock?.watchlistItemId) return;
+    await deleteItemMutation.mutateAsync(deletingPersonalStock.watchlistItemId);
+    setDeletingPersonalStock(null);
+  };
+
+  const confirmDeleteGroup = async () => {
+    if (!deletingGroup) return;
+    const deletedId = deletingGroup.id;
+    await deleteGroupMutation.mutateAsync(deletedId);
+    setDeletingGroup(null);
+    if (activeTab.kind === 'custom' && activeTab.groupId === deletedId) {
+      setActiveTab({ kind: 'all' });
+    }
+  };
+
+  const handleRemoveFromCustom = async (ticker: string) => {
+    if (!activeCustomGroupId) return;
+    await removeFromGroupMutation.mutateAsync({ groupId: activeCustomGroupId, ticker });
+  };
+
+  const summary = catalogData?.summary;
+  const pagination = catalogData?.pagination;
+  const isUndervaluedQuickFilterActive =
+    activeTab.kind === 'all' && valuationStatus === 'UNDERVALUED';
+
+  const activeRows: MarketStockDto[] =
+    activeTab.kind === 'all'
+      ? (catalogData?.items ?? [])
+      : activeTab.kind === 'my_stocks'
+        ? filteredMyStocks
+        : (customStocksData?.items ?? []);
+
+  const isTableLoading =
+    activeTab.kind === 'all'
+      ? isCatalogLoading
+      : activeTab.kind === 'my_stocks'
+        ? isPersonalLoading
+        : isCustomStocksLoading;
+
+  const isTableError =
+    activeTab.kind === 'all'
+      ? isCatalogError
+      : activeTab.kind === 'custom'
+        ? isCustomStocksError
+        : false;
+
+  const showValuationScreener = activeTab.kind === 'all' || activeTab.kind === 'custom';
 
   return (
     <div className="space-y-8">
-      {/* GROUP 1: Portfolio & Market Overview (Display / Auto-Calculated) */}
+      {/* SECTION 1: Portfolio Summary (Auto-Calculated from My Stocks) */}
       <section className="space-y-4 animate-fade-up" aria-label={t.watchlist.sectionOverview}>
         <SectionHeader
           title={t.watchlist.sectionOverview}
@@ -552,7 +839,7 @@ export function WatchlistPage() {
         />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          {/* Primary Portfolio Financial Display Card */}
+          {/* Primary Portfolio Display Card */}
           <Card variant="display" className="border-t-2 border-t-brand-600 p-5 lg:col-span-7">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
               <div>
@@ -581,7 +868,7 @@ export function WatchlistPage() {
                   </button>
                 </div>
                 <div className="mt-2 font-mono text-3xl font-bold tracking-tight text-ink tabular-nums">
-                  {isLoading ? (
+                  {isPersonalLoading ? (
                     <Skeleton className="h-9 w-44" />
                   ) : hideBalances ? (
                     MASKED_IDR
@@ -591,7 +878,7 @@ export function WatchlistPage() {
                 </div>
               </div>
 
-              {!isLoading && kpis.totalNetPnL !== null && (
+              {!isPersonalLoading && kpis.totalNetPnL !== null && (
                 <div
                   className={cn(
                     'inline-flex flex-col items-start rounded-lg border px-3.5 py-2 sm:items-end',
@@ -639,7 +926,7 @@ export function WatchlistPage() {
                   }
                 />
                 <span className="font-mono text-sm font-bold text-ink tabular-nums">
-                  {isLoading ? (
+                  {isPersonalLoading ? (
                     <Skeleton className="inline-block h-4 w-28" />
                   ) : hideBalances ? (
                     MASKED_IDR
@@ -669,18 +956,20 @@ export function WatchlistPage() {
 
                 <button
                   type="button"
-                  onClick={() => setViewFilter(viewFilter === 'portfolio' ? 'all' : 'portfolio')}
-                  aria-pressed={viewFilter === 'portfolio'}
+                  onClick={() =>
+                    switchTab(activeTab.kind === 'my_stocks' ? { kind: 'all' } : { kind: 'my_stocks' })
+                  }
+                  aria-pressed={activeTab.kind === 'my_stocks'}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer',
-                    viewFilter === 'portfolio'
+                    activeTab.kind === 'my_stocks'
                       ? 'border-brand-600/40 bg-brand-50 text-brand-700'
                       : 'border-border bg-panel text-ink hover:border-brand-600/40 hover:bg-brand-50 hover:text-brand-700',
                   )}
                 >
                   <Briefcase className="h-3.5 w-3.5 text-brand-600" aria-hidden="true" />
-                  <span className="font-mono">{kpis.portfolioCount}</span>
-                  <span>{t.watchlist.pillPortfolio}</span>
+                  <span className="font-mono">{kpis.myStocksCount}</span>
+                  <span>{t.watchlist.tabMyStocks}</span>
                 </button>
               </div>
             </div>
@@ -690,12 +979,20 @@ export function WatchlistPage() {
           <div className="grid grid-cols-2 gap-4 lg:col-span-5">
             <button
               type="button"
-              onClick={() => setViewFilter(viewFilter === 'undervalued' ? 'all' : 'undervalued')}
+              onClick={() => {
+                if (isUndervaluedQuickFilterActive) {
+                  setValuationStatus('');
+                } else {
+                  setActiveTab({ kind: 'all' });
+                  setValuationStatus('UNDERVALUED');
+                  setPage(1);
+                }
+              }}
               title={t.watchlist.filterByUndervaluedHint}
-              aria-pressed={viewFilter === 'undervalued'}
+              aria-pressed={isUndervaluedQuickFilterActive}
               className={cn(
                 'flex flex-col justify-between rounded-xl border p-5 text-left transition-all cursor-pointer surface-interactive',
-                viewFilter === 'undervalued'
+                isUndervaluedQuickFilterActive
                   ? 'border-positive-600 bg-positive-50/60'
                   : 'border-border bg-display hover:bg-panel',
               )}
@@ -704,7 +1001,7 @@ export function WatchlistPage() {
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-positive-50 text-positive-600">
                   <TrendingUp className="h-4 w-4" aria-hidden="true" />
                 </span>
-                {viewFilter === 'undervalued' ? (
+                {isUndervaluedQuickFilterActive ? (
                   <Badge tone="positive">Active</Badge>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-[10px] font-semibold tracking-wide text-muted uppercase">
@@ -721,7 +1018,11 @@ export function WatchlistPage() {
                   />
                 </div>
                 <div className="mt-1 font-mono text-3xl font-bold text-positive-600 tabular-nums">
-                  {isLoading ? <Skeleton className="h-8 w-12" /> : kpis.undervalued}
+                  {isCatalogLoading && !summary ? (
+                    <Skeleton className="h-8 w-14" />
+                  ) : (
+                    formatNumber(summary?.undervalued ?? 0)
+                  )}
                 </div>
               </div>
             </button>
@@ -731,22 +1032,29 @@ export function WatchlistPage() {
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-subtle text-ink">
                   <Layers className="h-4 w-4" aria-hidden="true" />
                 </span>
-                {!isLoading && kpis.stale > 0 && (
-                  <Badge tone="warning">
+                {summary?.lastSyncedAt && (
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] font-medium text-muted"
+                    title={`${t.watchlist.lastSyncedPrefix}: ${formatShortDate(summary.lastSyncedAt, lang)}`}
+                  >
                     <Clock className="h-3 w-3" aria-hidden="true" />
-                    {kpis.stale} {t.watchlist.staleBadge}
-                  </Badge>
+                    {formatShortDate(summary.lastSyncedAt, lang)}
+                  </span>
                 )}
               </div>
               <div className="mt-4">
-                <div className="text-xs font-medium text-muted">{t.watchlist.kpiTotal}</div>
+                <div className="text-xs font-medium text-muted">{t.watchlist.kpiSyncedIhsg}</div>
                 <div className="mt-1 font-mono text-3xl font-bold text-ink tabular-nums">
-                  {isLoading ? <Skeleton className="h-8 w-12" /> : kpis.total}
+                  {isCatalogLoading && !summary ? (
+                    <Skeleton className="h-8 w-14" />
+                  ) : (
+                    formatNumber(summary?.totalStocks ?? 0)
+                  )}
                 </div>
-                {!isLoading && (
+                {!isPersonalLoading && (
                   <div className="mt-1 font-mono text-[11px] text-muted tabular-nums">
-                    {kpis.portfolioCount} {t.watchlist.shortPortfolio} · {kpis.watchingCount}{' '}
-                    {t.watchlist.shortWatching}
+                    {kpis.myStocksCount} {t.watchlist.tabMyStocks} · {customGroups.length}{' '}
+                    {t.watchlist.tabCustomGroupLabel}
                   </div>
                 )}
               </div>
@@ -754,101 +1062,228 @@ export function WatchlistPage() {
           </div>
         </div>
 
-        {/* Portfolio Risk & Sector Allocation X-Ray (Display Card) */}
-        {!isLoading && showXray && portfolioRisk.activeHoldingsCount > 0 && (
+        {/* Portfolio Risk & Sector Allocation X-Ray */}
+        {!isPersonalLoading && showXray && portfolioRisk.activeHoldingsCount > 0 && (
           <PortfolioRiskXrayCard risk={portfolioRisk} />
         )}
       </section>
 
-      {/* GROUP 2: Watchlist Actions (Editable) & Separated Portfolio / Watchlist-Only Lists */}
+      {/* SECTION 2: Grouped Watchlist Workspace (All Stocks / My Stocks / Custom Watchlists) */}
       <section className="space-y-4 animate-fade-up" aria-label={t.watchlist.sectionWatchlist}>
-        <SectionHeader
-          title={t.watchlist.sectionWatchlist}
-          subtitle={t.watchlist.sectionWatchlistSub}
-          action={
+        {/* Group Navigation Rail */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+          <div
+            className="flex flex-wrap items-center gap-1.5"
+            role="tablist"
+            aria-label="Watchlist groups"
+          >
+            {/* 1. All Stocks (IHSG) */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab.kind === 'all'}
+              onClick={() => switchTab({ kind: 'all' })}
+              className={cn(
+                'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-all cursor-pointer',
+                activeTab.kind === 'all'
+                  ? 'border-brand-600/50 bg-brand-solid text-white shadow-xs'
+                  : 'border-border bg-panel text-ink hover:border-brand-600/40 hover:bg-brand-50/50',
+              )}
+            >
+              <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{t.watchlist.tabAllStocks}</span>
+              <span
+                className={cn(
+                  'rounded-md px-1.5 py-0.5 font-mono text-[10px] tabular-nums',
+                  activeTab.kind === 'all' ? 'bg-white/20 text-white' : 'bg-subtle text-muted',
+                )}
+              >
+                {summary?.totalStocks ?? 0}
+              </span>
+            </button>
+
+            {/* 2. My Stocks (Owned Positions) */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab.kind === 'my_stocks'}
+              onClick={() => switchTab({ kind: 'my_stocks' })}
+              className={cn(
+                'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-all cursor-pointer',
+                activeTab.kind === 'my_stocks'
+                  ? 'border-brand-600/50 bg-brand-solid text-white shadow-xs'
+                  : 'border-border bg-panel text-ink hover:border-brand-600/40 hover:bg-brand-50/50',
+              )}
+            >
+              <Briefcase className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{t.watchlist.tabMyStocks}</span>
+              <span
+                className={cn(
+                  'rounded-md px-1.5 py-0.5 font-mono text-[10px] tabular-nums',
+                  activeTab.kind === 'my_stocks'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-subtle text-muted',
+                )}
+              >
+                {kpis.myStocksCount}
+              </span>
+            </button>
+
+            {/* Visual Divider before Custom Watchlists */}
+            <span className="mx-1 hidden h-5 w-px bg-border sm:inline-block" aria-hidden="true" />
+
+            {/* 3. Custom Watchlist Tabs */}
+            {isGroupsLoading ? (
+              <Skeleton className="h-9 w-28" />
+            ) : (
+              customGroups.map((group) => {
+                const isSelected = activeTab.kind === 'custom' && activeTab.groupId === group.id;
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isSelected}
+                    onClick={() => switchTab({ kind: 'custom', groupId: group.id })}
+                    className={cn(
+                      'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-all cursor-pointer',
+                      isSelected
+                        ? 'border-brand-600/50 bg-brand-solid text-white shadow-xs'
+                        : 'border-border bg-panel text-ink hover:border-brand-600/40 hover:bg-brand-50/50',
+                    )}
+                  >
+                    <Bookmark className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className="max-w-[140px] truncate">{group.name}</span>
+                    <span
+                      className={cn(
+                        'rounded-md px-1.5 py-0.5 font-mono text-[10px] tabular-nums',
+                        isSelected ? 'bg-white/20 text-white' : 'bg-subtle text-muted',
+                      )}
+                    >
+                      {group.stockCount}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+
+            {/* + New Watchlist Button */}
+            <Button
+              variant="outlineBrand"
+              size="sm"
+              onClick={() => handleOpenCreateWatchlist()}
+              className="h-9"
+            >
+              <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
+              {t.watchlist.createWatchlistBtn}
+            </Button>
+          </div>
+        </div>
+
+        {/* Contextual Group Header + Actions */}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
             <div className="flex flex-wrap items-center gap-2">
-              {items && items.length > 0 && (
+              <h2 className="font-display text-base font-bold tracking-tight text-ink sm:text-lg">
+                {activeTab.kind === 'all'
+                  ? t.watchlist.tabAllStocks
+                  : activeTab.kind === 'my_stocks'
+                    ? t.watchlist.tabMyStocks
+                    : (activeCustomGroup?.name ?? t.watchlist.tabCustomGroupLabel)}
+              </h2>
+              {activeTab.kind === 'all' && isCatalogFetching && !isCatalogLoading && (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted" aria-hidden="true" />
+              )}
+            </div>
+            <p className="mt-0.5 text-xs text-muted">
+              {activeTab.kind === 'all'
+                ? t.watchlist.allStocksSub
+                : activeTab.kind === 'my_stocks'
+                  ? t.watchlist.myStocksSub
+                  : activeCustomGroup?.description || t.watchlist.customWatchlistSub}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {activeTab.kind === 'all' && (
+              <>
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => syncAllMutation.mutate()}
-                  disabled={syncAllMutation.isPending}
+                  onClick={() => syncCatalogMutation.mutate()}
+                  disabled={syncCatalogMutation.isPending}
                 >
                   <RefreshCw
-                    className={`h-3.5 w-3.5 ${syncAllMutation.isPending ? 'animate-spin' : ''}`}
+                    className={`h-3.5 w-3.5 ${syncCatalogMutation.isPending ? 'animate-spin' : ''}`}
                     aria-hidden="true"
                   />
-                  {syncAllMutation.isPending ? t.watchlist.syncingAll : t.watchlist.syncAllBtn}
+                  {syncCatalogMutation.isPending
+                    ? t.watchlist.syncingIhsg
+                    : t.watchlist.syncIhsgBtn}
                 </Button>
-              )}
-              <Button variant="outlineBrand" size="sm" onClick={openAdd}>
-                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                {t.watchlist.addStock}
-              </Button>
-            </div>
-          }
-        />
+                <Button variant="outlineBrand" size="sm" onClick={handleOpenManualAdd}>
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t.watchlist.addStock}
+                </Button>
+              </>
+            )}
 
-        {/* Compact Single-Row Quick Add Editable Bar */}
-        <Card variant="editable" className="p-3.5 sm:px-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-ink">{t.watchlist.quickAddLabel}</span>
-              <RolePill role="editable" label={t.common.editableTag} />
-              <span className="hidden text-xs text-muted xl:inline">·</span>
-              <span className="hidden text-xs text-muted xl:inline">
-                {t.watchlist.quickAddHint}
-              </span>
-            </div>
+            {activeTab.kind === 'my_stocks' && (
+              <>
+                {kpis.myStocksCount > 0 && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => syncAllMutation.mutate()}
+                    disabled={syncAllMutation.isPending}
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${syncAllMutation.isPending ? 'animate-spin' : ''}`}
+                      aria-hidden="true"
+                    />
+                    {syncAllMutation.isPending ? t.watchlist.syncingAll : t.watchlist.syncAllBtn}
+                  </Button>
+                )}
+                <Button variant="outlineBrand" size="sm" onClick={handleOpenManualAdd}>
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t.watchlist.addStock}
+                </Button>
+              </>
+            )}
 
-            <form
-              onSubmit={handleQuickAdd}
-              className="flex w-full flex-col gap-2 sm:flex-row sm:items-center md:w-auto"
-            >
-              <div className="relative w-full sm:w-64 md:w-72">
-                <Plus
-                  className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-brand-600"
-                  aria-hidden="true"
-                />
-                <Input
-                  type="text"
-                  maxLength={4}
-                  aria-label={t.watchlist.quickAddLabel}
-                  placeholder={t.watchlist.quickAddPlaceholder}
-                  value={quickTicker}
-                  onChange={(e) => {
-                    setQuickTicker(e.target.value.toUpperCase());
-                    if (quickError) setQuickError(null);
-                  }}
-                  disabled={isQuickAdding}
-                  className="pl-8 font-mono uppercase placeholder:font-sans placeholder:normal-case"
-                />
-              </div>
-              <Button
-                type="submit"
-                size="md"
-                disabled={isQuickAdding || quickTicker.trim().length < 4}
-                className="shrink-0"
-              >
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                {isQuickAdding ? t.watchlist.quickAdding : t.watchlist.quickAddBtn}
-              </Button>
-            </form>
+            {activeTab.kind === 'custom' && activeCustomGroup && (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleOpenEditWatchlist(activeCustomGroup)}
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t.watchlist.renameWatchlist}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDeletingGroup(activeCustomGroup)}
+                  className="text-negative-600 hover:bg-negative-50 hover:text-negative-700"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t.watchlist.deleteWatchlist}
+                </Button>
+              </>
+            )}
           </div>
+        </div>
 
-          {quickError ? (
-            <p className="mt-2 text-xs text-negative-600" role="alert">
-              {quickError}
-            </p>
-          ) : (
-            <p className="mt-1.5 text-[11px] text-muted xl:hidden">{t.watchlist.quickAddHint}</p>
-          )}
-        </Card>
+        {/* Quick Add Bar: ONLY shown inside Custom Watchlist view (never on All Stocks / My Stocks) */}
+        {activeTab.kind === 'custom' && activeCustomGroup && (
+          <CustomWatchlistQuickAdd group={activeCustomGroup} />
+        )}
 
-        {/* Compact Single-Row Filter, Search, Sector & Sort Toolbar */}
-        <div className="space-y-2.5 rounded-xl border border-border bg-panel p-3 sm:px-4 surface-elevated">
+        {/* Filter, Valuation Screener, MoS Filter & Sort Toolbar */}
+        <div className="space-y-3 rounded-xl border border-border bg-panel p-3.5 sm:px-4 surface-elevated">
+          {/* Row 1: Search, Sector, Sort, Reset */}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:items-center">
-            {/* Search */}
             <div className="relative flex h-9 items-center sm:col-span-2 lg:min-w-0 lg:flex-1">
               <Search
                 className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted"
@@ -857,47 +1292,22 @@ export function WatchlistPage() {
               <Input
                 placeholder={t.watchlist.searchPlaceholder}
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 className="h-9 pl-8 text-xs"
               />
             </div>
 
-            {/* Compact View Filter Dropdown (All / My Portfolio / Watchlist Only / Undervalued) */}
-            <div className="relative flex h-9 items-center lg:w-48">
-              <Filter
-                className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-brand-600"
-                aria-hidden="true"
-              />
-              <Select
-                value={viewFilter}
-                onChange={(e) => setViewFilter(e.target.value as ViewFilter)}
-                aria-label={t.watchlist.filterViewLabel}
-                className={cn(
-                  'h-9 pl-8 text-xs font-medium',
-                  viewFilter !== 'all' && 'border-brand-600/55 text-brand-700',
-                )}
-              >
-                <option value="all">
-                  {t.watchlist.pillAll} ({kpis.total})
-                </option>
-                <option value="portfolio">
-                  {t.watchlist.pillPortfolio} ({kpis.portfolioCount})
-                </option>
-                <option value="watching">
-                  {t.watchlist.pillWatching} ({kpis.watchingCount})
-                </option>
-                <option value="undervalued">
-                  {t.watchlist.pillUndervalued} ({kpis.undervalued})
-                </option>
-              </Select>
-            </div>
-
-            {/* Sector Dropdown */}
             <Select
               value={sector}
-              onChange={(e) => setSector(e.target.value as IdxSector | '')}
+              onChange={(e) => {
+                setSector(e.target.value as IdxSector | '');
+                setPage(1);
+              }}
               className={cn(
-                'h-9 text-xs lg:w-44',
+                'h-9 text-xs lg:w-48',
                 sector && 'border-brand-600/55 font-medium text-brand-700',
               )}
               aria-label={t.watchlist.allSectors}
@@ -910,30 +1320,29 @@ export function WatchlistPage() {
               ))}
             </Select>
 
-            {/* Sort Dropdown */}
             <Select
               value={sort}
-              onChange={(e) =>
-                setSort(e.target.value as 'updated_desc' | 'mos_desc' | 'ticker_asc')
-              }
-              className="h-9 text-xs lg:w-44"
-              aria-label="Sort watchlist"
+              onChange={(e) => {
+                setSort(e.target.value as CatalogSortOption);
+                setPage(1);
+              }}
+              className="h-9 text-xs lg:w-52"
+              aria-label="Sort stocks"
             >
-              <option value="updated_desc">{t.watchlist.sortUpdated}</option>
               <option value="mos_desc">{t.watchlist.sortMosDesc}</option>
+              <option value="mos_asc">{t.watchlist.sortMosAsc}</option>
               <option value="ticker_asc">{t.watchlist.sortTickerAsc}</option>
+              <option value="ticker_desc">{t.watchlist.sortTickerDesc}</option>
+              <option value="price_asc">{t.watchlist.sortPriceAsc}</option>
+              <option value="price_desc">{t.watchlist.sortPriceDesc}</option>
+              <option value="fair_value_desc">{t.watchlist.sortFairValueDesc}</option>
             </Select>
 
-            {/* Conditional 1-Click Reset */}
-            {(search.trim() !== '' || viewFilter !== 'all' || sector !== '') && (
+            {hasActiveFilters && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  setSearch('');
-                  setViewFilter('all');
-                  setSector('');
-                }}
+                onClick={resetFilters}
                 className="h-9 shrink-0 px-2.5 text-xs"
               >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -942,11 +1351,148 @@ export function WatchlistPage() {
             )}
           </div>
 
+          {/* Row 2: Valuation Status (Undervalued / Fairly Valued / Overvalued) + Margin of Safety Filter */}
+          {showValuationScreener && (
+            <div className="flex flex-col gap-3 border-t border-border/75 pt-3 xl:flex-row xl:items-center xl:justify-between">
+              {/* Valuation Status Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[11px] font-semibold text-muted">
+                  {t.watchlist.valuationFilterLabel}:
+                </span>
+                {(
+                  [
+                    { value: '', label: t.watchlist.valuationAll, count: summary?.totalStocks },
+                    {
+                      value: 'UNDERVALUED',
+                      label: t.valuationStatus.UNDERVALUED,
+                      count: summary?.undervalued,
+                    },
+                    {
+                      value: 'FAIRLY_VALUED',
+                      label: t.valuationStatus.FAIRLY_VALUED,
+                      count: summary?.fairlyValued,
+                    },
+                    {
+                      value: 'OVERVALUED',
+                      label: t.valuationStatus.OVERVALUED,
+                      count: summary?.overvalued,
+                    },
+                  ] as const
+                ).map((opt) => {
+                  const active = valuationStatus === opt.value;
+                  return (
+                    <button
+                      key={opt.value || 'all'}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        setValuationStatus(opt.value);
+                        setPage(1);
+                      }}
+                      className={cn(
+                        'inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors cursor-pointer',
+                        active && opt.value === 'UNDERVALUED'
+                          ? 'border-positive-600/50 bg-positive-50 text-positive-700'
+                          : active && opt.value === 'FAIRLY_VALUED'
+                            ? 'border-warning-600/50 bg-warning-50 text-warning-700'
+                            : active && opt.value === 'OVERVALUED'
+                              ? 'border-negative-600/50 bg-negative-50 text-negative-700'
+                              : active
+                                ? 'border-brand-600/50 bg-brand-50 text-brand-700'
+                                : 'border-border bg-display text-muted hover:border-muted/60 hover:text-ink',
+                      )}
+                    >
+                      <span>{opt.label}</span>
+                      {activeTab.kind === 'all' && opt.count !== undefined && (
+                        <span className="font-mono text-[10px] opacity-80 tabular-nums">
+                          {opt.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Margin of Safety (MoS %) Quick Presets + Custom Min/Max Range */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[11px] font-semibold text-muted">
+                  {t.watchlist.mosFilterLabel}:
+                </span>
+                {(
+                  [
+                    ['any', t.watchlist.mosPresetAny],
+                    ['gte50', t.watchlist.mosPreset50],
+                    ['gte30', t.watchlist.mosPreset30],
+                    ['gte15', t.watchlist.mosPreset15],
+                    ['fair0to30', t.watchlist.mosPresetFair],
+                    ['lt0', t.watchlist.mosPresetOver],
+                  ] as const
+                ).map(([presetKey, label]) => {
+                  const active = mosPreset === presetKey;
+                  return (
+                    <button
+                      key={presetKey}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => applyMosPreset(presetKey)}
+                      className={cn(
+                        'inline-flex h-7 items-center rounded-md border px-2 text-[11px] font-semibold transition-colors cursor-pointer',
+                        active
+                          ? 'border-brand-600/50 bg-brand-50 text-brand-700'
+                          : 'border-border bg-display text-muted hover:border-muted/60 hover:text-ink',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+
+                <div className="ml-0.5 flex items-center gap-1">
+                  <Input
+                    type="number"
+                    step="1"
+                    aria-label="Minimum Margin of Safety percent"
+                    placeholder={t.watchlist.mosMinPlaceholder}
+                    value={minMosInput}
+                    onChange={(e) => {
+                      setMinMosInput(e.target.value);
+                      setMosPreset(
+                        e.target.value.trim() || maxMosInput.trim() ? 'custom' : 'any',
+                      );
+                      setPage(1);
+                    }}
+                    className="h-7 w-20 px-2 font-mono text-xs tabular-nums"
+                  />
+                  <span className="text-xs text-muted">-</span>
+                  <Input
+                    type="number"
+                    step="1"
+                    aria-label="Maximum Margin of Safety percent"
+                    placeholder={t.watchlist.mosMaxPlaceholder}
+                    value={maxMosInput}
+                    onChange={(e) => {
+                      setMaxMosInput(e.target.value);
+                      setMosPreset(
+                        minMosInput.trim() || e.target.value.trim() ? 'custom' : 'any',
+                      );
+                      setPage(1);
+                    }}
+                    className="h-7 w-20 px-2 font-mono text-xs tabular-nums"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Active Sector Quick-Clear Pill */}
           {sector && (
             <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-2">
               <button
                 type="button"
-                onClick={() => setSector('')}
+                onClick={() => {
+                  setSector('');
+                  setPage(1);
+                }}
                 title={t.watchlist.clearSectorFilter}
                 className="inline-flex h-7 items-center gap-1 rounded-md border border-brand-600/40 bg-brand-50 px-2.5 text-[11px] font-semibold text-brand-700 transition-colors hover:bg-brand-100 cursor-pointer"
               >
@@ -959,169 +1505,209 @@ export function WatchlistPage() {
           )}
         </div>
 
-        {/* Error / Loading / Tables */}
-        {isError && (
+        {/* Error / Loading / Data Table */}
+        {isTableError && (
           <div className="flex items-center gap-3 rounded-xl border border-negative-600/25 bg-negative-50 px-5 py-3 text-sm text-negative-700">
             <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{t.common.unexpectedError}</span>
           </div>
         )}
 
-        {isLoading ? (
+        {isTableLoading ? (
           <Card variant="default" className="space-y-3 p-5">
             <Skeleton className="h-9 w-full" />
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </Card>
-        ) : showSplitSections ? (
-          /* Separated Portfolio vs Watchlist-Only (Non-Portfolio) Containers */
-          <div className="space-y-5">
-            {/* Section A: My Portfolio (Owned Holdings) */}
-            <div className="overflow-hidden rounded-xl border border-brand-600/30 bg-panel surface-elevated">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-brand-50/45 px-5 py-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-solid text-white">
-                    <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
-                  </span>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-display text-sm font-bold text-ink">
-                        {t.watchlist.groupPortfolioTitle}
-                      </h3>
-                      <Badge tone="info">{portfolioItems.length}</Badge>
-                    </div>
-                    <p className="text-[11px] text-muted">{t.watchlist.groupPortfolioSub}</p>
-                  </div>
-                </div>
-              </div>
-
-              {portfolioItems.length === 0 ? (
-                <div className="px-6 py-8 text-center">
-                  <p className="text-sm font-semibold text-ink">
-                    {t.watchlist.emptyPortfolioTitle}
-                  </p>
-                  <p className="mx-auto mt-1 max-w-md text-xs text-muted">
-                    {t.watchlist.emptyPortfolioBody}
-                  </p>
-                </div>
-              ) : (
-                <WatchlistTable
-                  items={portfolioItems}
-                  mode="portfolio"
-                  sector={sector}
-                  onToggleSector={setSector}
-                  hideBalances={hideBalances}
-                  onEdit={openEdit}
-                  onDelete={setDeletingItem}
-                />
-              )}
-            </div>
-
-            {/* Section B: Watchlist Only (Non-Portfolio) */}
-            <div className="overflow-hidden rounded-xl border border-border bg-panel surface-elevated">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-display px-5 py-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-subtle text-ink">
-                    <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
-                  </span>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-display text-sm font-bold text-ink">
-                        {t.watchlist.groupWatchingTitle}
-                      </h3>
-                      <Badge tone="neutral">{watchingItems.length}</Badge>
-                    </div>
-                    <p className="text-[11px] text-muted">{t.watchlist.groupWatchingSub}</p>
-                  </div>
-                </div>
-              </div>
-
-              {watchingItems.length === 0 ? (
-                <div className="px-6 py-8 text-center">
-                  <p className="text-sm font-semibold text-ink">
-                    {t.watchlist.emptyWatchingTitle}
-                  </p>
-                  <p className="mx-auto mt-1 max-w-md text-xs text-muted">
-                    {t.watchlist.emptyWatchingBody}
-                  </p>
-                </div>
-              ) : (
-                <WatchlistTable
-                  items={watchingItems}
-                  mode="watching"
-                  sector={sector}
-                  onToggleSector={setSector}
-                  hideBalances={hideBalances}
-                  onEdit={openEdit}
-                  onDelete={setDeletingItem}
-                />
-              )}
-            </div>
-          </div>
-        ) : filteredItems.length === 0 ? (
+        ) : activeRows.length === 0 ? (
           <div className="rounded-xl border border-border bg-panel px-6 py-14 text-center surface-elevated">
             <h3 className="font-display text-base font-bold text-ink">
-              {viewFilter === 'portfolio'
+              {activeTab.kind === 'my_stocks'
                 ? t.watchlist.emptyPortfolioTitle
-                : viewFilter === 'watching'
-                  ? t.watchlist.emptyWatchingTitle
-                  : t.watchlist.emptyTitle}
+                : activeTab.kind === 'custom'
+                  ? t.watchlist.emptyCustomTitle
+                  : t.watchlist.emptyAllStocksTitle}
             </h3>
             <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-              {viewFilter === 'portfolio'
+              {activeTab.kind === 'my_stocks'
                 ? t.watchlist.emptyPortfolioBody
-                : viewFilter === 'watching'
-                  ? t.watchlist.emptyWatchingBody
-                  : t.watchlist.emptyBody}
+                : activeTab.kind === 'custom'
+                  ? t.watchlist.emptyCustomBody
+                  : t.watchlist.emptyAllStocksBody}
             </p>
-            <Button variant="outlineBrand" className="mt-5" onClick={openAdd}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              {t.watchlist.emptyAction}
-            </Button>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+              {hasActiveFilters && (
+                <Button variant="secondary" onClick={resetFilters}>
+                  <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                  {t.watchlist.resetFilters}
+                </Button>
+              )}
+              {activeTab.kind === 'all' && (
+                <Button
+                  variant="outlineBrand"
+                  onClick={() => syncCatalogMutation.mutate()}
+                  disabled={syncCatalogMutation.isPending}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${syncCatalogMutation.isPending ? 'animate-spin' : ''}`}
+                    aria-hidden="true"
+                  />
+                  {t.watchlist.syncIhsgBtn}
+                </Button>
+              )}
+              {activeTab.kind === 'my_stocks' && (
+                <Button variant="outlineBrand" onClick={() => switchTab({ kind: 'all' })}>
+                  <Globe className="h-4 w-4" aria-hidden="true" />
+                  {t.watchlist.tabAllStocks}
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-panel surface-elevated">
-            <WatchlistTable
-              items={filteredItems}
-              mode={
-                viewFilter === 'portfolio'
-                  ? 'portfolio'
-                  : viewFilter === 'watching'
-                    ? 'watching'
-                    : 'mixed'
-              }
+            <MarketStockTable
+              items={activeRows}
+              tabKind={activeTab.kind}
               sector={sector}
-              onToggleSector={setSector}
+              onToggleSector={(next) => {
+                setSector(next);
+                setPage(1);
+              }}
               hideBalances={hideBalances}
-              onEdit={openEdit}
-              onDelete={setDeletingItem}
+              customGroups={customGroups}
+              openingTicker={openingTicker}
+              onOpenDetail={handleOpenDetail}
+              onOpenSimulator={handleOpenSimulator}
+              onEdit={handleOpenEditStock}
+              onDeletePersonal={setDeletingPersonalStock}
+              onRemoveFromCustom={handleRemoveFromCustom}
+              onCreateWatchlistWithTicker={(ticker) => handleOpenCreateWatchlist(ticker)}
             />
+
+            {/* Pagination Footer for All Stocks */}
+            {activeTab.kind === 'all' && pagination && pagination.totalItems > 0 && (
+              <div className="flex flex-col items-center justify-between gap-3 border-t border-border bg-subtle/40 px-5 py-3 sm:flex-row">
+                <div className="flex items-center gap-3 text-xs text-muted">
+                  <span className="font-mono tabular-nums">
+                    {t.watchlist.paginationShowing}{' '}
+                    <strong className="text-ink">
+                      {(pagination.page - 1) * pagination.pageSize + 1}-
+                      {Math.min(pagination.page * pagination.pageSize, pagination.totalItems)}
+                    </strong>{' '}
+                    {t.watchlist.paginationOf}{' '}
+                    <strong className="text-ink">{formatNumber(pagination.totalItems)}</strong>{' '}
+                    {t.watchlist.paginationStocks}
+                  </span>
+
+                  <Select
+                    value={String(pageSize)}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setPage(1);
+                    }}
+                    aria-label={t.watchlist.paginationPerPage}
+                    className="h-7 w-24 px-2 text-xs"
+                  >
+                    <option value="25">25 / pg</option>
+                    <option value="50">50 / pg</option>
+                    <option value="100">100 / pg</option>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={pagination.page <= 1}
+                    className="h-7 px-2.5 text-xs"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                    {t.watchlist.paginationPrev}
+                  </Button>
+                  <span className="px-2 font-mono text-xs font-semibold text-ink tabular-nums">
+                    {pagination.page} / {pagination.totalPages}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                    disabled={pagination.page >= pagination.totalPages}
+                    className="h-7 px-2.5 text-xs"
+                  >
+                    {t.watchlist.paginationNext}
+                    <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
 
+      {/* Modals */}
       <StockFormModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        open={stockModalOpen}
+        onClose={() => {
+          setStockModalOpen(false);
+          setEditingItem(null);
+          setPrefillStock(null);
+        }}
         editingItem={editingItem}
+        prefillStock={prefillStock}
+      />
+
+      <CustomWatchlistModal
+        open={customModalOpen}
+        onClose={() => {
+          setCustomModalOpen(false);
+          setEditingGroup(null);
+          setInitialTickerForNewGroup(null);
+        }}
+        editingGroup={editingGroup}
+        initialTicker={initialTickerForNewGroup}
+        onCreated={(created) => {
+          switchTab({ kind: 'custom', groupId: created.id });
+        }}
       />
 
       <Modal
-        open={Boolean(deletingItem)}
-        onClose={() => setDeletingItem(null)}
-        title={`${t.common.confirmDelete}: ${deletingItem?.ticker ?? ''}`}
+        open={Boolean(deletingPersonalStock)}
+        onClose={() => setDeletingPersonalStock(null)}
+        title={`${t.common.confirmDelete}: ${deletingPersonalStock?.ticker ?? ''}`}
         maxWidthClass="max-w-md"
       >
         <p className="text-sm text-muted">{t.watchlist.deletePrompt}</p>
         <div className="mt-5 flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setDeletingItem(null)}>
+          <Button variant="secondary" onClick={() => setDeletingPersonalStock(null)}>
             {t.common.cancel}
           </Button>
           <Button
             variant="danger"
-            onClick={confirmDelete}
-            disabled={deleteMutation.isPending}
+            onClick={confirmDeletePersonal}
+            disabled={deleteItemMutation.isPending}
+          >
+            {t.common.delete}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(deletingGroup)}
+        onClose={() => setDeletingGroup(null)}
+        title={`${t.watchlist.deleteWatchlist}: ${deletingGroup?.name ?? ''}`}
+        maxWidthClass="max-w-md"
+      >
+        <p className="text-sm text-muted">{t.watchlist.deleteWatchlistPrompt}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setDeletingGroup(null)}>
+            {t.common.cancel}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={confirmDeleteGroup}
+            disabled={deleteGroupMutation.isPending}
           >
             {t.common.delete}
           </Button>

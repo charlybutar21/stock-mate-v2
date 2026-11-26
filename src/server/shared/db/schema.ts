@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey().notNull(),
@@ -61,3 +61,45 @@ export const stockFundamentals = sqliteTable('stock_fundamentals', {
   dividendGrowthBps: integer('dividend_growth_bps'),
   updatedAt: integer('updated_at').notNull(),
 });
+
+export const idxStocks = sqliteTable('idx_stocks', {
+  ticker: text('ticker').primaryKey().notNull(),
+  companyName: text('company_name').notNull(),
+  sector: text('sector').notNull(),
+  currentPrice: integer('current_price').notNull(),
+  periodLabel: text('period_label'),
+  eps: integer('eps'),
+  bvps: integer('bvps'),
+  dps: integer('dps'),
+  roeBps: integer('roe_bps'),
+  derX100: integer('der_x100'),
+  epsGrowthBps: integer('eps_growth_bps'),
+  targetPerX100: integer('target_per_x100'),
+  targetPbvX100: integer('target_pbv_x100'),
+  source: text('source').notNull().default('tradingview'),
+  syncedAt: integer('synced_at').notNull(),
+});
+
+export const customWatchlists = sqliteTable('custom_watchlists', {
+  id: text('id').primaryKey().notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id),
+  name: text('name').notNull(),
+  description: text('description'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+  deletedAt: integer('deleted_at'),
+});
+
+export const customWatchlistStocks = sqliteTable(
+  'custom_watchlist_stocks',
+  {
+    watchlistId: text('watchlist_id')
+      .notNull()
+      .references(() => customWatchlists.id),
+    ticker: text('ticker').notNull(),
+    addedAt: integer('added_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.watchlistId, table.ticker] })],
+);

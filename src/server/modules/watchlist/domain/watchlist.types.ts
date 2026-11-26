@@ -64,3 +64,57 @@ export interface WatchlistRepository {
   ): Promise<void>;
   softDelete(id: string, userId: string, deletedAtMs: number): Promise<boolean>;
 }
+
+export interface IdxStockRecord {
+  ticker: string;
+  companyName: string;
+  sector: IdxSector;
+  currentPrice: number;
+  periodLabel: string | null;
+  eps: number | null;
+  bvps: number | null;
+  dps: number | null;
+  roeBps: number | null;
+  derX100: number | null;
+  epsGrowthBps: number | null;
+  targetPerX100: number | null;
+  targetPbvX100: number | null;
+  source: string;
+  syncedAt: number;
+}
+
+export interface IdxCatalogRepository {
+  listAll(): Promise<IdxStockRecord[]>;
+  findByTicker(ticker: string): Promise<IdxStockRecord | null>;
+  findByTickers(tickers: string[]): Promise<IdxStockRecord[]>;
+  getLatestSyncedAt(): Promise<number | null>;
+  upsertMany(stocks: IdxStockRecord[], pruneBeforeMs?: number): Promise<void>;
+  upsertOne(stock: IdxStockRecord): Promise<void>;
+}
+
+export interface CustomWatchlistRecord {
+  id: string;
+  userId: string;
+  name: string;
+  description: string | null;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number | null;
+  tickers: string[];
+}
+
+export interface CustomWatchlistRepository {
+  listByUser(userId: string): Promise<CustomWatchlistRecord[]>;
+  countActiveByUser(userId: string): Promise<number>;
+  findByIdForUser(id: string, userId: string): Promise<CustomWatchlistRecord | null>;
+  findActiveByUserAndName(userId: string, name: string): Promise<{ id: string } | null>;
+  create(group: Omit<CustomWatchlistRecord, 'deletedAt'>, addedAtMs: number): Promise<void>;
+  update(
+    id: string,
+    userId: string,
+    patch: { name?: string; description?: string | null; updatedAt: number },
+  ): Promise<void>;
+  softDelete(id: string, userId: string, deletedAtMs: number): Promise<boolean>;
+  addTicker(watchlistId: string, ticker: string, addedAtMs: number): Promise<boolean>;
+  removeTicker(watchlistId: string, ticker: string): Promise<boolean>;
+}

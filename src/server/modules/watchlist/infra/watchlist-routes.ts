@@ -1,6 +1,11 @@
 import { Hono } from 'hono';
 import {
+  addCustomWatchlistStockSchema,
+  catalogQuerySchema,
+  createCustomWatchlistSchema,
   createWatchlistSchema,
+  ensureWatchlistStockSchema,
+  updateCustomWatchlistSchema,
   updateWatchlistSchema,
   watchlistQuerySchema,
 } from '@/shared/contracts';
@@ -12,6 +17,18 @@ import { notFoundError, zodToValidationError } from '@/server/shared/http/proble
 import { createRateLimitMiddleware } from '@/server/shared/http/rate-limit-mw';
 import type { AppEnv } from '@/server/shared/types';
 import {
+  AddStockToCustomWatchlistUseCase,
+  CreateCustomWatchlistUseCase,
+  DeleteCustomWatchlistUseCase,
+  EnsureWatchlistItemUseCase,
+  ListCatalogStocksUseCase,
+  ListCustomWatchlistsUseCase,
+  ListCustomWatchlistStocksUseCase,
+  RemoveStockFromCustomWatchlistUseCase,
+  SyncIdxCatalogUseCase,
+  UpdateCustomWatchlistUseCase,
+} from '../application/watchlist-catalog-use-cases';
+import {
   CreateWatchlistItemUseCase,
   GetWatchlistItemUseCase,
   ListWatchlistUseCase,
@@ -19,15 +36,28 @@ import {
   SyncAllWatchlistUseCase,
   UpdateWatchlistItemUseCase,
 } from '../application/watchlist-use-cases';
-import type { WatchlistRepository } from '../domain/watchlist.types';
+import type {
+  CustomWatchlistRepository,
+  IdxCatalogRepository,
+  WatchlistRepository,
+} from '../domain/watchlist.types';
 
 const VALID_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
+const VALID_TICKER_REGEX = /^[A-Za-z]{4}$/;
 
-function assertValidItemId(id: string): string {
+function assertValidItemId(id: string, label = 'Watchlist item'): string {
   if (!VALID_ID_REGEX.test(id)) {
-    throw notFoundError('Watchlist item not found.');
+    throw notFoundError(`${label} not found.`);
   }
   return id;
+}
+
+function assertValidTickerParam(ticker: string): string {
+  const clean = ticker.trim().toUpperCase();
+  if (!VALID_TICKER_REGEX.test(clean)) {
+    throw notFoundError('Ticker not found.');
+  }
+  return clean;
 }
 
 export function createWatchlistRoutes(
@@ -38,6 +68,8 @@ export function createWatchlistRoutes(
     authRepo: AuthRepository;
     hasher: PasswordHasher;
     watchlistRepo: WatchlistRepository;
+    idxCatalogRepo: IdxCatalogRepository;
+    customWatchlistRepo: CustomWatchlistRepository;
     marketDataProvider: IdxMarketDataProvider;
   },
 ): Hono<AppEnv> {
@@ -49,8 +81,16 @@ export function createWatchlistRoutes(
     keyBy: 'userOrIp',
     keyPrefix: 'watchlist:sync-all',
   });
+  const catalogSyncRateLimiter = createRateLimitMiddleware({
+    maxRequests: 4,
+    windowMs: 60_000,
+    keyBy: 'userOrIp',
+    keyPrefix: 'watchlist:catalog-sync',
+  });
 
   router.use('*', requireAuth);
+
+  // --- Personal Watchlist Items (My Stocks / Positions / Saved Benchmarks) ---
 
   router.get('/', async (c) => {
     const rawQuery = {
@@ -89,6 +129,174 @@ export function createWatchlistRoutes(
 
     return c.json(result, 200);
   });
+
+  router.post('/ensure', async (c) => {
+    const input = await parseJsonBody(c, ensureWatchlistStockSchema);
+    const user = c.get('user')!;
+    const { watchlistRepo, idxCatalogRepo, marketDataProvider } = getDeps(c.env.DB, c.env);
+    const useCase = new EnsureWatchlistItemUseCase(
+      watchlistRepo,
+      idxCatalogRepo,
+      marketDataProvider,
+    );
+    const result = await useCase.execute(user.id, input.ticker);
+
+    return c.json({ item: result.item }, result.created ? 201 : 200);
+  });
+
+  // --- All Stocks (Synced Active IHSG Constituents) ---
+
+  router.get('/catalog', async (c) => {
+    const rawQuery = {
+      search: c.req.query('search') || undefined,
+      sector: c.req.query('sector') || undefined,
+      valuationStatus: c.req.query('valuationStatus') || undefined,
+      minMos: c.req.query('minMos'),
+      maxMos: c.req.query('maxMos'),
+      sort: c.req.query('sort') || undefined,
+      page: c.req.query('page'),
+      pageSize: c.req.query('pageSize'),
+    };
+    const parsed = catalogQuerySchema.safeParse(rawQuery);
+    if (!parsed.success) {
+      throw zodToValidationError(parsed.error);
+    }
+
+    const user = c.get('user')!;
+    const { idxCatalogRepo, watchlistRepo, customWatchlistRepo, marketDataProvider } = getDeps(
+      c.env.DB,
+      c.env,
+    );
+    const useCase = new ListCatalogStocksUseCase(
+      idxCatalogRepo,
+      watchlistRepo,
+      customWatchlistRepo,
+      marketDataProvider,
+    );
+    const result = await useCase.execute(user.id, parsed.data);
+
+    return c.json(result, 200);
+  });
+
+  router.post('/catalog/sync', catalogSyncRateLimiter, async (c) => {
+    const user = c.get('user')!;
+    const { idxCatalogRepo, watchlistRepo, marketDataProvider } = getDeps(c.env.DB, c.env);
+    const useCase = new SyncIdxCatalogUseCase(idxCatalogRepo, watchlistRepo, marketDataProvider);
+    const result = await useCase.execute(user.id);
+
+    return c.json(result, 200);
+  });
+
+  // --- Custom Watchlist Groups ---
+
+  router.get('/groups', async (c) => {
+    const user = c.get('user')!;
+    const { customWatchlistRepo } = getDeps(c.env.DB);
+    const useCase = new ListCustomWatchlistsUseCase(customWatchlistRepo);
+    const groups = await useCase.execute(user.id);
+
+    return c.json({ groups }, 200);
+  });
+
+  router.post('/groups', async (c) => {
+    const input = await parseJsonBody(c, createCustomWatchlistSchema);
+    const user = c.get('user')!;
+    const { customWatchlistRepo, idxCatalogRepo, watchlistRepo, marketDataProvider } = getDeps(
+      c.env.DB,
+      c.env,
+    );
+    const useCase = new CreateCustomWatchlistUseCase(
+      customWatchlistRepo,
+      idxCatalogRepo,
+      watchlistRepo,
+      marketDataProvider,
+    );
+    const group = await useCase.execute(user.id, input);
+
+    return c.json({ group }, 201);
+  });
+
+  router.patch('/groups/:groupId', async (c) => {
+    const groupId = assertValidItemId(c.req.param('groupId'), 'Custom watchlist');
+    const input = await parseJsonBody(c, updateCustomWatchlistSchema);
+    const user = c.get('user')!;
+    const { customWatchlistRepo } = getDeps(c.env.DB);
+    const useCase = new UpdateCustomWatchlistUseCase(customWatchlistRepo);
+    const group = await useCase.execute(user.id, groupId, input);
+
+    return c.json({ group }, 200);
+  });
+
+  router.delete('/groups/:groupId', async (c) => {
+    const groupId = assertValidItemId(c.req.param('groupId'), 'Custom watchlist');
+    const user = c.get('user')!;
+    const { customWatchlistRepo } = getDeps(c.env.DB);
+    const useCase = new DeleteCustomWatchlistUseCase(customWatchlistRepo);
+    await useCase.execute(user.id, groupId);
+
+    return c.body(null, 204);
+  });
+
+  router.get('/groups/:groupId/stocks', async (c) => {
+    const groupId = assertValidItemId(c.req.param('groupId'), 'Custom watchlist');
+    const rawQuery = {
+      search: c.req.query('search') || undefined,
+      sector: c.req.query('sector') || undefined,
+      valuationStatus: c.req.query('valuationStatus') || undefined,
+      minMos: c.req.query('minMos'),
+      maxMos: c.req.query('maxMos'),
+      sort: c.req.query('sort') || undefined,
+      page: 1,
+      pageSize: 100,
+    };
+    const parsed = catalogQuerySchema.safeParse(rawQuery);
+    if (!parsed.success) {
+      throw zodToValidationError(parsed.error);
+    }
+
+    const user = c.get('user')!;
+    const { customWatchlistRepo, idxCatalogRepo, watchlistRepo } = getDeps(c.env.DB);
+    const useCase = new ListCustomWatchlistStocksUseCase(
+      customWatchlistRepo,
+      idxCatalogRepo,
+      watchlistRepo,
+    );
+    const result = await useCase.execute(user.id, groupId, parsed.data);
+
+    return c.json(result, 200);
+  });
+
+  router.post('/groups/:groupId/stocks', async (c) => {
+    const groupId = assertValidItemId(c.req.param('groupId'), 'Custom watchlist');
+    const input = await parseJsonBody(c, addCustomWatchlistStockSchema);
+    const user = c.get('user')!;
+    const { customWatchlistRepo, idxCatalogRepo, watchlistRepo, marketDataProvider } = getDeps(
+      c.env.DB,
+      c.env,
+    );
+    const useCase = new AddStockToCustomWatchlistUseCase(
+      customWatchlistRepo,
+      idxCatalogRepo,
+      watchlistRepo,
+      marketDataProvider,
+    );
+    const item = await useCase.execute(user.id, groupId, input);
+
+    return c.json({ item }, 201);
+  });
+
+  router.delete('/groups/:groupId/stocks/:ticker', async (c) => {
+    const groupId = assertValidItemId(c.req.param('groupId'), 'Custom watchlist');
+    const ticker = assertValidTickerParam(c.req.param('ticker'));
+    const user = c.get('user')!;
+    const { customWatchlistRepo } = getDeps(c.env.DB);
+    const useCase = new RemoveStockFromCustomWatchlistUseCase(customWatchlistRepo);
+    await useCase.execute(user.id, groupId, ticker);
+
+    return c.body(null, 204);
+  });
+
+  // --- Single Personal Watchlist Item Routes (registered after static prefixes) ---
 
   router.get('/:id', async (c) => {
     const user = c.get('user')!;

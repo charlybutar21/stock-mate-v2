@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   createWatchlistSchema,
   type CreateWatchlistRequest,
+  type MarketStockDto,
   type UpdateWatchlistRequest,
   type WatchlistItemDto,
 } from '@/shared/contracts';
@@ -55,21 +56,24 @@ interface StockFormModalProps {
   open: boolean;
   onClose: () => void;
   editingItem?: WatchlistItemDto | null;
+  prefillStock?: MarketStockDto | null;
 }
 
-export function StockFormModal({ open, onClose, editingItem }: StockFormModalProps) {
+export function StockFormModal({ open, onClose, editingItem, prefillStock }: StockFormModalProps) {
   const { t } = useI18n();
+  const isEditing = Boolean(editingItem);
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={editingItem ? t.watchlist.form.editTitle : t.watchlist.form.addTitle}
+      title={isEditing || prefillStock ? t.watchlist.form.editTitle : t.watchlist.form.addTitle}
     >
       {open && (
         <StockFormBody
-          key={editingItem?.id ?? 'new'}
+          key={editingItem?.id ?? (prefillStock ? `prefill_${prefillStock.ticker}` : 'new')}
           onClose={onClose}
           editingItem={editingItem}
+          prefillStock={prefillStock}
         />
       )}
     </Modal>
@@ -79,39 +83,38 @@ export function StockFormModal({ open, onClose, editingItem }: StockFormModalPro
 function StockFormBody({
   onClose,
   editingItem,
+  prefillStock,
 }: {
   onClose: () => void;
   editingItem?: WatchlistItemDto | null;
+  prefillStock?: MarketStockDto | null;
 }) {
   const { t } = useI18n();
   const createMutation = useCreateWatchlistItem();
   const updateMutation = useUpdateWatchlistItem();
   const fetchQuoteMutation = useFetchIdxQuote();
 
-  const f0 = editingItem?.fundamentals;
+  const seed = editingItem ?? prefillStock ?? null;
+  const f0 = seed?.fundamentals;
 
   const [tab, setTab] = useState<'basic' | 'fundamentals'>('basic');
-  const [ticker, setTicker] = useState(editingItem?.ticker ?? '');
-  const [companyName, setCompanyName] = useState(editingItem?.companyName ?? '');
-  const [sector, setSector] = useState<IdxSector>(editingItem?.sector ?? 'FINANCIALS');
-  const [currentPrice, setCurrentPrice] = useState(
-    editingItem ? String(editingItem.currentPrice) : '',
-  );
+  const [ticker, setTicker] = useState(seed?.ticker ?? '');
+  const [companyName, setCompanyName] = useState(seed?.companyName ?? '');
+  const [sector, setSector] = useState<IdxSector>(seed?.sector ?? 'FINANCIALS');
+  const [currentPrice, setCurrentPrice] = useState(seed ? String(seed.currentPrice) : '');
   const [holdingRows, setHoldingRows] = useState<EditableHoldingRow[]>(() =>
-    (editingItem?.holdingTranches ?? []).map((tr, i) => ({
+    (seed?.holdingTranches ?? []).map((tr, i) => ({
       id: `init_${i}`,
       lots: String(tr.lots),
       buyPrice: String(tr.buyPrice),
     })),
   );
   const [targetBuyPrice, setTargetBuyPrice] = useState(
-    editingItem?.targetBuyPrice !== null && editingItem?.targetBuyPrice !== undefined
-      ? String(editingItem.targetBuyPrice)
+    seed?.targetBuyPrice !== null && seed?.targetBuyPrice !== undefined
+      ? String(seed.targetBuyPrice)
       : '',
   );
-  const [investmentThesis, setInvestmentThesis] = useState(
-    editingItem?.investmentThesis ?? '',
-  );
+  const [investmentThesis, setInvestmentThesis] = useState(seed?.investmentThesis ?? '');
 
   // Only 6 Essential Industry-Standard Key Stats + 3 Valuation Benchmarks
   const [periodLabel, setPeriodLabel] = useState(f0?.periodLabel ?? 'TTM');

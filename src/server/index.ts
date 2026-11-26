@@ -19,6 +19,8 @@ import { D1AuthRepository } from './modules/auth/infra/d1-auth-repository';
 import { WebCryptoHasher } from './modules/auth/infra/web-crypto-hasher';
 import { createAuthRoutes } from './modules/auth/infra/auth-routes';
 import { D1WatchlistRepository } from './modules/watchlist/infra/d1-watchlist-repository';
+import { D1IdxCatalogRepository } from './modules/watchlist/infra/d1-idx-catalog-repository';
+import { D1CustomWatchlistRepository } from './modules/watchlist/infra/d1-custom-watchlist-repository';
 import { createWatchlistRoutes } from './modules/watchlist/infra/watchlist-routes';
 import type { IdxMarketDataProvider } from './modules/market-data/domain/market-data.types';
 import {
@@ -33,6 +35,7 @@ const SAFE_CORRELATION_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
 const JSON_BODY_FREE_POST_PATHS = new Set([
   '/api/v1/auth/logout',
   '/api/v1/watchlist/sync-all',
+  '/api/v1/watchlist/catalog/sync',
 ]);
 
 function extractOriginFromReferer(referer: string | undefined): string | null {
@@ -72,6 +75,8 @@ export function createApp(options?: {
     return {
       authRepo: new D1AuthRepository(db),
       watchlistRepo: new D1WatchlistRepository(db),
+      idxCatalogRepo: new D1IdxCatalogRepository(db),
+      customWatchlistRepo: new D1CustomWatchlistRepository(db),
       hasher,
       marketDataProvider,
     };

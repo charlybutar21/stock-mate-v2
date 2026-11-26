@@ -11,6 +11,8 @@ import {
 const TV_SCANNER_URL = 'https://scanner.tradingview.com/indonesia/scan';
 const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const UPSTREAM_TIMEOUT_MS = 8_000;
+const UNIVERSE_TIMEOUT_MS = 15_000;
+const IDX_TICKER_REGEX = /^[A-Z]{4}$/;
 
 const TV_COLUMNS = [
   'name',
@@ -176,5 +178,63 @@ export class TradingViewIdxProvider implements IdxMarketDataProvider {
     }
 
     return result;
+  }
+
+  /**
+   * Fetches all active common IDX stocks participating in IHSG (IDX Composite):
+   * - Listed on IDX (exchange = IDX)
+   * - Primary common shares (type = stock, subtype = common, is_primary = true)
+   * - Actively traded (active_symbol = true, close > 0)
+   * - Positive market capitalization (market_cap_basic > 0, eligible for IHSG market-cap calculation)
+   * - Strict 4-letter IDX ticker (excludes warrants, rights, bonds, ETFs)
+   */
+  async fetchAllIdxStocks(): Promise<IdxMarketQuoteDto[]> {
+    const now = Date.now();
+    const res = await fetch(TV_SCANNER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        filter: [
+          { left: 'exchange', operation: 'equal', right: 'IDX' },
+          { left: 'type', operation: 'equal', right: 'stock' },
+          { left: 'subtype', operation: 'equal', right: 'common' },
+          { left: 'is_primary', operation: 'equal', right: true },
+          { left: 'active_symbol', operation: 'equal', right: true },
+          { left: 'market_cap_basic', operation: 'greater', right: 0 },
+          { left: 'close', operation: 'greater', right: 0 },
+        ],
+        options: { lang: 'en' },
+        range: [0, 1500],
+        sort: { sortBy: 'market_cap_basic', sortOrder: 'desc' },
+        columns: [...TV_COLUMNS],
+      }),
+      signal: AbortSignal.timeout(UNIVERSE_TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      throw new AppError({
+        status: 502,
+        type: 'https://stock-mate-v2/errors/upstream-unavailable',
+        title: 'Market Data Unavailable',
+        detail: `TradingView scanner returned status ${res.status}.`,
+      });
+    }
+
+    const payload = (await res.json()) as TradingViewScanResponse;
+    const byTicker = new Map<string, IdxMarketQuoteDto>();
+
+    for (const row of payload.data ?? []) {
+      const dto = parseTradingViewRowToDto(row, now);
+      if (!dto || !IDX_TICKER_REGEX.test(dto.ticker)) continue;
+      if (!byTicker.has(dto.ticker)) {
+        byTicker.set(dto.ticker, dto);
+        tvQuoteCache.set(dto.ticker, dto, now);
+      }
+    }
+
+    return Array.from(byTicker.values());
   }
 }

@@ -667,4 +667,437 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(rateLimitedRes.headers.get('retry-after')).toBeTruthy();
     expect(rateLimitedRes.headers.get('content-type')).toContain('application/problem+json');
   });
+
+  it('syncs active IHSG catalog, filters by valuation/MoS/sort/pagination, ensures items, and isolates Custom Watchlists', async () => {
+    const { d1, sqlite } = createTestD1();
+    const nowIso = new Date().toISOString();
+
+    let universe = [
+      // Undervalued: Fair Value ~5768, Price 3000 -> MoS ~48% (UNDERVALUED)
+      {
+        ticker: 'BBRI',
+        companyName: 'PT Bank Rakyat Indonesia Tbk',
+        sector: 'FINANCIALS' as const,
+        currentPrice: 3000,
+        periodLabel: 'TTM (TradingView)',
+        fundamentals: {
+          eps: 420,
+          bvps: 2300,
+          dps: 300,
+          roePct: 19.0,
+          der: null,
+          epsGrowthPct: 10.0,
+          targetPer: 15,
+          targetPbv: 2.5,
+        },
+        source: 'tradingview' as const,
+        fetchedAt: nowIso,
+      },
+      // Fairly Valued: Median Fair Value ~7200, Price 6000 -> MoS ~16.7% (FAIRLY_VALUED)
+      {
+        ticker: 'BBCA',
+        companyName: 'PT Bank Central Asia Tbk',
+        sector: 'FINANCIALS' as const,
+        currentPrice: 6000,
+        periodLabel: 'TTM (TradingView)',
+        fundamentals: {
+          eps: 480,
+          bvps: 2300,
+          dps: 330,
+          roePct: 21.0,
+          der: null,
+          epsGrowthPct: 8.0,
+          targetPer: 15,
+          targetPbv: 2.5,
+        },
+        source: 'tradingview' as const,
+        fetchedAt: nowIso,
+      },
+      // Overvalued: Fair Value ~1500, Price 4000 -> MoS negative (OVERVALUED)
+      {
+        ticker: 'TECH',
+        companyName: 'PT Teknologi Mahal Tbk',
+        sector: 'TECHNOLOGY' as const,
+        currentPrice: 4000,
+        periodLabel: 'TTM (TradingView)',
+        fundamentals: {
+          eps: 75,
+          bvps: 600,
+          dps: 0,
+          roePct: 12.0,
+          der: 0.4,
+          epsGrowthPct: 5.0,
+          targetPer: 20,
+          targetPbv: 2.5,
+        },
+        source: 'tradingview' as const,
+        fetchedAt: nowIso,
+      },
+      // Inactive later when universe prunes
+      {
+        ticker: 'OLDX',
+        companyName: 'PT Emiten Lama Tbk',
+        sector: 'ENERGY' as const,
+        currentPrice: 200,
+        periodLabel: 'TTM (TradingView)',
+        fundamentals: {
+          eps: 50,
+          bvps: 300,
+          dps: 10,
+          roePct: 14.0,
+          der: 0.5,
+          epsGrowthPct: 4.0,
+          targetPer: 8,
+          targetPbv: 1.5,
+        },
+        source: 'tradingview' as const,
+        fetchedAt: nowIso,
+      },
+    ];
+
+    const app = createApp({
+      marketDataProvider: {
+        async fetchIdxQuote(ticker) {
+          const found = universe.find((s) => s.ticker === ticker);
+          if (found) return found;
+          return {
+            ticker,
+            companyName: `PT ${ticker} Tbk`,
+            sector: 'INFRASTRUCTURE',
+            currentPrice: 2800,
+            periodLabel: 'TTM (TradingView)',
+            fundamentals: {
+              eps: 250,
+              bvps: 1500,
+              dps: 180,
+              roePct: 16.5,
+              der: 0.8,
+              epsGrowthPct: 7.0,
+              targetPer: 16,
+              targetPbv: 2.2,
+            },
+            source: 'tradingview',
+            fetchedAt: new Date().toISOString(),
+          };
+        },
+        async fetchIdxQuotesBatch(tickers) {
+          const map = new Map();
+          for (const t of tickers) {
+            const found = universe.find((s) => s.ticker === t);
+            if (found) map.set(t, found);
+          }
+          return map;
+        },
+        async fetchAllIdxStocks() {
+          return universe;
+        },
+      },
+    });
+
+    // Register User A & User B
+    const regA = await app.request(
+      'http://localhost/api/v1/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'cat-a@example.com', name: 'Cat A', password: 'Password123' }),
+      },
+      { DB: d1 },
+    );
+    const cookieA = extractSessionCookie(regA);
+
+    const regB = await app.request(
+      'http://localhost/api/v1/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'cat-b@example.com', name: 'Cat B', password: 'Password123' }),
+      },
+      { DB: d1 },
+    );
+    const cookieB = extractSessionCookie(regB);
+
+    // 1. First GET /catalog auto-syncs IHSG universe and computes valuation summaries
+    const catRes = await app.request(
+      'http://localhost/api/v1/watchlist/catalog?sort=mos_desc',
+      { headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(catRes.status).toBe(200);
+    const catJson = (await catRes.json()) as {
+      items: Array<{ ticker: string; valuation: { valuationStatus: string; mosPct: number | null } }>;
+      summary: { totalStocks: number; undervalued: number; fairlyValued: number; overvalued: number };
+      pagination: { totalItems: number; totalPages: number; page: number };
+    };
+    expect(catJson.summary.totalStocks).toBe(4);
+    expect(catJson.summary.undervalued).toBe(2); // BBRI, OLDX
+    expect(catJson.summary.fairlyValued).toBe(1); // BBCA
+    expect(catJson.summary.overvalued).toBe(1); // TECH
+
+    // 2. Filter by valuationStatus=UNDERVALUED + minMos=45
+    const underRes = await app.request(
+      'http://localhost/api/v1/watchlist/catalog?valuationStatus=UNDERVALUED&minMos=45',
+      { headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(underRes.status).toBe(200);
+    const underJson = (await underRes.json()) as { items: Array<{ ticker: string }> };
+    expect(underJson.items.map((i) => i.ticker)).toEqual(['OLDX', 'BBRI']);
+
+    // 3. Filter by FAIRLY_VALUED and OVERVALUED + sort price_asc
+    const fairRes = await app.request(
+      'http://localhost/api/v1/watchlist/catalog?valuationStatus=FAIRLY_VALUED',
+      { headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(((await fairRes.json()) as { items: Array<{ ticker: string }> }).items.map((i) => i.ticker)).toEqual(['BBCA']);
+
+    const overRes = await app.request(
+      'http://localhost/api/v1/watchlist/catalog?valuationStatus=OVERVALUED&maxMos=0',
+      { headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(((await overRes.json()) as { items: Array<{ ticker: string }> }).items.map((i) => i.ticker)).toEqual(['TECH']);
+
+    const priceAscRes = await app.request(
+      'http://localhost/api/v1/watchlist/catalog?sort=price_asc',
+      { headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(((await priceAscRes.json()) as { items: Array<{ ticker: string }> }).items.map((i) => i.ticker)).toEqual([
+      'OLDX',
+      'BBRI',
+      'TECH',
+      'BBCA',
+    ]);
+
+    // 4. Ensure a catalog stock into personal watchlist_items (idempotent) + add owned position
+    const ensure1 = await app.request(
+      'http://localhost/api/v1/watchlist/ensure',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        body: JSON.stringify({ ticker: 'bbri' }),
+      },
+      { DB: d1 },
+    );
+    expect(ensure1.status).toBe(201);
+    const ensuredItem = ((await ensure1.json()) as { item: { id: string; ticker: string } }).item;
+    expect(ensuredItem.ticker).toBe('BBRI');
+
+    const ensure2 = await app.request(
+      'http://localhost/api/v1/watchlist/ensure',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        body: JSON.stringify({ ticker: 'BBRI' }),
+      },
+      { DB: d1 },
+    );
+    expect(ensure2.status).toBe(200);
+    expect(((await ensure2.json()) as { item: { id: string } }).item.id).toBe(ensuredItem.id);
+
+    // Record position on BBRI (now appears in My Stocks)
+    const patchPos = await app.request(
+      `http://localhost/api/v1/watchlist/${ensuredItem.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        body: JSON.stringify({
+          holdingTranches: [{ lots: 10, buyPrice: 2950 }],
+          fundamentals: { targetPbv: 2.8 },
+        }),
+      },
+      { DB: d1 },
+    );
+    expect(patchPos.status).toBe(200);
+
+    // 5. Explicit POST /catalog/sync prunes inactive OLDX, updates BBRI price while keeping ownedLots & custom targetPbv!
+    universe = universe
+      .filter((s) => s.ticker !== 'OLDX')
+      .map((s) => (s.ticker === 'BBRI' ? { ...s, currentPrice: 3150 } : s));
+
+    const syncRes = await app.request(
+      'http://localhost/api/v1/watchlist/catalog/sync',
+      { method: 'POST', headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(syncRes.status).toBe(200);
+    const syncJson = (await syncRes.json()) as { syncedCount: number; updatedUserItemsCount: number };
+    expect(syncJson.syncedCount).toBe(3);
+    expect(syncJson.updatedUserItemsCount).toBe(1);
+
+    const afterSyncCat = await app.request(
+      'http://localhost/api/v1/watchlist/catalog',
+      { headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    const afterSyncJson = (await afterSyncCat.json()) as {
+      items: Array<{ ticker: string; currentPrice: number; ownedLots: number; fundamentals: { targetPbv: number | null } }>;
+      summary: { totalStocks: number };
+    };
+    expect(afterSyncJson.summary.totalStocks).toBe(3);
+    const bbriMerged = afterSyncJson.items.find((i) => i.ticker === 'BBRI')!;
+    expect(bbriMerged.currentPrice).toBe(3150);
+    expect(bbriMerged.ownedLots).toBe(10);
+    expect(bbriMerged.fundamentals.targetPbv).toBe(2.8);
+
+    // 6. Custom Watchlist Lifecycle: Create with Quick Add tickers -> List -> Filter -> Quick Add -> Remove -> Rename -> IDOR -> Soft Delete
+    const createGroupRes = await app.request(
+      'http://localhost/api/v1/watchlist/groups',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        body: JSON.stringify({
+          name: 'Big Banks',
+          description: 'Core banking watchlist',
+          tickers: ['BBCA', 'BBRI'],
+        }),
+      },
+      { DB: d1 },
+    );
+    expect(createGroupRes.status).toBe(201);
+    const createdGroup = (
+      (await createGroupRes.json()) as { group: { id: string; name: string; tickers: string[]; stockCount: number } }
+    ).group;
+    expect(createdGroup.name).toBe('Big Banks');
+    expect(createdGroup.tickers).toEqual(['BBCA', 'BBRI']);
+    expect(createdGroup.stockCount).toBe(2);
+
+    // Case-insensitive duplicate custom watchlist name -> 409
+    const dupGroupRes = await app.request(
+      'http://localhost/api/v1/watchlist/groups',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        body: JSON.stringify({ name: 'big banks' }),
+      },
+      { DB: d1 },
+    );
+    expect(dupGroupRes.status).toBe(409);
+
+    // Quick Add a stock not yet in catalog (TLKM) -> auto-fetches quote & adds to group
+    const quickAddRes = await app.request(
+      `http://localhost/api/v1/watchlist/groups/${createdGroup.id}/stocks`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        body: JSON.stringify({ ticker: 'tlkm' }),
+      },
+      { DB: d1 },
+    );
+    expect(quickAddRes.status).toBe(201);
+    expect(((await quickAddRes.json()) as { item: { ticker: string } }).item.ticker).toBe('TLKM');
+
+    // Duplicate Quick Add -> 409
+    const dupAddRes = await app.request(
+      `http://localhost/api/v1/watchlist/groups/${createdGroup.id}/stocks`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        body: JSON.stringify({ ticker: 'BBCA' }),
+      },
+      { DB: d1 },
+    );
+    expect(dupAddRes.status).toBe(409);
+
+    // List custom watchlist stocks (overlays user's BBRI owned position!)
+    const groupStocksRes = await app.request(
+      `http://localhost/api/v1/watchlist/groups/${createdGroup.id}/stocks?sort=ticker_asc`,
+      { headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(groupStocksRes.status).toBe(200);
+    const groupStocksJson = (await groupStocksRes.json()) as {
+      items: Array<{ ticker: string; ownedLots: number }>;
+    };
+    expect(groupStocksJson.items.map((i) => i.ticker)).toEqual(['BBCA', 'BBRI', 'TLKM']);
+    expect(groupStocksJson.items.find((i) => i.ticker === 'BBRI')!.ownedLots).toBe(10);
+
+    // Remove BBRI from custom watchlist -> 204, user's owned position in watchlist_items remains untouched!
+    const removeStockRes = await app.request(
+      `http://localhost/api/v1/watchlist/groups/${createdGroup.id}/stocks/BBRI`,
+      { method: 'DELETE', headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(removeStockRes.status).toBe(204);
+
+    const verifyPosIntact = await app.request(
+      `http://localhost/api/v1/watchlist/${ensuredItem.id}`,
+      { headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(verifyPosIntact.status).toBe(200);
+    expect(((await verifyPosIntact.json()) as { item: { ownedLots: number } }).item.ownedLots).toBe(10);
+
+    // IDOR isolation: User B cannot access, mutate, or delete User A's custom watchlist
+    const idorGroupStocks = await app.request(
+      `http://localhost/api/v1/watchlist/groups/${createdGroup.id}/stocks`,
+      { headers: { Cookie: cookieB } },
+      { DB: d1 },
+    );
+    expect(idorGroupStocks.status).toBe(404);
+
+    const idorGroupPatch = await app.request(
+      `http://localhost/api/v1/watchlist/groups/${createdGroup.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieB },
+        body: JSON.stringify({ name: 'Hijacked' }),
+      },
+      { DB: d1 },
+    );
+    expect(idorGroupPatch.status).toBe(404);
+
+    const idorGroupDelete = await app.request(
+      `http://localhost/api/v1/watchlist/groups/${createdGroup.id}`,
+      { method: 'DELETE', headers: { Cookie: cookieB } },
+      { DB: d1 },
+    );
+    expect(idorGroupDelete.status).toBe(404);
+
+    // Rename & Soft-delete custom watchlist -> re-create with same name succeeds
+    const renameRes = await app.request(
+      `http://localhost/api/v1/watchlist/groups/${createdGroup.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        body: JSON.stringify({ name: 'Dividend Core' }),
+      },
+      { DB: d1 },
+    );
+    expect(renameRes.status).toBe(200);
+    expect(((await renameRes.json()) as { group: { name: string } }).group.name).toBe('Dividend Core');
+
+    const delGroupRes = await app.request(
+      `http://localhost/api/v1/watchlist/groups/${createdGroup.id}`,
+      { method: 'DELETE', headers: { Cookie: cookieA } },
+      { DB: d1 },
+    );
+    expect(delGroupRes.status).toBe(204);
+
+    const recreateGroupRes = await app.request(
+      'http://localhost/api/v1/watchlist/groups',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        body: JSON.stringify({ name: 'Dividend Core' }),
+      },
+      { DB: d1 },
+    );
+    expect(recreateGroupRes.status).toBe(201);
+
+    // Verify index usage on custom_watchlists
+    const groupPlan = sqlite
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT id, name FROM custom_watchlists
+         WHERE user_id = ? AND deleted_at IS NULL
+         ORDER BY created_at ASC`,
+      )
+      .all('user-1') as Array<{ detail: string }>;
+    const groupPlanStr = groupPlan.map((p) => p.detail).join(' | ');
+    expect(groupPlanStr).toContain('idx_custom_watchlists_user_active');
+    expect(groupPlanStr).not.toMatch(/\bSCAN\b/i);
+  });
 });

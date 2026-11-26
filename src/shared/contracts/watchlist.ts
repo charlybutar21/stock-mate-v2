@@ -132,15 +132,100 @@ export const updateWatchlistSchema = z.object({
   fundamentals: fundamentalsPatchSchema.optional(),
 });
 
+export const VALUATION_STATUS_FILTERS = [
+  'UNDERVALUED',
+  'FAIRLY_VALUED',
+  'OVERVALUED',
+  'INSUFFICIENT_DATA',
+] as const;
+
+export type ValuationStatusFilter = (typeof VALUATION_STATUS_FILTERS)[number];
+
+export const CATALOG_SORT_OPTIONS = [
+  'mos_desc',
+  'mos_asc',
+  'ticker_asc',
+  'ticker_desc',
+  'price_asc',
+  'price_desc',
+  'fair_value_desc',
+] as const;
+
+export type CatalogSortOption = (typeof CATALOG_SORT_OPTIONS)[number];
+
 export const watchlistQuerySchema = z.object({
   search: z.string().trim().max(60).optional(),
   sector: z.enum(IDX_SECTORS).optional(),
   sort: z.enum(['mos_desc', 'updated_desc', 'ticker_asc']).optional().default('updated_desc'),
 });
 
+const optionalQueryNumber = (min: number, max: number) =>
+  z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const num = Number(val);
+      return Number.isFinite(num) ? num : val;
+    },
+    z.number().finite().min(min).max(max).optional(),
+  );
+
+const optionalQueryInt = (min: number, max: number, fallback: number) =>
+  z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === '') return fallback;
+      const num = Number(val);
+      return Number.isFinite(num) ? Math.trunc(num) : val;
+    },
+    z.number().int().min(min).max(max),
+  );
+
+export const catalogQuerySchema = z.object({
+  search: z.string().trim().max(60).optional(),
+  sector: z.enum(IDX_SECTORS).optional(),
+  valuationStatus: z.enum(VALUATION_STATUS_FILTERS).optional(),
+  minMos: optionalQueryNumber(-1000, 1000),
+  maxMos: optionalQueryNumber(-1000, 1000),
+  sort: z.enum(CATALOG_SORT_OPTIONS).optional().default('mos_desc'),
+  page: optionalQueryInt(1, 500, 1),
+  pageSize: optionalQueryInt(10, 100, 50),
+});
+
+export const ensureWatchlistStockSchema = z.object({
+  ticker: tickerSchema,
+});
+
+export const createCustomWatchlistSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Watchlist name is required')
+    .max(60, 'Watchlist name must be at most 60 characters'),
+  description: z.string().trim().max(200).nullable().optional(),
+  tickers: z.array(tickerSchema).max(100).optional().default([]),
+});
+
+export const updateCustomWatchlistSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Watchlist name is required')
+    .max(60, 'Watchlist name must be at most 60 characters')
+    .optional(),
+  description: z.string().trim().max(200).nullable().optional(),
+});
+
+export const addCustomWatchlistStockSchema = z.object({
+  ticker: tickerSchema,
+});
+
 export type CreateWatchlistRequest = z.infer<typeof createWatchlistSchema>;
 export type UpdateWatchlistRequest = z.infer<typeof updateWatchlistSchema>;
 export type WatchlistQuery = z.infer<typeof watchlistQuerySchema>;
+export type CatalogQuery = z.infer<typeof catalogQuerySchema>;
+export type EnsureWatchlistStockRequest = z.infer<typeof ensureWatchlistStockSchema>;
+export type CreateCustomWatchlistRequest = z.infer<typeof createCustomWatchlistSchema>;
+export type UpdateCustomWatchlistRequest = z.infer<typeof updateCustomWatchlistSchema>;
+export type AddCustomWatchlistStockRequest = z.infer<typeof addCustomWatchlistStockSchema>;
 
 export interface FundamentalsDto {
   periodLabel: string | null;
@@ -175,4 +260,62 @@ export interface WatchlistItemDto {
   isStale: boolean;
   fundamentals: FundamentalsDto;
   valuation: ValuationSummary;
+}
+
+export interface MarketStockDto {
+  /** Personal watchlist_items.id when saved/owned by the user, otherwise null */
+  watchlistItemId: string | null;
+  ticker: string;
+  companyName: string;
+  sector: IdxSector;
+  currentPrice: number;
+  ownedLots: number;
+  avgBuyPrice: number | null;
+  holdingTranches: HoldingTrancheDto[];
+  targetBuyPrice: number | null;
+  investmentThesis: string | null;
+  updatedAt: string;
+  isStale: boolean;
+  fundamentals: FundamentalsDto;
+  valuation: ValuationSummary;
+  /** IDs of the current user's custom watchlists containing this ticker */
+  customWatchlistIds: string[];
+}
+
+export interface CatalogSummaryDto {
+  totalStocks: number;
+  undervalued: number;
+  fairlyValued: number;
+  overvalued: number;
+  insufficientData: number;
+  lastSyncedAt: string | null;
+}
+
+export interface CatalogPaginationDto {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+}
+
+export interface CatalogResponseDto {
+  items: MarketStockDto[];
+  pagination: CatalogPaginationDto;
+  summary: CatalogSummaryDto;
+}
+
+export interface CustomWatchlistGroupDto {
+  id: string;
+  name: string;
+  description: string | null;
+  tickers: string[];
+  stockCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CatalogSyncResponseDto {
+  syncedCount: number;
+  updatedUserItemsCount: number;
+  syncedAt: string;
 }

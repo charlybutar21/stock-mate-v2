@@ -4,6 +4,7 @@ import type { IdxSector } from '@/shared/domain';
 export interface IdxMarketDataProvider {
   fetchIdxQuote(ticker: string): Promise<IdxMarketQuoteDto>;
   fetchIdxQuotesBatch?(tickers: string[]): Promise<Map<string, IdxMarketQuoteDto>>;
+  fetchAllIdxStocks?(): Promise<IdxMarketQuoteDto[]>;
 }
 
 export const SECTOR_BENCHMARK_MULTIPLES: Record<

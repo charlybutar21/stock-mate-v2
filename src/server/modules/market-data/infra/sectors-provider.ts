@@ -300,4 +300,18 @@ export class CompositeIdxMarketDataProvider implements IdxMarketDataProvider {
     }
     return map;
   }
+
+  async fetchAllIdxStocks(): Promise<IdxMarketQuoteDto[]> {
+    if (this.primary.fetchAllIdxStocks) {
+      try {
+        return await this.primary.fetchAllIdxStocks();
+      } catch {
+        // Fallback to secondary universe provider
+      }
+    }
+    if (this.fallback.fetchAllIdxStocks) {
+      return await this.fallback.fetchAllIdxStocks();
+    }
+    return [];
+  }
 }
