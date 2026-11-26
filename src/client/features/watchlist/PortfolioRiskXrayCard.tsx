@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, PieChart, ShieldAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { PortfolioRiskSummary } from '@/shared/domain';
-import { Badge, Card, cn, TermTooltip } from '@/client/components/ui/primitives';
+import { Badge, Card, cn, RolePill, TermTooltip } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatPercent } from '@/client/lib/formatters';
 import { MASKED_IDR, usePrivacy } from '@/client/lib/usePrivacy';
@@ -249,19 +249,20 @@ export function PortfolioRiskXrayCard({ risk }: PortfolioRiskXrayCardProps) {
     sectorSlices.find((s) => s.id === hoveredSectorId) ?? sectorSlices[0] ?? null;
 
   return (
-    <Card className="space-y-3 border-l-4 border-l-brand-600 px-4 py-3.5 animate-fade-up">
+    <Card variant="display" className="space-y-3 px-4 py-3.5 animate-fade-up">
       {/* Compact Header Row */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-50 text-brand-600">
-            <PieChart className="h-3.5 w-3.5" />
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-50 text-brand-700">
+            <PieChart className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
-          <h2 className="font-display text-sm font-bold text-ink">
+          <h3 className="font-display text-sm font-bold text-ink">
             <TermTooltip
               label={t.watchlist.xray.title}
               definition={t.glossary.portfolioXray}
             />
-          </h2>
+          </h3>
+          <RolePill role="display" label={t.common.displayTag} />
           <span className="hidden text-xs text-muted sm:inline">·</span>
           <p className="text-[11px] text-muted">{t.watchlist.xray.subtitle}</p>
         </div>

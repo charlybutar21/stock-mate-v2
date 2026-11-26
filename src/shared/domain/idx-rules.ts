@@ -49,6 +49,33 @@ export function floorToIdxTick(rawPrice: number): number {
   return Math.max(MIN_IDX_PRICE, Math.floor(pInt / tick) * tick);
 }
 
+/**
+ * Steps a stock price up or down by exactly one official IDX (BEI) price tick fraction:
+ *   < 200      -> ±1
+ *   200 - 499  -> ±2
+ *   500 - 1999 -> ±5
+ *   2000 - 4999 -> ±10
+ *   >= 5000    -> ±25
+ *
+ * Handles bracket boundaries accurately (e.g., 200 down -> 199, 500 down -> 498,
+ * 2000 down -> 1995, 5000 down -> 4990) and snaps off-tick inputs to the next valid tick.
+ */
+export function stepIdxPrice(currentPrice: number, direction: 'up' | 'down'): number {
+  const safe = Number.isFinite(currentPrice) ? currentPrice : 0;
+
+  if (direction === 'up') {
+    if (safe < MIN_IDX_PRICE) return MIN_IDX_PRICE;
+    const base = Math.floor(safe);
+    const tick = getIdxTickSize(base);
+    return Math.floor(base / tick) * tick + tick;
+  }
+
+  if (safe <= MIN_IDX_PRICE) return MIN_IDX_PRICE;
+  const base = Math.ceil(safe);
+  const tickForDown = getIdxTickSize(base - 1);
+  return Math.max(MIN_IDX_PRICE, Math.ceil(base / tickForDown) * tickForDown - tickForDown);
+}
+
 export function isStaleTimestamp(updatedAtMs: number, nowMs: number = Date.now()): boolean {
   return nowMs - updatedAtMs > STALE_THRESHOLD_MS;
 }

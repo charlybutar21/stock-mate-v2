@@ -6,7 +6,15 @@ import {
   simulateTakeProfitLadder,
   type TakeProfitRungInput,
 } from '@/shared/domain';
-import { Badge, Button, Card, Field, Input } from '@/client/components/ui/primitives';
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  IdxPriceInput,
+  Input,
+  RolePill,
+} from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
 
@@ -118,123 +126,133 @@ export function TakeProfitTab({
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-      {/* Left: Owned Position & Sell Rungs */}
-      <Card className="space-y-4 lg:col-span-5">
-        <div>
-          <h3 className="text-sm font-bold text-ink">{t.simulator.takeProfit.title}</h3>
-          <p className="mt-1 text-xs text-muted">{t.simulator.takeProfit.subtitle}</p>
+      {/* LEFT: Editable Owned Position & Sell Rungs */}
+      <Card variant="editable" className="overflow-hidden p-0 lg:col-span-5">
+        <div className="flex items-center justify-between gap-2 border-b border-border bg-editable-header px-5 py-3.5">
+          <h2 className="font-display text-sm font-bold text-ink">
+            {t.simulator.takeProfit.title}
+          </h2>
+          <RolePill role="editable" label={t.common.editableTag} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
-          <Field label={t.simulator.takeProfit.totalOwnedLots} htmlFor="tp-owned-lots">
-            <Input
-              id="tp-owned-lots"
-              type="number"
-              min={1}
-              step={1}
-              value={totalOwnedLots}
-              onChange={(e) => setTotalOwnedLots(e.target.value)}
-              className="font-mono tabular-nums"
-            />
-          </Field>
-          <Field label={t.simulator.takeProfit.avgBuyPrice} htmlFor="tp-avg-buy">
-            <Input
-              id="tp-avg-buy"
-              type="number"
-              min={1}
-              step={1}
-              value={avgBuyPrice}
-              onChange={(e) => setAvgBuyPrice(e.target.value)}
-              className="font-mono tabular-nums"
-            />
-          </Field>
-        </div>
+        <div className="space-y-4 p-5">
+          <p className="text-xs text-muted">{t.simulator.takeProfit.subtitle}</p>
 
-        <div className="border-t border-border pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-xs font-semibold text-ink">
-              {t.simulator.takeProfit.rungsTitle}
-            </h4>
-            <div className="flex items-center gap-1.5">
-              <Button variant="secondary" size="sm" onClick={handleAutoFillFairValue}>
-                <Sparkles className="h-3.5 w-3.5 text-brand-600" />
-                {t.simulator.takeProfit.autoFillFairValue}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={addRung}
-                disabled={rungs.length >= 5}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {t.simulator.takeProfit.addRung}
-              </Button>
-            </div>
+          <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
+            <Field label={t.simulator.takeProfit.totalOwnedLots} htmlFor="tp-owned-lots">
+              <Input
+                id="tp-owned-lots"
+                type="number"
+                min={1}
+                step={1}
+                value={totalOwnedLots}
+                onChange={(e) => setTotalOwnedLots(e.target.value)}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+            <Field label={t.simulator.takeProfit.avgBuyPrice} htmlFor="tp-avg-buy">
+              <IdxPriceInput
+                id="tp-avg-buy"
+                value={avgBuyPrice}
+                onValueChange={setAvgBuyPrice}
+                tickHintLabel={t.common.tickStepLabel}
+                stepDownLabel={t.common.stepDown}
+                stepUpLabel={t.common.stepUp}
+              />
+            </Field>
           </div>
 
-          <div className="mt-3 space-y-2.5">
-            {rungs.map((row, idx) => (
-              <div key={row.id} className="flex items-end gap-2">
-                <div className="flex h-9 w-7 shrink-0 items-center justify-center rounded-md bg-subtle font-mono text-xs font-medium text-muted">
-                  #{idx + 1}
-                </div>
-                <div className="flex-1">
-                  <Field
-                    label={t.simulator.takeProfit.rungLots}
-                    htmlFor={`tp-lots-${row.id}`}
-                  >
-                    <Input
-                      id={`tp-lots-${row.id}`}
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={row.lotsToSell}
-                      onChange={(e) => updateRung(row.id, 'lotsToSell', e.target.value)}
-                      className="font-mono tabular-nums"
-                    />
-                  </Field>
-                </div>
-                <div className="flex-1">
-                  <Field
-                    label={t.simulator.takeProfit.rungPrice}
-                    htmlFor={`tp-price-${row.id}`}
-                  >
-                    <Input
-                      id={`tp-price-${row.id}`}
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={row.targetSellPrice}
-                      onChange={(e) => updateRung(row.id, 'targetSellPrice', e.target.value)}
-                      className="font-mono tabular-nums"
-                    />
-                  </Field>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeRung(row.id)}
-                  aria-label="Remove sell rung"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
+          <div className="border-t border-border pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-bold tracking-wide text-muted uppercase">
+                {t.simulator.takeProfit.rungsTitle}
+              </h3>
+              <div className="flex items-center gap-1.5">
+                <Button variant="secondary" size="sm" onClick={handleAutoFillFairValue} className="h-7 px-2 text-xs">
+                  <Sparkles className="h-3 w-3 text-brand-600" aria-hidden="true" />
+                  {t.simulator.takeProfit.autoFillFairValue}
+                </Button>
+                <Button
+                  variant="outlineBrand"
+                  size="sm"
+                  onClick={addRung}
+                  disabled={rungs.length >= 5}
+                  className="h-7 px-2 text-xs"
                 >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                  <Plus className="h-3 w-3" aria-hidden="true" />
+                  {t.simulator.takeProfit.addRung}
+                </Button>
               </div>
-            ))}
+            </div>
+
+            <div className="mt-3 space-y-2.5">
+              {rungs.map((row, idx) => (
+                <div key={row.id} className="flex min-w-0 items-end gap-1.5">
+                  <div className="flex h-9 w-6 shrink-0 items-center justify-center rounded-md bg-subtle font-mono text-[11px] font-semibold text-muted">
+                    #{idx + 1}
+                  </div>
+                  <div className="w-20 shrink-0">
+                    <Field
+                      label={t.simulator.takeProfit.rungLots}
+                      htmlFor={`tp-lots-${row.id}`}
+                    >
+                      <Input
+                        id={`tp-lots-${row.id}`}
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={row.lotsToSell}
+                        onChange={(e) => updateRung(row.id, 'lotsToSell', e.target.value)}
+                        className="px-2 font-mono tabular-nums"
+                      />
+                    </Field>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <Field
+                      label={t.simulator.takeProfit.rungPrice}
+                      htmlFor={`tp-price-${row.id}`}
+                    >
+                      <IdxPriceInput
+                        id={`tp-price-${row.id}`}
+                        value={row.targetSellPrice}
+                        onValueChange={(val) => updateRung(row.id, 'targetSellPrice', val)}
+                        tickHintLabel={t.common.tickStepLabel}
+                        stepDownLabel={t.common.stepDown}
+                        stepUpLabel={t.common.stepUp}
+                      />
+                    </Field>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeRung(row.id)}
+                    aria-label="Remove sell rung"
+                    className="flex h-9 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </Card>
 
-      {/* Right: Realized Profit & Remaining Free-Ride Position */}
+      {/* RIGHT: Auto-Calculated Realized Profit & Remaining Free-Ride Position */}
       <div className="space-y-4 lg:col-span-7">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-display text-sm font-bold text-ink">{t.simulator.sectionOutput}</h2>
+          <RolePill role="calculated" label={t.common.calculatedTag} />
+        </div>
+
         {!result.valid ? (
-          <Card className="p-8 text-center text-sm text-muted">
+          <Card variant="display" className="p-8 text-center text-sm text-muted">
             {t.simulator.invalidInputs}
           </Card>
         ) : (
           <>
             {result.isFreeRidePosition && (
               <div className="flex items-start gap-3 rounded-xl border border-positive-600/30 bg-positive-50 p-4 text-positive-700 animate-fade-up">
-                <Trophy className="mt-0.5 h-5 w-5 shrink-0 text-positive-600" />
+                <Trophy className="mt-0.5 h-5 w-5 shrink-0 text-positive-600" aria-hidden="true" />
                 <div className="text-xs leading-relaxed">
                   <div className="font-bold">{t.simulator.takeProfit.freeRideBadge}</div>
                   <p className="mt-0.5">{t.simulator.takeProfit.freeRideBody}</p>
@@ -243,8 +261,8 @@ export function TakeProfitTab({
             )}
 
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3 animate-fade-up">
-              <Card interactive className="border-t-2 border-t-brand-700 p-4">
-                <div className="text-xs text-muted">
+              <Card variant="highlight" className="border-t-2 border-t-brand-600 p-4">
+                <div className="text-xs font-medium text-brand-700">
                   {t.simulator.takeProfit.totalRealizedPnL}
                 </div>
                 <div
@@ -257,12 +275,12 @@ export function TakeProfitTab({
                   {result.totalRealizedNetPnL >= 0 ? '+' : ''}
                   {formatIdr(result.totalRealizedNetPnL)}
                 </div>
-                <div className="mt-0.5 font-mono text-xs font-semibold text-muted tabular-nums">
+                <div className="mt-0.5 font-mono text-xs font-semibold text-brand-900/80 tabular-nums">
                   {formatPercent(result.totalRealizedPnLPct, true)}
                 </div>
               </Card>
 
-              <Card interactive className="p-4">
+              <Card variant="display" className="p-4">
                 <div className="text-xs text-muted">
                   {t.simulator.takeProfit.totalNetProceeds}
                 </div>
@@ -275,7 +293,7 @@ export function TakeProfitTab({
                 </div>
               </Card>
 
-              <Card interactive className="p-4">
+              <Card variant="display" className="p-4">
                 <div className="text-xs text-muted">
                   {t.simulator.takeProfit.remainingLotsLabel}
                 </div>
@@ -289,11 +307,11 @@ export function TakeProfitTab({
               </Card>
             </div>
 
-            <Card className="overflow-hidden p-0">
+            <Card variant="display" className="overflow-hidden p-0">
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
-                    <tr className="border-b border-border bg-surface/80 font-semibold text-muted">
+                    <tr className="border-b border-border bg-subtle/70 font-semibold text-muted">
                       <th className="py-3 pr-2 pl-4">{t.simulator.takeProfit.rungCol}</th>
                       <th className="px-2 py-3 text-right">
                         {t.simulator.takeProfit.lotsShareCol}
@@ -309,9 +327,9 @@ export function TakeProfitTab({
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/80 font-mono tabular-nums">
+                  <tbody className="divide-y divide-border/80 bg-panel/60 font-mono tabular-nums">
                     {result.rungs.map((r) => (
-                      <tr key={r.rungNumber} className="hover:bg-brand-50/30">
+                      <tr key={r.rungNumber} className="hover:bg-brand-50/35">
                         <td className="py-3 pr-2 pl-4 font-sans font-semibold text-ink">
                           #{r.rungNumber}
                         </td>

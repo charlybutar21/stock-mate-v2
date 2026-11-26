@@ -18,6 +18,7 @@ import {
   Button,
   cn,
   Field,
+  IdxPriceInput,
   Input,
   Modal,
   Select,
@@ -372,15 +373,15 @@ function StockFormBody({
                 htmlFor="stock-price"
                 error={fieldErrors.currentPrice}
               >
-                <Input
+                <IdxPriceInput
                   id="stock-price"
-                  type="number"
-                  min={1}
-                  step={1}
                   placeholder="5800"
                   value={currentPrice}
-                  onChange={(e) => setCurrentPrice(e.target.value)}
-                  className="font-mono tabular-nums"
+                  onValueChange={setCurrentPrice}
+                  showTickHint
+                  tickHintLabel={t.common.tickStepLabel}
+                  stepDownLabel={t.common.stepDown}
+                  stepUpLabel={t.common.stepUp}
                 />
               </Field>
 
@@ -389,15 +390,15 @@ function StockFormBody({
                 htmlFor="stock-target-buy"
                 error={fieldErrors.targetBuyPrice}
               >
-                <Input
+                <IdxPriceInput
                   id="stock-target-buy"
-                  type="number"
-                  min={1}
-                  step={1}
                   placeholder="5200"
                   value={targetBuyPrice}
-                  onChange={(e) => setTargetBuyPrice(e.target.value)}
-                  className="font-mono tabular-nums"
+                  onValueChange={setTargetBuyPrice}
+                  showTickHint
+                  tickHintLabel={t.common.tickStepLabel}
+                  stepDownLabel={t.common.stepDown}
+                  stepUpLabel={t.common.stepUp}
                 />
               </Field>
             </div>

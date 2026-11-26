@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { HelpCircle, X } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronUp, Eye, HelpCircle, PencilLine, X } from 'lucide-react';
 import {
   forwardRef,
   useEffect,
@@ -8,12 +8,14 @@ import {
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { twMerge } from 'tailwind-merge';
+import { getIdxTickSize, MIN_IDX_PRICE, stepIdxPrice } from '@/shared/domain';
 
 export function cn(...inputs: Array<string | undefined | null | false>) {
   return twMerge(clsx(inputs));
@@ -32,14 +34,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className={cn(
         'inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition-all duration-150 ease-out active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:pointer-events-none disabled:opacity-45 cursor-pointer',
         variant === 'primary' &&
-          'bg-brand-600 text-white shadow-xs hover:bg-brand-700 hover:shadow-sm',
+          'bg-brand-solid text-white shadow-xs hover:bg-brand-solid-hover hover:shadow-sm',
         variant === 'outlineBrand' &&
-          'border border-brand-600/40 bg-panel text-brand-700 hover:border-brand-600 hover:bg-brand-50',
+          'border border-brand-600/45 bg-panel text-brand-700 hover:border-brand-600 hover:bg-brand-50',
         variant === 'secondary' &&
-          'border border-border bg-panel text-ink shadow-2xs hover:border-slate-300 hover:bg-surface',
+          'border border-border bg-panel text-ink shadow-2xs hover:border-muted/50 hover:bg-subtle/60',
         variant === 'ghost' && 'text-muted hover:bg-subtle hover:text-ink',
         variant === 'danger' &&
-          'bg-negative-600 text-white shadow-xs hover:bg-negative-700',
+          'bg-danger-solid text-white shadow-xs hover:bg-danger-solid-hover',
         size === 'sm' && 'h-8 px-3 text-xs',
         size === 'md' && 'h-9 px-4 text-sm',
         size === 'lg' && 'h-10 px-5 text-sm',
@@ -56,7 +58,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cn(
-        'h-9 w-full rounded-lg border border-border bg-panel px-3 text-sm text-ink placeholder:text-muted/65 transition-all duration-150 focus:border-brand-600 focus:ring-2 focus:ring-brand-100 focus:outline-none disabled:bg-subtle disabled:text-muted',
+        'h-9 w-full rounded-lg border border-input-border bg-input-bg px-3 text-sm text-ink placeholder:text-muted/65 transition-all duration-150 hover:border-muted/60 focus:border-brand-600 focus:ring-2 focus:ring-brand-100 focus:outline-none disabled:cursor-not-allowed disabled:bg-subtle disabled:text-muted',
         className,
       )}
       {...props}
@@ -65,12 +67,129 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 );
 Input.displayName = 'Input';
 
+export interface IdxPriceInputProps {
+  id?: string;
+  value: string;
+  onValueChange: (next: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+  showTickHint?: boolean;
+  tickHintLabel?: string;
+  stepDownLabel?: string;
+  stepUpLabel?: string;
+}
+
+/**
+ * IDX-compliant price input with custom Up/Down stepper buttons and ArrowUp/ArrowDown support.
+ * Steps strictly by BEI price fractions:
+ *   < 200 -> 1, 200-499 -> 2, 500-1999 -> 5, 2000-4999 -> 10, >= 5000 -> 25
+ */
+export function IdxPriceInput({
+  id,
+  value,
+  onValueChange,
+  placeholder,
+  disabled = false,
+  className,
+  showTickHint = false,
+  tickHintLabel = 'Fraksi',
+  stepDownLabel = 'Decrease by 1 IDX tick',
+  stepUpLabel = 'Increase by 1 IDX tick',
+}: IdxPriceInputProps) {
+  const numericVal = value.trim() === '' ? 0 : Number(value);
+  const validNum = Number.isFinite(numericVal) && numericVal > 0 ? numericVal : 0;
+
+  const nextUp = stepIdxPrice(validNum, 'up');
+  const nextDown = stepIdxPrice(validNum, 'down');
+  const upDelta = validNum > 0 ? nextUp - Math.floor(validNum) : 1;
+  const downDelta = validNum > MIN_IDX_PRICE ? Math.ceil(validNum) - nextDown : 0;
+  const activeTick = validNum > 0 ? getIdxTickSize(Math.floor(validNum)) : 1;
+
+  const handleStep = (dir: 'up' | 'down') => {
+    if (disabled) return;
+    const base = validNum > 0 ? validNum : 0;
+    const next = stepIdxPrice(base, dir);
+    onValueChange(String(next));
+  };
+
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      handleStep('up');
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      handleStep('down');
+    }
+  };
+
+  return (
+    <div className={cn('min-w-0 w-full space-y-1', className)}>
+      <div className="flex h-9 w-full min-w-0 items-stretch overflow-hidden rounded-lg border border-input-border bg-input-bg transition-all duration-150 hover:border-muted/60 focus-within:border-brand-600 focus-within:ring-2 focus-within:ring-brand-100">
+        <button
+          type="button"
+          onClick={() => handleStep('down')}
+          disabled={disabled || validNum <= MIN_IDX_PRICE}
+          aria-label={`${stepDownLabel}${downDelta > 0 ? ` (-${downDelta})` : ''}`}
+          title={downDelta > 0 ? `-${downDelta} (${tickHintLabel})` : stepDownLabel}
+          className="flex w-7 shrink-0 items-center justify-center border-r border-input-border bg-subtle/60 text-muted transition-colors hover:bg-subtle hover:text-ink active:bg-brand-50 active:text-brand-700 disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
+        >
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+
+        <input
+          id={id}
+          type="number"
+          inputMode="numeric"
+          min={MIN_IDX_PRICE}
+          step={activeTick}
+          placeholder={placeholder}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onValueChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="no-spinner w-full min-w-0 flex-1 bg-transparent px-2 text-sm font-mono font-medium text-ink tabular-nums placeholder:text-muted/60 focus:outline-none disabled:cursor-not-allowed disabled:text-muted"
+        />
+
+        <button
+          type="button"
+          onClick={() => handleStep('up')}
+          disabled={disabled}
+          aria-label={`${stepUpLabel} (+${upDelta})`}
+          title={`+${upDelta} (${tickHintLabel})`}
+          className="flex w-7 shrink-0 items-center justify-center border-l border-input-border bg-subtle/60 text-muted transition-colors hover:bg-subtle hover:text-ink active:bg-brand-50 active:text-brand-700 disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
+        >
+          <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      </div>
+
+      {showTickHint && (
+        <div className="flex items-center justify-between text-[11px] text-muted">
+          <span>
+            {tickHintLabel}:{' '}
+            <strong className="font-mono font-semibold text-brand-700 tabular-nums">
+              {downDelta > 0 && downDelta !== upDelta
+                ? `-${downDelta} / +${upDelta}`
+                : `±${upDelta}`}
+            </strong>
+          </span>
+          {validNum > 0 && (
+            <span className="font-mono text-[10px] text-muted/85 tabular-nums">
+              {nextDown} ← {Math.round(validNum)} → {nextUp}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   ({ className, ...props }, ref) => (
     <select
       ref={ref}
       className={cn(
-        'h-9 w-full rounded-lg border border-border bg-panel px-3 text-sm text-ink transition-all duration-150 focus:border-brand-600 focus:ring-2 focus:ring-brand-100 focus:outline-none disabled:bg-subtle disabled:text-muted',
+        'h-9 w-full rounded-lg border border-input-border bg-input-bg px-3 text-sm text-ink transition-all duration-150 hover:border-muted/60 focus:border-brand-600 focus:ring-2 focus:ring-brand-100 focus:outline-none disabled:cursor-not-allowed disabled:bg-subtle disabled:text-muted cursor-pointer',
         className,
       )}
       {...props}
@@ -86,7 +205,7 @@ export const Textarea = forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      'w-full rounded-lg border border-border bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/65 transition-all duration-150 focus:border-brand-600 focus:ring-2 focus:ring-brand-100 focus:outline-none',
+      'w-full rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-ink placeholder:text-muted/65 transition-all duration-150 hover:border-muted/60 focus:border-brand-600 focus:ring-2 focus:ring-brand-100 focus:outline-none',
       className,
     )}
     {...props}
@@ -159,9 +278,9 @@ export function TermTooltip({
                 ? 'translate(-50%, 0)'
                 : 'translate(-50%, -100%)',
             }}
-            className="pointer-events-none z-[100] w-72 rounded-lg border border-slate-700/60 bg-slate-900 px-3.5 py-2.5 text-left text-xs leading-relaxed font-normal tracking-normal text-slate-100 normal-case shadow-xl"
+            className="pointer-events-none z-[100] w-72 rounded-lg border border-slate-700/80 bg-slate-900 px-3.5 py-2.5 text-left text-xs leading-relaxed font-normal tracking-normal text-slate-100 normal-case shadow-xl dark:border-slate-600 dark:bg-slate-800"
           >
-            <div className="mb-0.5 font-semibold text-brand-100">{label}</div>
+            <div className="mb-0.5 font-semibold text-emerald-300">{label}</div>
             <p className="text-slate-200">{definition}</p>
           </div>,
           document.body,
@@ -186,7 +305,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1.5">
       <label htmlFor={htmlFor} className="block text-xs font-medium text-ink">
         {tooltip ? <TermTooltip label={label} definition={tooltip} /> : label}
       </label>
@@ -218,10 +337,10 @@ export function Badge({
       className={cn(
         'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-tight',
         tone === 'neutral' && 'border-border bg-subtle text-muted',
-        tone === 'positive' && 'border-positive-600/20 bg-positive-50 text-positive-700',
-        tone === 'warning' && 'border-warning-600/20 bg-warning-50 text-warning-700',
-        tone === 'negative' && 'border-negative-600/20 bg-negative-50 text-negative-700',
-        tone === 'info' && 'border-brand-600/20 bg-brand-50 text-brand-700',
+        tone === 'positive' && 'border-positive-600/25 bg-positive-50 text-positive-700',
+        tone === 'warning' && 'border-warning-600/25 bg-warning-50 text-warning-700',
+        tone === 'negative' && 'border-negative-600/25 bg-negative-50 text-negative-700',
+        tone === 'info' && 'border-brand-600/25 bg-brand-50 text-brand-700',
         className,
       )}
     >
@@ -230,22 +349,104 @@ export function Badge({
   );
 }
 
+export type CardVariant = 'default' | 'editable' | 'display' | 'highlight';
+
 export function Card({
   className,
+  variant = 'default',
   interactive = false,
   children,
   ...props
-}: HTMLAttributes<HTMLDivElement> & { interactive?: boolean; children: ReactNode }) {
+}: HTMLAttributes<HTMLDivElement> & {
+  variant?: CardVariant;
+  interactive?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-panel p-5 surface-elevated',
+        'rounded-xl border p-5',
+        variant === 'default' && 'border-border bg-panel surface-elevated',
+        variant === 'editable' && 'border-editable-border bg-editable surface-editable',
+        variant === 'display' && 'border-border/90 bg-display',
+        variant === 'highlight' && 'border-brand-600/35 bg-brand-50/75',
         interactive && 'surface-interactive',
         className,
       )}
       {...props}
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * Unmistakable role indicator pill distinguishing Editable cards from Display/Auto-Calculated cards.
+ */
+export function RolePill({
+  role,
+  label,
+  className,
+}: {
+  role: 'editable' | 'display' | 'calculated';
+  label: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase',
+        role === 'editable' &&
+          'border-brand-600/35 bg-brand-50 text-brand-700',
+        role === 'display' &&
+          'border-border bg-subtle/80 text-muted',
+        role === 'calculated' &&
+          'border-border bg-subtle/80 text-muted',
+        className,
+      )}
+    >
+      {role === 'editable' ? (
+        <PencilLine className="h-3 w-3 shrink-0" aria-hidden="true" />
+      ) : role === 'calculated' ? (
+        <BarChart3 className="h-3 w-3 shrink-0" aria-hidden="true" />
+      ) : (
+        <Eye className="h-3 w-3 shrink-0" aria-hidden="true" />
+      )}
+      <span>{label}</span>
+    </span>
+  );
+}
+
+/**
+ * Clear section header used to group related zones across pages.
+ */
+export function SectionHeader({
+  title,
+  subtitle,
+  role,
+  roleLabel,
+  action,
+  className,
+}: {
+  title: string;
+  subtitle?: string;
+  role?: 'editable' | 'display' | 'calculated';
+  roleLabel?: string;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn('flex flex-wrap items-end justify-between gap-2', className)}>
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-display text-base font-bold tracking-tight text-ink sm:text-lg">
+            {title}
+          </h2>
+          {role && roleLabel && <RolePill role={role} label={roleLabel} />}
+        </div>
+        {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
+      </div>
+      {action && <div className="flex flex-wrap items-center gap-2">{action}</div>}
     </div>
   );
 }
@@ -280,7 +481,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -290,11 +491,11 @@ export function Modal({
     >
       <div
         className={cn(
-          'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-panel shadow-2xl animate-fade-up',
+          'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-editable-border bg-panel shadow-2xl animate-fade-up',
           maxWidthClass,
         )}
       >
-        <div className="flex items-center justify-between border-b border-border bg-surface/60 px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-border bg-editable-header px-5 py-3.5">
           <h2 className="font-display text-base font-bold tracking-tight text-ink">{title}</h2>
           <button
             type="button"
@@ -302,7 +503,7 @@ export function Modal({
             aria-label="Close"
             className="rounded-md p-1 text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
         <div className="overflow-y-auto px-5 py-4">{children}</div>

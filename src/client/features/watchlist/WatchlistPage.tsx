@@ -19,6 +19,7 @@ import {
   Trash2,
   TrendingUp,
   Wallet,
+  X,
 } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
@@ -37,6 +38,8 @@ import {
   cn,
   Input,
   Modal,
+  RolePill,
+  SectionHeader,
   Select,
   Skeleton,
   TermTooltip,
@@ -206,583 +209,674 @@ export function WatchlistPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Executive Portfolio Summary + Watchlist Insights */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 animate-fade-up">
-        {/* Primary Portfolio Financial Card (Invested Capital vs Net Market Value vs Net P/L) */}
-        <Card className="border-t-2 border-t-brand-600 p-5 lg:col-span-7">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted">
-                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-50 text-brand-600">
-                  <Wallet className="h-3.5 w-3.5" />
-                </span>
-                <TermTooltip
-                  label={t.watchlist.kpiPositions}
-                  definition={t.glossary.netMarketValue}
-                />
-                <button
-                  type="button"
-                  onClick={toggleHideBalances}
-                  title={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
-                  aria-label={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
-                >
-                  {hideBalances ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-              </div>
-              <div className="mt-2 font-mono text-3xl font-bold tracking-tight text-ink tabular-nums">
-                {isLoading ? (
-                  <Skeleton className="h-9 w-44" />
-                ) : hideBalances ? (
-                  MASKED_IDR
-                ) : (
-                  formatIdr(kpis.portfolioMarketValue)
-                )}
-              </div>
-            </div>
+    <div className="space-y-8">
+      {/* GROUP 1: Portfolio & Market Overview (Display / Auto-Calculated) */}
+      <section className="space-y-4 animate-fade-up" aria-label={t.watchlist.sectionOverview}>
+        <SectionHeader
+          title={t.watchlist.sectionOverview}
+          subtitle={t.watchlist.sectionOverviewSub}
+          role="calculated"
+          roleLabel={t.common.calculatedTag}
+        />
 
-            {!isLoading && kpis.totalNetPnL !== null && (
-              <div
-                className={cn(
-                  'inline-flex flex-col items-start rounded-lg border px-3.5 py-2 sm:items-end',
-                  kpis.totalNetPnL >= 0
-                    ? 'border-positive-600/20 bg-positive-50 text-positive-700'
-                    : 'border-negative-600/20 bg-negative-50 text-negative-700',
-                )}
-              >
-                <span className="text-[11px] font-medium opacity-85">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          {/* Primary Portfolio Financial Display Card */}
+          <Card variant="display" className="border-t-2 border-t-brand-600 p-5 lg:col-span-7">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-muted">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-50 text-brand-700">
+                    <Wallet className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
                   <TermTooltip
-                    label={t.watchlist.kpiTotalPnL}
-                    definition={t.glossary.unrealizedPnL}
-                    className="border-current/40 hover:text-current"
+                    label={t.watchlist.kpiPositions}
+                    definition={t.glossary.netMarketValue}
                   />
-                </span>
-                <div className="mt-0.5 flex items-center gap-1 font-mono text-sm font-bold tabular-nums">
-                  {kpis.totalNetPnL >= 0 ? (
-                    <ArrowUpRight className="h-4 w-4" />
+                  <button
+                    type="button"
+                    onClick={toggleHideBalances}
+                    title={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+                    aria-label={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+                  >
+                    {hideBalances ? (
+                      <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+                <div className="mt-2 font-mono text-3xl font-bold tracking-tight text-ink tabular-nums">
+                  {isLoading ? (
+                    <Skeleton className="h-9 w-44" />
+                  ) : hideBalances ? (
+                    MASKED_IDR
                   ) : (
-                    <ArrowDownRight className="h-4 w-4" />
+                    formatIdr(kpis.portfolioMarketValue)
                   )}
-                  <span>
-                    {hideBalances
-                      ? MASKED_IDR
-                      : `${kpis.totalNetPnL >= 0 ? '+' : ''}${formatIdr(kpis.totalNetPnL)}`}
-                  </span>
-                  <span className="text-xs font-semibold opacity-90">
-                    ({formatPercent(kpis.totalNetPnLPct, true)})
-                  </span>
                 </div>
               </div>
-            )}
-          </div>
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/80 pt-3.5">
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <TermTooltip
-                label={t.watchlist.kpiInvested}
-                definition={t.glossary.totalInvested}
-              />
-              <span className="font-mono text-sm font-bold text-ink tabular-nums">
-                {isLoading ? (
-                  <Skeleton className="inline-block h-4 w-28" />
-                ) : hideBalances ? (
-                  MASKED_IDR
-                ) : (
-                  formatIdr(kpis.totalInvestedCapital)
-                )}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {portfolioRisk.activeHoldingsCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowXray((v) => !v)}
+              {!isLoading && kpis.totalNetPnL !== null && (
+                <div
                   className={cn(
-                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer',
-                    showXray
-                      ? 'bg-brand-50 text-brand-700'
-                      : 'bg-surface text-ink hover:bg-brand-50 hover:text-brand-700',
+                    'inline-flex flex-col items-start rounded-lg border px-3.5 py-2 sm:items-end',
+                    kpis.totalNetPnL >= 0
+                      ? 'border-positive-600/25 bg-positive-50 text-positive-700'
+                      : 'border-negative-600/25 bg-negative-50 text-negative-700',
                   )}
                 >
-                  <PieChart className="h-3.5 w-3.5 text-brand-600" />
-                  <span>{t.watchlist.xray.toggleBtn}</span>
-                </button>
+                  <span className="text-[11px] font-medium opacity-90">
+                    <TermTooltip
+                      label={t.watchlist.kpiTotalPnL}
+                      definition={t.glossary.unrealizedPnL}
+                      className="border-current/40 hover:text-current"
+                    />
+                  </span>
+                  <div className="mt-0.5 flex items-center gap-1 font-mono text-sm font-bold tabular-nums">
+                    {kpis.totalNetPnL >= 0 ? (
+                      <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <ArrowDownRight className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    <span>
+                      {hideBalances
+                        ? MASKED_IDR
+                        : `${kpis.totalNetPnL >= 0 ? '+' : ''}${formatIdr(kpis.totalNetPnL)}`}
+                    </span>
+                    <span className="text-xs font-semibold opacity-90">
+                      ({formatPercent(kpis.totalNetPnLPct, true)})
+                    </span>
+                  </div>
+                </div>
               )}
-
-              <button
-                type="button"
-                onClick={() => setViewFilter(viewFilter === 'portfolio' ? 'all' : 'portfolio')}
-                className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:bg-brand-50 hover:text-brand-700 cursor-pointer"
-              >
-                <Briefcase className="h-3.5 w-3.5 text-brand-600" />
-                <span className="font-mono">{kpis.portfolioCount}</span>
-                <span>{t.watchlist.pillPortfolio}</span>
-              </button>
             </div>
-          </div>
-        </Card>
 
-        {/* Secondary Insight Cards */}
-        <div className="grid grid-cols-2 gap-4 lg:col-span-5">
-          <Card
-            interactive
-            onClick={() => setViewFilter(viewFilter === 'undervalued' ? 'all' : 'undervalued')}
-            className="flex cursor-pointer flex-col justify-between p-5"
-            title={t.watchlist.filterByUndervaluedHint}
-          >
-            <div className="flex items-center justify-between">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-positive-50 text-positive-600">
-                <TrendingUp className="h-4 w-4" />
-              </span>
-              {viewFilter === 'undervalued' && <Badge tone="positive">Active</Badge>}
-            </div>
-            <div className="mt-4">
-              <div className="text-xs font-medium text-muted">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/80 pt-3.5">
+              <div className="flex items-center gap-2 text-xs text-muted">
                 <TermTooltip
-                  label={t.watchlist.kpiUndervalued}
-                  definition={t.glossary.marginOfSafety}
+                  label={t.watchlist.kpiInvested}
+                  definition={t.glossary.totalInvested}
                 />
+                <span className="font-mono text-sm font-bold text-ink tabular-nums">
+                  {isLoading ? (
+                    <Skeleton className="inline-block h-4 w-28" />
+                  ) : hideBalances ? (
+                    MASKED_IDR
+                  ) : (
+                    formatIdr(kpis.totalInvestedCapital)
+                  )}
+                </span>
               </div>
-              <div className="mt-1 font-mono text-3xl font-bold text-positive-600 tabular-nums">
-                {isLoading ? <Skeleton className="h-8 w-12" /> : kpis.undervalued}
-              </div>
-            </div>
-          </Card>
 
-          <Card interactive className="flex flex-col justify-between p-5">
-            <div className="flex items-center justify-between">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface text-ink">
-                <Layers className="h-4 w-4" />
-              </span>
-              {!isLoading && kpis.stale > 0 && (
-                <Badge tone="warning">
-                  <Clock className="h-3 w-3" />
-                  {kpis.stale} {t.watchlist.staleBadge}
-                </Badge>
-              )}
-            </div>
-            <div className="mt-4">
-              <div className="text-xs font-medium text-muted">{t.watchlist.kpiTotal}</div>
-              <div className="mt-1 font-mono text-3xl font-bold text-ink tabular-nums">
-                {isLoading ? <Skeleton className="h-8 w-12" /> : kpis.total}
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {portfolioRisk.activeHoldingsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowXray((v) => !v)}
+                    aria-pressed={showXray}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer',
+                      showXray
+                        ? 'border-brand-600/40 bg-brand-50 text-brand-700'
+                        : 'border-border bg-panel text-ink hover:border-brand-600/40 hover:bg-brand-50 hover:text-brand-700',
+                    )}
+                  >
+                    <PieChart className="h-3.5 w-3.5 text-brand-600" aria-hidden="true" />
+                    <span>{t.watchlist.xray.toggleBtn}</span>
+                  </button>
+                )}
 
-      {/* Use Case 1: Portfolio Risk & Sector Allocation X-Ray */}
-      {!isLoading && showXray && portfolioRisk.activeHoldingsCount > 0 && (
-        <PortfolioRiskXrayCard risk={portfolioRisk} />
-      )}
-
-      {/* Stockbit-Style Unified Watchlist Workspace Card */}
-      <div className="overflow-hidden rounded-xl border border-border bg-panel surface-elevated animate-fade-up">
-        {/* Top Row: Inline "+ Type here to add IDX stock..." + Right Toolbar */}
-        <div className="border-b border-border px-4 py-3 sm:px-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <form onSubmit={handleQuickAdd} className="flex flex-1 items-center gap-2">
-              <div className="relative flex-1 max-w-md">
-                <Plus className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-brand-600" />
-                <input
-                  type="text"
-                  maxLength={4}
-                  placeholder={t.watchlist.quickAddPlaceholder}
-                  value={quickTicker}
-                  onChange={(e) => {
-                    setQuickTicker(e.target.value.toUpperCase());
-                    if (quickError) setQuickError(null);
-                  }}
-                  disabled={isQuickAdding}
-                  className="h-9 w-full rounded-lg border border-transparent bg-surface/80 pr-3 pl-8 font-mono text-sm text-ink uppercase placeholder:font-sans placeholder:normal-case placeholder:text-muted/75 transition-all focus:border-brand-600 focus:bg-panel focus:ring-2 focus:ring-brand-100 focus:outline-none"
-                />
-              </div>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={isQuickAdding || quickTicker.trim().length < 4}
-                className="h-9"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                {isQuickAdding ? t.watchlist.quickAdding : t.watchlist.quickAddBtn}
-              </Button>
-            </form>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {items && items.length > 0 && (
                 <button
                   type="button"
+                  onClick={() => setViewFilter(viewFilter === 'portfolio' ? 'all' : 'portfolio')}
+                  aria-pressed={viewFilter === 'portfolio'}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer',
+                    viewFilter === 'portfolio'
+                      ? 'border-brand-600/40 bg-brand-50 text-brand-700'
+                      : 'border-border bg-panel text-ink hover:border-brand-600/40 hover:bg-brand-50 hover:text-brand-700',
+                  )}
+                >
+                  <Briefcase className="h-3.5 w-3.5 text-brand-600" aria-hidden="true" />
+                  <span className="font-mono">{kpis.portfolioCount}</span>
+                  <span>{t.watchlist.pillPortfolio}</span>
+                </button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Secondary Insight Cards */}
+          <div className="grid grid-cols-2 gap-4 lg:col-span-5">
+            <button
+              type="button"
+              onClick={() => setViewFilter(viewFilter === 'undervalued' ? 'all' : 'undervalued')}
+              title={t.watchlist.filterByUndervaluedHint}
+              aria-pressed={viewFilter === 'undervalued'}
+              className={cn(
+                'flex flex-col justify-between rounded-xl border p-5 text-left transition-all cursor-pointer surface-interactive',
+                viewFilter === 'undervalued'
+                  ? 'border-positive-600 bg-positive-50/60'
+                  : 'border-border bg-display hover:bg-panel',
+              )}
+            >
+              <div className="flex w-full items-center justify-between">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-positive-50 text-positive-600">
+                  <TrendingUp className="h-4 w-4" aria-hidden="true" />
+                </span>
+                {viewFilter === 'undervalued' && <Badge tone="positive">Active</Badge>}
+              </div>
+              <div className="mt-4">
+                <div className="text-xs font-medium text-muted">
+                  <TermTooltip
+                    label={t.watchlist.kpiUndervalued}
+                    definition={t.glossary.marginOfSafety}
+                  />
+                </div>
+                <div className="mt-1 font-mono text-3xl font-bold text-positive-600 tabular-nums">
+                  {isLoading ? <Skeleton className="h-8 w-12" /> : kpis.undervalued}
+                </div>
+              </div>
+            </button>
+
+            <Card variant="display" className="flex flex-col justify-between p-5">
+              <div className="flex items-center justify-between">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-subtle text-ink">
+                  <Layers className="h-4 w-4" aria-hidden="true" />
+                </span>
+                {!isLoading && kpis.stale > 0 && (
+                  <Badge tone="warning">
+                    <Clock className="h-3 w-3" aria-hidden="true" />
+                    {kpis.stale} {t.watchlist.staleBadge}
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-4">
+                <div className="text-xs font-medium text-muted">{t.watchlist.kpiTotal}</div>
+                <div className="mt-1 font-mono text-3xl font-bold text-ink tabular-nums">
+                  {isLoading ? <Skeleton className="h-8 w-12" /> : kpis.total}
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        {/* Portfolio Risk & Sector Allocation X-Ray (Display Card) */}
+        {!isLoading && showXray && portfolioRisk.activeHoldingsCount > 0 && (
+          <PortfolioRiskXrayCard risk={portfolioRisk} />
+        )}
+      </section>
+
+      {/* GROUP 2: Watchlist Actions (Editable) & Valuation Table (Display Ledger) */}
+      <section className="space-y-4 animate-fade-up" aria-label={t.watchlist.sectionWatchlist}>
+        <SectionHeader
+          title={t.watchlist.sectionWatchlist}
+          subtitle={t.watchlist.sectionWatchlistSub}
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              {items && items.length > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => syncAllMutation.mutate()}
                   disabled={syncAllMutation.isPending}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-50 cursor-pointer"
                 >
                   <RefreshCw
                     className={`h-3.5 w-3.5 ${syncAllMutation.isPending ? 'animate-spin' : ''}`}
+                    aria-hidden="true"
                   />
                   {syncAllMutation.isPending ? t.watchlist.syncingAll : t.watchlist.syncAllBtn}
-                </button>
+                </Button>
               )}
-              <button
-                type="button"
-                onClick={openAdd}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-50 cursor-pointer"
-              >
-                <Plus className="h-3.5 w-3.5" />
+              <Button variant="outlineBrand" size="sm" onClick={openAdd}>
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 {t.watchlist.addStock}
-              </button>
+              </Button>
             </div>
+          }
+        />
+
+        {/* Quick Add Editable Strip (Clearly Marked Editable) */}
+        <Card variant="editable" className="p-4">
+          <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-ink">{t.watchlist.quickAddLabel}</span>
+              <RolePill role="editable" label={t.common.editableTag} />
+            </div>
+            <span className="text-[11px] text-muted">{t.watchlist.quickAddHint}</span>
           </div>
 
-          {quickError ? (
-            <p className="mt-1.5 text-xs text-negative-600" role="alert">
-              {quickError}
-            </p>
-          ) : (
-            <p className="mt-1.5 text-[11px] text-muted">{t.watchlist.quickAddHint}</p>
-          )}
-        </div>
-
-        {/* Second Row: Stockbit-Style Filter Pills + Search/Sector/Sort */}
-        <div className="flex flex-col gap-3 border-b border-border bg-panel px-4 py-3 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setViewFilter('all')}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
-                viewFilter === 'all'
-                  ? 'border-brand-600 bg-brand-50 text-brand-700'
-                  : 'border-border bg-panel text-muted hover:border-slate-300 hover:text-ink',
-              )}
-            >
-              {t.watchlist.pillAll}
-              <span className="font-mono text-[11px] opacity-80">({kpis.total})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewFilter('portfolio')}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
-                viewFilter === 'portfolio'
-                  ? 'border-brand-600 bg-brand-50 text-brand-700'
-                  : 'border-border bg-panel text-muted hover:border-slate-300 hover:text-ink',
-              )}
-            >
-              <Briefcase className="h-3.5 w-3.5" />
-              {t.watchlist.pillPortfolio}
-              <span className="font-mono text-[11px] opacity-80">({kpis.portfolioCount})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewFilter('undervalued')}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
-                viewFilter === 'undervalued'
-                  ? 'border-brand-600 bg-brand-50 text-brand-700'
-                  : 'border-border bg-panel text-muted hover:border-slate-300 hover:text-ink',
-              )}
-            >
-              {t.watchlist.pillUndervalued}
-              <span className="font-mono text-[11px] opacity-80">({kpis.undervalued})</span>
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative sm:w-48">
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+          <form onSubmit={handleQuickAdd} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative flex-1 max-w-md">
+              <Plus
+                className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-brand-600"
+                aria-hidden="true"
+              />
               <Input
-                placeholder={t.watchlist.searchPlaceholder}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-8 text-xs"
+                type="text"
+                maxLength={4}
+                aria-label={t.watchlist.quickAddLabel}
+                placeholder={t.watchlist.quickAddPlaceholder}
+                value={quickTicker}
+                onChange={(e) => {
+                  setQuickTicker(e.target.value.toUpperCase());
+                  if (quickError) setQuickError(null);
+                }}
+                disabled={isQuickAdding}
+                className="pl-8 font-mono uppercase placeholder:font-sans placeholder:normal-case"
               />
             </div>
-            <Select
-              value={sector}
-              onChange={(e) => setSector(e.target.value as IdxSector | '')}
-              className="h-8 text-xs sm:w-44"
-              aria-label={t.watchlist.allSectors}
+            <Button
+              type="submit"
+              size="md"
+              disabled={isQuickAdding || quickTicker.trim().length < 4}
+              className="shrink-0"
             >
-              <option value="">{t.watchlist.allSectors}</option>
-              {IDX_SECTORS.map((s) => (
-                <option key={s} value={s}>
-                  {t.sectors[s]}
-                </option>
-              ))}
-            </Select>
-            <Select
-              value={sort}
-              onChange={(e) =>
-                setSort(e.target.value as 'updated_desc' | 'mos_desc' | 'ticker_asc')
-              }
-              className="h-8 text-xs sm:w-48"
-              aria-label="Sort watchlist"
-            >
-              <option value="updated_desc">{t.watchlist.sortUpdated}</option>
-              <option value="mos_desc">{t.watchlist.sortMosDesc}</option>
-              <option value="ticker_asc">{t.watchlist.sortTickerAsc}</option>
-            </Select>
-          </div>
-        </div>
-
-        {/* Table Body */}
-        {isError && (
-          <div className="flex items-center gap-3 bg-negative-50 px-5 py-3 text-sm text-negative-700">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{t.common.unexpectedError}</span>
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="space-y-3 p-5">
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-          </div>
-        ) : filteredItems.length === 0 ? (
-          <div className="px-6 py-14 text-center">
-            <h2 className="font-display text-base font-bold text-ink">{t.watchlist.emptyTitle}</h2>
-            <p className="mx-auto mt-1 max-w-md text-sm text-muted">{t.watchlist.emptyBody}</p>
-            <Button variant="outlineBrand" className="mt-5" onClick={openAdd}>
-              <Plus className="h-4 w-4" />
-              {t.watchlist.emptyAction}
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              {isQuickAdding ? t.watchlist.quickAdding : t.watchlist.quickAddBtn}
             </Button>
+          </form>
+
+          {quickError && (
+            <p className="mt-2 text-xs text-negative-600" role="alert">
+              {quickError}
+            </p>
+          )}
+        </Card>
+
+        {/* Unified Filter Bar & Watchlist Table */}
+        <div className="overflow-hidden rounded-xl border border-border bg-panel surface-elevated">
+          {/* Filter Pills + Search / Sector / Sort */}
+          <div className="flex flex-col gap-3 border-b border-border bg-display/70 px-4 py-3 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setViewFilter('all')}
+                aria-pressed={viewFilter === 'all'}
+                className={cn(
+                  'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
+                  viewFilter === 'all'
+                    ? 'border-brand-600 bg-brand-50 text-brand-700'
+                    : 'border-border bg-panel text-muted hover:border-muted/50 hover:text-ink',
+                )}
+              >
+                {t.watchlist.pillAll}
+                <span className="font-mono text-[11px] opacity-80">({kpis.total})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewFilter('portfolio')}
+                aria-pressed={viewFilter === 'portfolio'}
+                className={cn(
+                  'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
+                  viewFilter === 'portfolio'
+                    ? 'border-brand-600 bg-brand-50 text-brand-700'
+                    : 'border-border bg-panel text-muted hover:border-muted/50 hover:text-ink',
+                )}
+              >
+                <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
+                {t.watchlist.pillPortfolio}
+                <span className="font-mono text-[11px] opacity-80">({kpis.portfolioCount})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewFilter('undervalued')}
+                aria-pressed={viewFilter === 'undervalued'}
+                className={cn(
+                  'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
+                  viewFilter === 'undervalued'
+                    ? 'border-brand-600 bg-brand-50 text-brand-700'
+                    : 'border-border bg-panel text-muted hover:border-muted/50 hover:text-ink',
+                )}
+              >
+                {t.watchlist.pillUndervalued}
+                <span className="font-mono text-[11px] opacity-80">({kpis.undervalued})</span>
+              </button>
+
+              {sector && (
+                <button
+                  type="button"
+                  onClick={() => setSector('')}
+                  title={t.watchlist.clearSectorFilter}
+                  className="inline-flex h-8 items-center gap-1 rounded-full border border-brand-600/40 bg-brand-50 px-2.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100 cursor-pointer"
+                >
+                  <span>{t.sectors[sector]}</span>
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative sm:w-44">
+                <Search
+                  className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted"
+                  aria-hidden="true"
+                />
+                <Input
+                  placeholder={t.watchlist.searchPlaceholder}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <Select
+                value={sector}
+                onChange={(e) => setSector(e.target.value as IdxSector | '')}
+                className="h-8 text-xs sm:w-44"
+                aria-label={t.watchlist.allSectors}
+              >
+                <option value="">{t.watchlist.allSectors}</option>
+                {IDX_SECTORS.map((s) => (
+                  <option key={s} value={s}>
+                    {t.sectors[s]}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                value={sort}
+                onChange={(e) =>
+                  setSort(e.target.value as 'updated_desc' | 'mos_desc' | 'ticker_asc')
+                }
+                className="h-8 text-xs sm:w-44"
+                aria-label="Sort watchlist"
+              >
+                <option value="updated_desc">{t.watchlist.sortUpdated}</option>
+                <option value="mos_desc">{t.watchlist.sortMosDesc}</option>
+                <option value="ticker_asc">{t.watchlist.sortTickerAsc}</option>
+              </Select>
+            </div>
           </div>
-        ) : (
-          <div className="w-full overflow-x-auto">
-            <table className="w-full table-fixed border-collapse text-left text-sm">
-              <colgroup>
-                <col className="w-[24%]" />
-                <col className="w-[13%]" />
-                <col className="w-[13%]" />
-                <col className="w-[18%]" />
-                <col className="w-[20%]" />
-                <col className="w-[12%]" />
-              </colgroup>
-              <thead>
-                <tr className="border-b border-border bg-surface/70 text-xs font-semibold text-muted">
-                  <th className="py-3 pr-3 pl-5">{t.watchlist.colTicker}</th>
-                  <th className="px-3 py-3 text-right">{t.watchlist.colPrice}</th>
-                  <th className="px-3 py-3 text-right">
-                    <TermTooltip
-                      label={t.watchlist.colFairValue}
-                      definition={t.glossary.fairValueMedian}
-                    />
-                  </th>
-                  <th className="px-3 py-3 text-right">
-                    <TermTooltip
-                      label={t.watchlist.colMos}
-                      definition={t.glossary.marginOfSafety}
-                    />
-                  </th>
-                  <th className="px-3 py-3 text-right">
-                    <TermTooltip
-                      label={t.watchlist.colPosition}
-                      definition={t.glossary.unrealizedPnL}
-                    />
-                  </th>
-                  <th className="py-3 pr-5 pl-2 text-right">{t.watchlist.colActions}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/80">
-                {filteredItems.map((item) => {
-                  const pos = calculatePositionSummary(
-                    item.ownedLots,
-                    item.avgBuyPrice,
-                    item.currentPrice,
-                  );
-                  const mosVal = item.valuation.mosPct;
-                  const priceColor =
-                    mosVal === null
-                      ? 'text-ink'
-                      : mosVal >= 30
-                        ? 'text-positive-600'
-                        : mosVal < 0
-                          ? 'text-negative-600'
-                          : 'text-ink';
 
-                  return (
-                    <tr
-                      key={item.id}
-                      className="group transition-colors duration-150 hover:bg-brand-50/40"
-                    >
-                      {/* Symbol + Company Name (no circular logo) */}
-                      <td className="py-3.5 pr-3 pl-5 align-middle">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            to={`/watchlist/${item.id}`}
-                            className="font-mono text-sm font-bold tracking-tight text-ink transition-colors group-hover:text-brand-600"
-                          >
-                            {item.ticker}
-                          </Link>
-                          {item.isStale && (
-                            <span
-                              title={t.watchlist.staleBadge}
-                              className="inline-flex items-center text-warning-600"
-                            >
-                              <Clock className="h-3.5 w-3.5" />
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 truncate text-xs text-muted" title={item.companyName}>
-                          {item.companyName}
-                        </div>
-                      </td>
+          {/* Table Body */}
+          {isError && (
+            <div className="flex items-center gap-3 bg-negative-50 px-5 py-3 text-sm text-negative-700">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{t.common.unexpectedError}</span>
+            </div>
+          )}
 
-                      {/* Current Price */}
-                      <td
-                        className={`px-3 py-3.5 text-right align-middle font-mono text-sm font-bold tabular-nums ${priceColor}`}
+          {isLoading ? (
+            <div className="space-y-3 p-5">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="px-6 py-14 text-center">
+              <h3 className="font-display text-base font-bold text-ink">{t.watchlist.emptyTitle}</h3>
+              <p className="mx-auto mt-1 max-w-md text-sm text-muted">{t.watchlist.emptyBody}</p>
+              <Button variant="outlineBrand" className="mt-5" onClick={openAdd}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                {t.watchlist.emptyAction}
+              </Button>
+            </div>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <table className="w-full min-w-[880px] table-fixed border-collapse text-left text-sm">
+                <colgroup>
+                  <col className="w-[20%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[17%]" />
+                  <col className="w-[11%]" />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-border bg-subtle/70 text-xs font-semibold text-muted">
+                    <th className="py-3 pr-3 pl-5">{t.watchlist.colTicker}</th>
+                    <th className="px-3 py-3">{t.watchlist.colSector}</th>
+                    <th className="px-3 py-3 text-right">{t.watchlist.colPrice}</th>
+                    <th className="px-3 py-3 text-right">
+                      <TermTooltip
+                        label={t.watchlist.colFairValue}
+                        definition={t.glossary.fairValueMedian}
+                      />
+                    </th>
+                    <th className="px-3 py-3 text-right">
+                      <TermTooltip
+                        label={t.watchlist.colMos}
+                        definition={t.glossary.marginOfSafety}
+                      />
+                    </th>
+                    <th className="px-3 py-3 text-right">
+                      <TermTooltip
+                        label={t.watchlist.colPosition}
+                        definition={t.glossary.unrealizedPnL}
+                      />
+                    </th>
+                    <th className="py-3 pr-5 pl-2 text-right">{t.watchlist.colActions}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/80">
+                  {filteredItems.map((item) => {
+                    const pos = calculatePositionSummary(
+                      item.ownedLots,
+                      item.avgBuyPrice,
+                      item.currentPrice,
+                    );
+                    const mosVal = item.valuation.mosPct;
+                    const priceColor =
+                      mosVal === null
+                        ? 'text-ink'
+                        : mosVal >= 30
+                          ? 'text-positive-600'
+                          : mosVal < 0
+                            ? 'text-negative-600'
+                            : 'text-ink';
+                    const isSectorActive = sector === item.sector;
+
+                    return (
+                      <tr
+                        key={item.id}
+                        className="group transition-colors duration-150 hover:bg-brand-50/40"
                       >
-                        {formatIdr(item.currentPrice)}
-                      </td>
-
-                      {/* Moderate Fair Value */}
-                      <td className="px-3 py-3.5 text-right align-middle font-mono text-sm font-semibold text-ink tabular-nums">
-                        {formatIdr(item.valuation.fairValue.moderate)}
-                      </td>
-
-                      {/* Margin of Safety + Valuation Verdict Badge paired cleanly */}
-                      <td className="px-3 py-3.5 text-right align-middle">
-                        <div className="flex flex-col items-end gap-1">
-                          {mosVal !== null ? (
-                            <div className="inline-flex items-center gap-0.5 font-mono text-sm font-bold tabular-nums">
-                              {mosVal >= 0 ? (
-                                <ArrowUpRight className="h-3.5 w-3.5 text-positive-600" />
-                              ) : (
-                                <ArrowDownRight className="h-3.5 w-3.5 text-negative-600" />
-                              )}
+                        {/* Symbol + Company Name */}
+                        <td className="py-3.5 pr-3 pl-5 align-middle">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              to={`/watchlist/${item.id}`}
+                              className="font-mono text-sm font-bold tracking-tight text-ink transition-colors group-hover:text-brand-700"
+                            >
+                              {item.ticker}
+                            </Link>
+                            {item.isStale && (
                               <span
-                                className={
-                                  mosVal >= 30
-                                    ? 'text-positive-600'
-                                    : mosVal >= 0
-                                      ? 'text-warning-600'
-                                      : 'text-negative-600'
-                                }
+                                title={t.watchlist.staleBadge}
+                                className="inline-flex items-center text-warning-600"
                               >
-                                {formatPercent(mosVal, true)}
+                                <Clock className="h-3.5 w-3.5" aria-hidden="true" />
                               </span>
+                            )}
+                          </div>
+                          <div
+                            className="mt-0.5 truncate text-xs text-muted"
+                            title={item.companyName}
+                          >
+                            {item.companyName}
+                          </div>
+                        </td>
+
+                        {/* IDX Sector Column (Clickable Quick Filter) */}
+                        <td className="px-3 py-3.5 align-middle">
+                          <button
+                            type="button"
+                            onClick={() => setSector(isSectorActive ? '' : item.sector)}
+                            title={
+                              isSectorActive
+                                ? t.watchlist.clearSectorFilter
+                                : t.watchlist.filterSectorHint
+                            }
+                            className={cn(
+                              'inline-flex max-w-full items-center rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer',
+                              isSectorActive
+                                ? 'border-brand-600/45 bg-brand-50 text-brand-700'
+                                : 'border-border bg-subtle/75 text-ink/85 hover:border-brand-600/40 hover:bg-brand-50/60 hover:text-brand-700',
+                            )}
+                          >
+                            <span className="truncate">{t.sectors[item.sector]}</span>
+                          </button>
+                        </td>
+
+                        {/* Current Price */}
+                        <td
+                          className={`px-3 py-3.5 text-right align-middle font-mono text-sm font-bold tabular-nums ${priceColor}`}
+                        >
+                          {formatIdr(item.currentPrice)}
+                        </td>
+
+                        {/* Moderate Fair Value */}
+                        <td className="px-3 py-3.5 text-right align-middle font-mono text-sm font-semibold text-ink tabular-nums">
+                          {formatIdr(item.valuation.fairValue.moderate)}
+                        </td>
+
+                        {/* Margin of Safety + Valuation Verdict Badge */}
+                        <td className="px-3 py-3.5 text-right align-middle">
+                          <div className="flex flex-col items-end gap-1">
+                            {mosVal !== null ? (
+                              <div className="inline-flex items-center gap-0.5 font-mono text-sm font-bold tabular-nums">
+                                {mosVal >= 0 ? (
+                                  <ArrowUpRight
+                                    className="h-3.5 w-3.5 text-positive-600"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <ArrowDownRight
+                                    className="h-3.5 w-3.5 text-negative-600"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                <span
+                                  className={
+                                    mosVal >= 30
+                                      ? 'text-positive-600'
+                                      : mosVal >= 0
+                                        ? 'text-warning-600'
+                                        : 'text-negative-600'
+                                  }
+                                >
+                                  {formatPercent(mosVal, true)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="font-mono text-xs text-muted">-</span>
+                            )}
+                            <Badge tone={statusTone(item.valuation.valuationStatus)}>
+                              {t.valuationStatus[item.valuation.valuationStatus]}
+                            </Badge>
+                            {item.valuation.valueTrapShield.riskLevel !== 'CLEAR' && (
+                              <span
+                                title={item.valuation.valueTrapShield.warnings
+                                  .map((w) => t.valueTrapShield.warnings[w])
+                                  .join(' | ')}
+                                className={cn(
+                                  'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold',
+                                  item.valuation.valueTrapShield.riskLevel === 'HIGH_RISK'
+                                    ? 'bg-negative-50 text-negative-700'
+                                    : 'bg-warning-50 text-warning-700',
+                                )}
+                              >
+                                <ShieldAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
+                                {t.valueTrapShield.shortBadges[item.valuation.valueTrapShield.riskLevel]}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Owned Position Cell */}
+                        <td className="px-3 py-3.5 text-right align-middle">
+                          {pos.ownedLots > 0 ? (
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="flex items-baseline gap-1.5 font-mono text-xs tabular-nums">
+                                <span className="font-bold text-ink">
+                                  {hideBalances ? MASKED_LOTS : formatNumber(pos.ownedLots)}{' '}
+                                  {t.common.lots}
+                                </span>
+                                {pos.avgBuyPrice && (
+                                  <span className="text-[11px] text-muted">
+                                    @{formatNumber(pos.avgBuyPrice)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[11px] text-muted tabular-nums">
+                                  {hideBalances ? MASKED_IDR : formatIdr(pos.costBasis)}
+                                </span>
+                                {pos.unrealizedPnLPct !== null && (
+                                  <span
+                                    className={cn(
+                                      'rounded-sm px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums',
+                                      pos.unrealizedPnLPct >= 0
+                                        ? 'bg-positive-50 text-positive-700'
+                                        : 'bg-negative-50 text-negative-700',
+                                    )}
+                                  >
+                                    {formatPercent(pos.unrealizedPnLPct, true)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ) : (
-                            <span className="font-mono text-xs text-muted">—</span>
-                          )}
-                          <Badge tone={statusTone(item.valuation.valuationStatus)}>
-                            {t.valuationStatus[item.valuation.valuationStatus]}
-                          </Badge>
-                          {item.valuation.valueTrapShield.riskLevel !== 'CLEAR' && (
-                            <span
-                              title={item.valuation.valueTrapShield.warnings
-                                .map((w) => t.valueTrapShield.warnings[w])
-                                .join(' • ')}
-                              className={cn(
-                                'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold',
-                                item.valuation.valueTrapShield.riskLevel === 'HIGH_RISK'
-                                  ? 'bg-negative-50 text-negative-700'
-                                  : 'bg-warning-50 text-warning-700',
-                              )}
+                            <button
+                              type="button"
+                              onClick={() => openEdit(item)}
+                              className="inline-flex items-center gap-1 rounded-md border border-dashed border-editable-border px-2 py-1 text-[11px] font-medium text-muted transition-colors hover:border-brand-600 hover:bg-brand-50/60 hover:text-brand-700 cursor-pointer"
                             >
-                              <ShieldAlert className="h-3 w-3 shrink-0" />
-                              {t.valueTrapShield.shortBadges[item.valuation.valueTrapShield.riskLevel]}
-                            </span>
+                              <Plus className="h-3 w-3" aria-hidden="true" />
+                              {t.common.lots}
+                            </button>
                           )}
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Clean 2-Line Owned Position Cell */}
-                      <td className="px-3 py-3.5 text-right align-middle">
-                        {pos.ownedLots > 0 ? (
-                          <div className="flex flex-col items-end gap-1">
-                            <div className="flex items-baseline gap-1.5 font-mono text-xs tabular-nums">
-                              <span className="font-bold text-ink">
-                                {hideBalances ? MASKED_LOTS : formatNumber(pos.ownedLots)}{' '}
-                                {t.common.lots}
-                              </span>
-                              {pos.avgBuyPrice && (
-                                <span className="text-[11px] text-muted">
-                                  @{formatNumber(pos.avgBuyPrice)}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-[11px] text-muted tabular-nums">
-                                {hideBalances ? MASKED_IDR : formatIdr(pos.costBasis)}
-                              </span>
-                              {pos.unrealizedPnLPct !== null && (
-                                <span
-                                  className={cn(
-                                    'rounded-sm px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums',
-                                    pos.unrealizedPnLPct >= 0
-                                      ? 'bg-positive-50 text-positive-700'
-                                      : 'bg-negative-50 text-negative-700',
-                                  )}
-                                >
-                                  {formatPercent(pos.unrealizedPnLPct, true)}
-                                </span>
-                              )}
-                            </div>
+                        {/* Compact Icon-Only Actions */}
+                        <td className="py-3.5 pr-5 pl-2 align-middle">
+                          <div className="flex items-center justify-end gap-1">
+                            <Link
+                              to={`/simulator?stockId=${item.id}`}
+                              title={t.watchlist.simulate}
+                              aria-label={t.watchlist.simulate}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-brand-600/35 bg-brand-50/70 text-brand-700 transition-colors hover:border-brand-solid hover:bg-brand-solid hover:text-white"
+                            >
+                              <Calculator className="h-3.5 w-3.5" aria-hidden="true" />
+                            </Link>
+                            <Link
+                              to={`/watchlist/${item.id}`}
+                              title={t.watchlist.analyze}
+                              aria-label={t.watchlist.analyze}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink"
+                            >
+                              <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(item)}
+                              title={t.common.edit}
+                              aria-label={t.common.edit}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+                            >
+                              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingItem(item)}
+                              title={t.common.delete}
+                              aria-label={t.common.delete}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => openEdit(item)}
-                            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-[11px] font-medium text-muted transition-colors hover:border-brand-600 hover:bg-brand-50/50 hover:text-brand-700 cursor-pointer"
-                          >
-                            <Plus className="h-3 w-3" />
-                            {t.common.lots}
-                          </button>
-                        )}
-                      </td>
-
-                      {/* Compact Icon-Only Actions */}
-                      <td className="py-3.5 pr-5 pl-2 align-middle">
-                        <div className="flex items-center justify-end gap-1">
-                          <Link
-                            to={`/simulator?stockId=${item.id}`}
-                            title={t.watchlist.simulate}
-                            aria-label={t.watchlist.simulate}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-brand-600/35 bg-brand-50/50 text-brand-700 transition-colors hover:border-brand-600 hover:bg-brand-600 hover:text-white"
-                          >
-                            <Calculator className="h-3.5 w-3.5" />
-                          </Link>
-                          <Link
-                            to={`/watchlist/${item.id}`}
-                            title={t.watchlist.analyze}
-                            aria-label={t.watchlist.analyze}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink"
-                          >
-                            <BarChart3 className="h-3.5 w-3.5" />
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() => openEdit(item)}
-                            title={t.common.edit}
-                            aria-label={t.common.edit}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeletingItem(item)}
-                            title={t.common.delete}
-                            aria-label={t.common.delete}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
 
       <StockFormModal
         open={modalOpen}
@@ -793,7 +887,7 @@ export function WatchlistPage() {
       <Modal
         open={Boolean(deletingItem)}
         onClose={() => setDeletingItem(null)}
-        title={`${t.common.confirmDelete} — ${deletingItem?.ticker ?? ''}`}
+        title={`${t.common.confirmDelete}: ${deletingItem?.ticker ?? ''}`}
         maxWidthClass="max-w-md"
       >
         <p className="text-sm text-muted">{t.watchlist.deletePrompt}</p>

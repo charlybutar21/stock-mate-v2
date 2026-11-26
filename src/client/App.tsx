@@ -12,6 +12,7 @@ import { StockDetailPage } from './features/watchlist/StockDetailPage';
 import { WatchlistPage } from './features/watchlist/WatchlistPage';
 import { I18nProvider } from './i18n/useI18n';
 import { PrivacyProvider } from './lib/usePrivacy';
+import { ThemeProvider } from './lib/useTheme';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,57 +50,59 @@ function GuestOnly({ children }: { children: ReactNode }) {
 export function App() {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <I18nProvider>
-          <PrivacyProvider>
-            <BrowserRouter>
-            <Routes>
-              <Route
-                path="/login"
-                element={
-                  <GuestOnly>
-                    <LoginPage />
-                  </GuestOnly>
-                }
-              />
-              <Route
-                path="/register"
-                element={
-                  <GuestOnly>
-                    <RegisterPage />
-                  </GuestOnly>
-                }
-              />
-              <Route
-                path="/watchlist"
-                element={
-                  <RequireAuth>
-                    <WatchlistPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/watchlist/:id"
-                element={
-                  <RequireAuth>
-                    <StockDetailPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/simulator"
-                element={
-                  <RequireAuth>
-                    <SimulatorPage />
-                  </RequireAuth>
-                }
-              />
-              <Route path="*" element={<Navigate to="/watchlist" replace />} />
-            </Routes>
-            </BrowserRouter>
-          </PrivacyProvider>
-        </I18nProvider>
-      </QueryClientProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <I18nProvider>
+            <PrivacyProvider>
+              <BrowserRouter>
+                <Routes>
+                  <Route
+                    path="/login"
+                    element={
+                      <GuestOnly>
+                        <LoginPage />
+                      </GuestOnly>
+                    }
+                  />
+                  <Route
+                    path="/register"
+                    element={
+                      <GuestOnly>
+                        <RegisterPage />
+                      </GuestOnly>
+                    }
+                  />
+                  <Route
+                    path="/watchlist"
+                    element={
+                      <RequireAuth>
+                        <WatchlistPage />
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="/watchlist/:id"
+                    element={
+                      <RequireAuth>
+                        <StockDetailPage />
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="/simulator"
+                    element={
+                      <RequireAuth>
+                        <SimulatorPage />
+                      </RequireAuth>
+                    }
+                  />
+                  <Route path="*" element={<Navigate to="/watchlist" replace />} />
+                </Routes>
+              </BrowserRouter>
+            </PrivacyProvider>
+          </I18nProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

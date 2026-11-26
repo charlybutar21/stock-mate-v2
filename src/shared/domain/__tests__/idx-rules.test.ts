@@ -13,6 +13,7 @@ import {
   STALE_THRESHOLD_MS,
   STAMP_DUTY_IDR,
   STAMP_DUTY_THRESHOLD_IDR,
+  stepIdxPrice,
 } from '../idx-rules';
 
 describe('idx-rules', () => {
@@ -73,6 +74,59 @@ describe('idx-rules', () => {
     expect(floorToIdxTick(504)).toBe(500);
     expect(floorToIdxTick(2019)).toBe(2010);
     expect(floorToIdxTick(5049)).toBe(5025);
+  });
+
+  it('steps prices up and down across all IDX tick brackets and boundaries', () => {
+    const upCases: Array<[number, number]> = [
+      [Number.NaN, 1],
+      [0, 1],
+      [1, 2],
+      [198, 199],
+      [199, 200],
+      [200, 202],
+      [201, 202],
+      [498, 500],
+      [499, 500],
+      [500, 505],
+      [1995, 2000],
+      [1997, 2000],
+      [2000, 2010],
+      [4990, 5000],
+      [4995, 5000],
+      [5000, 5025],
+      [5010, 5025],
+      [9500, 9525],
+    ];
+    for (const [input, expected] of upCases) {
+      expect(stepIdxPrice(input, 'up')).toBe(expected);
+    }
+
+    const downCases: Array<[number, number]> = [
+      [Number.NaN, 1],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+      [199, 198],
+      [200, 199],
+      [201, 200],
+      [202, 200],
+      [499, 498],
+      [500, 498],
+      [501, 500],
+      [505, 500],
+      [1999, 1995],
+      [2000, 1995],
+      [2001, 2000],
+      [2010, 2000],
+      [4995, 4990],
+      [5000, 4990],
+      [5001, 5000],
+      [5025, 5000],
+      [9500, 9475],
+    ];
+    for (const [input, expected] of downCases) {
+      expect(stepIdxPrice(input, 'down')).toBe(expected);
+    }
   });
 
   it('evaluates 14-day staleness correctly', () => {

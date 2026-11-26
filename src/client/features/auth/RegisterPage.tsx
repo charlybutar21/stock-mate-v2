@@ -3,8 +3,8 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { z } from 'zod';
 import { registerRequestSchema } from '@/shared/contracts';
-import { LanguageSwitcher } from '@/client/components/ui/AppShell';
-import { Button, Card, Field, Input } from '@/client/components/ui/primitives';
+import { LanguageSwitcher, ThemeSwitcher } from '@/client/components/ui/AppShell';
+import { Button, Card, Field, Input, RolePill } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { ApiClientError } from '@/client/lib/apiClient';
 import { useRegister } from './useAuth';
@@ -65,20 +65,26 @@ export function RegisterPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-surface px-4 py-10">
       <div className="mb-6 flex w-full max-w-md items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-2xs">
-            <TrendingUp className="h-4 w-4" />
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-solid text-white shadow-2xs">
+            <TrendingUp className="h-4 w-4" aria-hidden="true" />
           </span>
           <span className="font-display text-lg font-bold tracking-tight text-ink">
             {t.appName}
           </span>
         </div>
-        <LanguageSwitcher />
+        <div className="flex items-center gap-2">
+          <ThemeSwitcher />
+          <LanguageSwitcher />
+        </div>
       </div>
 
-      <Card className="w-full max-w-md p-6">
-        <h1 className="font-display text-xl font-bold tracking-tight text-ink">
-          {t.auth.registerTitle}
-        </h1>
+      <Card variant="editable" className="w-full max-w-md p-6">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="font-display text-xl font-bold tracking-tight text-ink">
+            {t.auth.registerTitle}
+          </h1>
+          <RolePill role="editable" label={t.common.editableTag} />
+        </div>
         <p className="mt-1 text-sm text-muted">{t.auth.registerSubtitle}</p>
 
         {formError && (

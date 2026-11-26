@@ -63,11 +63,11 @@ export function FairValueRangeBar({
           className="absolute top-0 -translate-x-1/2 flex flex-col items-center"
           style={{ left: `${pricePct}%` }}
         >
-          <span className="whitespace-nowrap rounded bg-ink px-1.5 py-0.5 font-mono text-[10px] font-semibold text-white tabular-nums">
+          <span className="whitespace-nowrap rounded bg-ink px-1.5 py-0.5 font-mono text-[10px] font-semibold text-panel tabular-nums">
             {formatIdr(currentPrice)}
           </span>
           <div className="h-3.5 w-0.5 bg-ink" />
-          <div className="h-2.5 w-2.5 -mt-1 rounded-full border-2 border-white bg-ink shadow-xs" />
+          <div className="h-2.5 w-2.5 -mt-1 rounded-full border-2 border-panel bg-ink shadow-xs" />
         </div>
       </div>
 

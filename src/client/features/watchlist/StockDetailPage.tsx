@@ -25,6 +25,8 @@ import {
   Card,
   Field,
   Input,
+  RolePill,
+  SectionHeader,
   Skeleton,
   TermTooltip,
   type BadgeTone,
@@ -78,7 +80,6 @@ export function StockDetailPage() {
   const [positionSavedNotice, setPositionSavedNotice] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
-  // Inline Multi-Tranche Position draft overrides
   const [holdingDraft, setHoldingDraft] = useState<EditableHoldingRow[] | null>(null);
 
   const activeHoldingRows: EditableHoldingRow[] = useMemo(() => {
@@ -138,7 +139,6 @@ export function StockDetailPage() {
     }
   };
 
-  // Interactive Core-3 What-If draft overrides
   const [draft, setDraft] = useState<{
     targetPer?: string;
     targetPbv?: string;
@@ -217,7 +217,7 @@ export function StockDetailPage() {
 
   if (isError || !item || !liveValuation) {
     return (
-      <Card className="p-8 text-center">
+      <Card variant="display" className="p-8 text-center">
         <p className="text-sm text-muted">{t.common.unexpectedError}</p>
         <Link to="/watchlist" className="mt-4 inline-block text-sm font-medium text-brand-700">
           {t.detail.backToWatchlist}
@@ -227,20 +227,20 @@ export function StockDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Top breadcrumb & actions */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           to="/watchlist"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           {t.detail.backToWatchlist}
         </Link>
         <div className="flex flex-wrap items-center gap-2">
           {syncNotice && (
             <Badge tone="positive">
-              <CheckCircle2 className="h-3 w-3" />
+              <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
               {syncNotice}
             </Badge>
           )}
@@ -252,245 +252,275 @@ export function StockDetailPage() {
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${fetchQuoteMutation.isPending ? 'animate-spin' : ''}`}
+              aria-hidden="true"
             />
             {fetchQuoteMutation.isPending ? t.watchlist.syncingData : t.watchlist.syncDataBtn}
           </Button>
           <Button variant="secondary" size="sm" onClick={() => setEditModalOpen(true)}>
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
             {t.detail.editStock}
           </Button>
           <Link
             to={`/simulator?stockId=${item.id}`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 text-xs font-semibold text-white shadow-xs transition-all hover:bg-brand-700"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 text-xs font-semibold text-white shadow-xs transition-all hover:bg-brand-solid-hover"
           >
-            <Calculator className="h-3.5 w-3.5" />
+            <Calculator className="h-3.5 w-3.5" aria-hidden="true" />
             {t.detail.openSimulator}
           </Link>
         </div>
       </div>
 
-      {/* Editorial Research Sheet Header */}
-      <Card className="space-y-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="font-mono text-2xl font-bold tracking-tight text-ink">
-                {item.ticker}
-              </h1>
-              <Badge tone={statusTone(liveValuation.valuationStatus)}>
-                {t.valuationStatus[liveValuation.valuationStatus]}
-              </Badge>
-              {item.isStale && (
-                <Badge tone="warning">
-                  <Clock className="h-3 w-3" />
-                  {t.watchlist.staleBadge}
+      {/* GROUP 1: Valuation Summary & Market Ratios (Display / Read-Only) */}
+      <section className="space-y-4 animate-fade-up" aria-label={t.detail.sectionValuation}>
+        <SectionHeader
+          title={t.detail.sectionValuation}
+          subtitle={t.detail.sectionValuationSub}
+          role="calculated"
+          roleLabel={t.common.calculatedTag}
+        />
+
+        <Card variant="display" className="space-y-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="font-mono text-2xl font-bold tracking-tight text-ink">
+                  {item.ticker}
+                </h1>
+                <Badge tone="neutral">{t.sectors[item.sector]}</Badge>
+                <Badge tone={statusTone(liveValuation.valuationStatus)}>
+                  {t.valuationStatus[liveValuation.valuationStatus]}
                 </Badge>
+                {item.isStale && (
+                  <Badge tone="warning">
+                    <Clock className="h-3 w-3" aria-hidden="true" />
+                    {t.watchlist.staleBadge}
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 font-display text-lg text-ink/90">{item.companyName}</p>
+              {item.fundamentals.periodLabel && (
+                <p className="text-xs text-muted">{item.fundamentals.periodLabel}</p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge tone={roeTone(liveValuation.qualityFlags.roeFlag)}>
+                  {t.qualityFlags.roe[liveValuation.qualityFlags.roeFlag]}
+                </Badge>
+                <Badge tone={derTone(liveValuation.qualityFlags.derFlag)}>
+                  {liveValuation.qualityFlags.derFlag === 'NOT_APPLICABLE_BANKING' && (
+                    <Info className="h-3 w-3" aria-hidden="true" />
+                  )}
+                  {t.qualityFlags.der[liveValuation.qualityFlags.derFlag]}
+                </Badge>
+                <Badge tone={shieldTone(liveValuation.valueTrapShield.riskLevel)}>
+                  {liveValuation.valueTrapShield.riskLevel === 'CLEAR' ? (
+                    <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+                  ) : (
+                    <ShieldAlert className="h-3 w-3" aria-hidden="true" />
+                  )}
+                  {t.valueTrapShield.levels[liveValuation.valueTrapShield.riskLevel]}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-6 sm:text-right">
+              <div>
+                <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+                  {t.detail.currentPrice}
+                </div>
+                <div className="font-mono text-xl font-bold text-ink tabular-nums">
+                  {formatIdr(item.currentPrice)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+                  <TermTooltip
+                    label={t.detail.marginOfSafety}
+                    definition={t.glossary.marginOfSafety}
+                  />
+                </div>
+                <div
+                  className={`font-mono text-xl font-bold tabular-nums ${
+                    liveValuation.mosPct === null
+                      ? 'text-muted'
+                      : liveValuation.mosPct >= 30
+                        ? 'text-positive-700'
+                        : liveValuation.mosPct >= 0
+                          ? 'text-warning-700'
+                          : 'text-negative-600'
+                  }`}
+                >
+                  {formatPercent(liveValuation.mosPct, true)}
+                </div>
+              </div>
+              {item.targetBuyPrice !== null && (
+                <div>
+                  <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+                    {t.detail.targetBuy}
+                  </div>
+                  <div className="font-mono text-xl font-semibold text-brand-700 tabular-nums">
+                    {formatIdr(item.targetBuyPrice)}
+                  </div>
+                </div>
               )}
             </div>
-            <p className="mt-1 font-display text-lg text-ink/90">{item.companyName}</p>
-            <p className="text-xs text-muted">
-              {t.sectors[item.sector]}
-              {item.fundamentals.periodLabel ? ` · ${item.fundamentals.periodLabel}` : ''}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Badge tone={roeTone(liveValuation.qualityFlags.roeFlag)}>
-                {t.qualityFlags.roe[liveValuation.qualityFlags.roeFlag]}
-              </Badge>
-              <Badge tone={derTone(liveValuation.qualityFlags.derFlag)}>
-                {liveValuation.qualityFlags.derFlag === 'NOT_APPLICABLE_BANKING' && (
-                  <Info className="h-3 w-3" />
-                )}
-                {t.qualityFlags.der[liveValuation.qualityFlags.derFlag]}
-              </Badge>
-              <Badge tone={shieldTone(liveValuation.valueTrapShield.riskLevel)}>
+          </div>
+
+          {/* Fair Value Range Bar */}
+          <div className="border-t border-border pt-4">
+            <h3 className="mb-2 text-[11px] font-semibold tracking-wider text-muted uppercase">
+              <TermTooltip
+                label={t.detail.fairValueRange}
+                definition={t.glossary.fairValueRange}
+              />
+            </h3>
+            <FairValueRangeBar
+              conservative={liveValuation.fairValue.conservative}
+              moderate={liveValuation.fairValue.moderate}
+              optimistic={liveValuation.fairValue.optimistic}
+              currentPrice={item.currentPrice}
+            />
+          </div>
+
+          {/* IHSG Value Trap Shield */}
+          <div
+            className={`rounded-xl border p-4 ${
+              liveValuation.valueTrapShield.riskLevel === 'CLEAR'
+                ? 'border-positive-600/25 bg-positive-50/50'
+                : liveValuation.valueTrapShield.riskLevel === 'WATCH'
+                  ? 'border-warning-600/25 bg-warning-50/60'
+                  : 'border-negative-600/25 bg-negative-50/60'
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
                 {liveValuation.valueTrapShield.riskLevel === 'CLEAR' ? (
-                  <ShieldCheck className="h-3 w-3" />
+                  <ShieldCheck className="h-4 w-4 text-positive-600" aria-hidden="true" />
                 ) : (
-                  <ShieldAlert className="h-3 w-3" />
+                  <ShieldAlert
+                    className={`h-4 w-4 ${
+                      liveValuation.valueTrapShield.riskLevel === 'HIGH_RISK'
+                        ? 'text-negative-600'
+                        : 'text-warning-600'
+                    }`}
+                    aria-hidden="true"
+                  />
                 )}
+                <span className="text-xs font-bold text-ink">
+                  <TermTooltip
+                    label={t.valueTrapShield.title}
+                    definition={t.glossary.valueTrapShield}
+                  />
+                </span>
+              </div>
+              <Badge tone={shieldTone(liveValuation.valueTrapShield.riskLevel)}>
                 {t.valueTrapShield.levels[liveValuation.valueTrapShield.riskLevel]}
               </Badge>
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-6 sm:text-right">
-            <div>
-              <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
-                {t.detail.currentPrice}
-              </div>
-              <div className="font-mono text-xl font-bold text-ink tabular-nums">
-                {formatIdr(item.currentPrice)}
-              </div>
-            </div>
-            <div>
-              <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
-                <TermTooltip
-                  label={t.detail.marginOfSafety}
-                  definition={t.glossary.marginOfSafety}
-                />
-              </div>
-              <div
-                className={`font-mono text-xl font-bold tabular-nums ${
-                  liveValuation.mosPct === null
-                    ? 'text-muted'
-                    : liveValuation.mosPct >= 30
-                      ? 'text-positive-700'
-                      : liveValuation.mosPct >= 0
-                        ? 'text-warning-700'
-                        : 'text-negative-600'
-                }`}
-              >
-                {formatPercent(liveValuation.mosPct, true)}
-              </div>
-            </div>
-            {item.targetBuyPrice !== null && (
-              <div>
-                <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
-                  {t.detail.targetBuy}
-                </div>
-                <div className="font-mono text-xl font-semibold text-brand-700 tabular-nums">
-                  {formatIdr(item.targetBuyPrice)}
-                </div>
-              </div>
+            {liveValuation.valueTrapShield.warnings.length === 0 ? (
+              <p className="mt-1.5 text-xs text-positive-700">{t.valueTrapShield.clearBody}</p>
+            ) : (
+              <ul className="mt-2 space-y-1.5 text-xs text-ink">
+                {liveValuation.valueTrapShield.warnings.map((w) => (
+                  <li key={w} className="flex items-start gap-2">
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+                    <span>{t.valueTrapShield.warnings[w]}</span>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
-        </div>
+        </Card>
 
-        {/* Fair Value Range Bar */}
-        <div className="border-t border-border pt-4">
-          <h2 className="mb-2 text-[11px] font-semibold tracking-wider text-muted uppercase">
-            <TermTooltip
-              label={t.detail.fairValueRange}
-              definition={t.glossary.fairValueRange}
-            />
-          </h2>
-          <FairValueRangeBar
-            conservative={liveValuation.fairValue.conservative}
-            moderate={liveValuation.fairValue.moderate}
-            optimistic={liveValuation.fairValue.optimistic}
-            currentPrice={item.currentPrice}
-          />
-        </div>
-
-        {/* Use Case 5: IHSG Value Trap Shield Card */}
-        <div
-          className={`rounded-xl border p-4 ${
-            liveValuation.valueTrapShield.riskLevel === 'CLEAR'
-              ? 'border-positive-600/20 bg-positive-50/50'
-              : liveValuation.valueTrapShield.riskLevel === 'WATCH'
-                ? 'border-warning-600/25 bg-warning-50/60'
-                : 'border-negative-600/25 bg-negative-50/60'
-          }`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              {liveValuation.valueTrapShield.riskLevel === 'CLEAR' ? (
-                <ShieldCheck className="h-4 w-4 text-positive-600" />
-              ) : (
-                <ShieldAlert
-                  className={`h-4 w-4 ${
-                    liveValuation.valueTrapShield.riskLevel === 'HIGH_RISK'
-                      ? 'text-negative-600'
-                      : 'text-warning-600'
-                  }`}
-                />
-              )}
-              <span className="text-xs font-bold text-ink">
-                <TermTooltip
-                  label={t.valueTrapShield.title}
-                  definition={t.glossary.valueTrapShield}
-                />
-              </span>
+        {/* Market Ratios Strip (Display-only flat cards) */}
+        <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+          <Card variant="display" className="p-4">
+            <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+              <TermTooltip label={t.detail.per} definition={t.glossary.currentPer} />
             </div>
-            <Badge tone={shieldTone(liveValuation.valueTrapShield.riskLevel)}>
-              {t.valueTrapShield.levels[liveValuation.valueTrapShield.riskLevel]}
-            </Badge>
-          </div>
-          {liveValuation.valueTrapShield.warnings.length === 0 ? (
-            <p className="mt-1.5 text-xs text-positive-700">{t.valueTrapShield.clearBody}</p>
-          ) : (
-            <ul className="mt-2 space-y-1.5 text-xs text-ink">
-              {liveValuation.valueTrapShield.warnings.map((w) => (
-                <li key={w} className="flex items-start gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-                  <span>{t.valueTrapShield.warnings[w]}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+            <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
+              {formatMultiple(liveValuation.ratios.currentPer)}
+            </div>
+          </Card>
+          <Card variant="display" className="p-4">
+            <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+              <TermTooltip label={t.detail.pbv} definition={t.glossary.currentPbv} />
+            </div>
+            <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
+              {formatMultiple(liveValuation.ratios.currentPbv)}
+            </div>
+          </Card>
+          <Card variant="display" className="p-4">
+            <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+              <TermTooltip label={t.detail.divYield} definition={t.glossary.dividendYield} />
+            </div>
+            <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
+              {formatPercent(liveValuation.ratios.dividendYieldPct)}
+            </div>
+          </Card>
+          <Card variant="display" className="p-4">
+            <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+              <TermTooltip label={t.detail.peg} definition={t.glossary.pegRatio} />
+            </div>
+            <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
+              {formatMultiple(liveValuation.ratios.pegRatio)}
+            </div>
+          </Card>
         </div>
-      </Card>
+      </section>
 
-      {/* My Holding Position Card (Multi-Entry Average Down + Net Market Value After Stockbit Fees) */}
-      <Card className="space-y-4 border-l-4 border-l-brand-600 animate-fade-up">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-lg font-bold text-ink">
-            {t.detail.myPositionTitle}
-          </h2>
-          <div className="flex items-center gap-2">
-            {positionSavedNotice && (
-              <Badge tone="positive">
-                <CheckCircle2 className="h-3 w-3" />
-                {t.detail.positionSaved}
-              </Badge>
-            )}
-            <Button
-              size="sm"
-              onClick={savePosition}
-              disabled={updateMutation.isPending}
-            >
-              <Save className="h-3.5 w-3.5" />
-              {t.detail.savePosition}
-            </Button>
-          </div>
-        </div>
-
-        <HoldingTranchesEditor
-          rows={activeHoldingRows}
-          onChange={setHoldingDraft}
-          currentPrice={item.currentPrice}
+      {/* GROUP 2: My Holding Position (Clearly Marked Editable Card) */}
+      <section className="space-y-4 animate-fade-up" aria-label={t.detail.sectionPosition}>
+        <SectionHeader
+          title={t.detail.sectionPosition}
+          subtitle={t.detail.sectionPositionSub}
+          role="editable"
+          roleLabel={t.common.editableTag}
         />
-      </Card>
 
-      {/* Market Ratios Cards */}
-      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4 animate-fade-up">
-        <Card interactive className="p-4">
-          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
-            <TermTooltip label={t.detail.per} definition={t.glossary.currentPer} />
+        <Card variant="editable" className="overflow-hidden p-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-editable-header px-5 py-3.5">
+            <div className="flex items-center gap-2">
+              <h3 className="font-display text-sm font-bold text-ink">
+                {t.detail.myPositionTitle}
+              </h3>
+              <RolePill role="editable" label={t.common.editableTag} />
+            </div>
+            <div className="flex items-center gap-2">
+              {positionSavedNotice && (
+                <Badge tone="positive">
+                  <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                  {t.detail.positionSaved}
+                </Badge>
+              )}
+              <Button
+                size="sm"
+                onClick={savePosition}
+                disabled={updateMutation.isPending}
+              >
+                <Save className="h-3.5 w-3.5" aria-hidden="true" />
+                {t.detail.savePosition}
+              </Button>
+            </div>
           </div>
-          <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
-            {formatMultiple(liveValuation.ratios.currentPer)}
-          </div>
-        </Card>
-        <Card interactive className="p-4">
-          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
-            <TermTooltip label={t.detail.pbv} definition={t.glossary.currentPbv} />
-          </div>
-          <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
-            {formatMultiple(liveValuation.ratios.currentPbv)}
-          </div>
-        </Card>
-        <Card interactive className="p-4">
-          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
-            <TermTooltip label={t.detail.divYield} definition={t.glossary.dividendYield} />
-          </div>
-          <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
-            {formatPercent(liveValuation.ratios.dividendYieldPct)}
-          </div>
-        </Card>
-        <Card interactive className="p-4">
-          <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">
-            <TermTooltip label={t.detail.peg} definition={t.glossary.pegRatio} />
-          </div>
-          <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
-            {formatMultiple(liveValuation.ratios.pegRatio)}
-          </div>
-        </Card>
-      </div>
 
-      {/* Core-3 2026 Fair Value Methods */}
-      <div className="space-y-3">
-        <h2 className="font-display text-lg font-semibold text-ink">{t.detail.methodsTitle}</h2>
+          <div className="p-5">
+            <HoldingTranchesEditor
+              rows={activeHoldingRows}
+              onChange={setHoldingDraft}
+              currentPrice={item.currentPrice}
+            />
+          </div>
+        </Card>
+      </section>
+
+      {/* GROUP 3: Core-3 Valuation Models (Display) + What-If Tuning (Editable) + Thesis (Display) */}
+      <section className="space-y-4 animate-fade-up" aria-label={t.detail.sectionCoreMethods}>
+        <SectionHeader
+          title={t.detail.sectionCoreMethods}
+          subtitle={t.detail.sectionCoreMethodsSub}
+        />
+
+        {/* Core-3 2026 Fair Value Methods (Display Cards) */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {liveValuation.methods.map((m) => {
             const isPrimaryBankPbv =
@@ -502,8 +532,8 @@ export function StockDetailPage() {
             return (
               <Card
                 key={m.method}
-                interactive
-                className="flex flex-col justify-between border-t-2 border-t-brand-700/70 p-4"
+                variant="display"
+                className="flex flex-col justify-between border-t-2 border-t-brand-600/70 p-4"
               >
                 <div>
                   <div className="flex items-center justify-between gap-2">
@@ -513,8 +543,10 @@ export function StockDetailPage() {
                         definition={t.glossary[m.method]}
                       />
                     </span>
-                    {isPrimaryBankPbv && (
+                    {isPrimaryBankPbv ? (
                       <Badge tone="info">{t.detail.primaryBankRef}</Badge>
+                    ) : (
+                      <RolePill role="calculated" label={t.common.calculatedTag} />
                     )}
                   </div>
                   <p className="mt-1 text-[11px] text-muted">
@@ -550,103 +582,122 @@ export function StockDetailPage() {
             );
           })}
         </div>
-      </div>
 
-      {/* What-If Tuning & Investment Thesis */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h2 className="font-display text-lg font-semibold text-ink">
-                {t.detail.whatIfTitle}
-              </h2>
-              <p className="mt-0.5 text-xs text-muted">{t.detail.whatIfSubtitle}</p>
+        {/* What-If Tuning (Editable Card) & Investment Thesis (Display Card) */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <Card variant="editable" className="overflow-hidden p-0 lg:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-editable-header px-5 py-3.5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-display text-sm font-bold text-ink">
+                    {t.detail.whatIfTitle}
+                  </h3>
+                  <RolePill role="editable" label={t.common.editableTag} />
+                </div>
+                <p className="mt-0.5 text-xs text-muted">{t.detail.whatIfSubtitle}</p>
+              </div>
+              {savedNotice && (
+                <Badge tone="positive">
+                  <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                  {t.detail.savedNotice}
+                </Badge>
+              )}
             </div>
-            {savedNotice && (
-              <Badge tone="positive">
-                <CheckCircle2 className="h-3 w-3" />
-                {t.detail.savedNotice}
-              </Badge>
-            )}
-          </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field
-              label={t.watchlist.form.targetPer}
-              tooltip={t.glossary.targetPer}
-              htmlFor="w-tper"
-            >
-              <Input
-                id="w-tper"
-                type="number"
-                min="0.1"
-                step="0.5"
-                value={targetPer}
-                onChange={(e) => setDraft((d) => ({ ...d, targetPer: e.target.value }))}
-                className="font-mono tabular-nums"
-              />
-            </Field>
-            <Field
-              label={t.watchlist.form.targetPbv}
-              tooltip={t.glossary.targetPbv}
-              htmlFor="w-tpbv"
-            >
-              <Input
-                id="w-tpbv"
-                type="number"
-                min="0.1"
-                step="0.1"
-                value={targetPbv}
-                onChange={(e) => setDraft((d) => ({ ...d, targetPbv: e.target.value }))}
-                className="font-mono tabular-nums"
-              />
-            </Field>
-            <Field
-              label={t.watchlist.form.discountRatePct}
-              tooltip={t.glossary.discountRate}
-              htmlFor="w-disc"
-            >
-              <Input
-                id="w-disc"
-                type="number"
-                min={1}
-                max={50}
-                step="0.5"
-                value={discountRatePct}
-                onChange={(e) => setDraft((d) => ({ ...d, discountRatePct: e.target.value }))}
-                className="font-mono tabular-nums"
-              />
-            </Field>
-          </div>
+            <div className="p-5">
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+                <Field
+                  label={t.watchlist.form.targetPer}
+                  tooltip={t.glossary.targetPer}
+                  htmlFor="w-tper"
+                >
+                  <Input
+                    id="w-tper"
+                    type="number"
+                    min="0.1"
+                    step="0.5"
+                    value={targetPer}
+                    onChange={(e) => setDraft((d) => ({ ...d, targetPer: e.target.value }))}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field
+                  label={t.watchlist.form.targetPbv}
+                  tooltip={t.glossary.targetPbv}
+                  htmlFor="w-tpbv"
+                >
+                  <Input
+                    id="w-tpbv"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={targetPbv}
+                    onChange={(e) => setDraft((d) => ({ ...d, targetPbv: e.target.value }))}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+                <Field
+                  label={t.watchlist.form.discountRatePct}
+                  tooltip={t.glossary.discountRate}
+                  htmlFor="w-disc"
+                >
+                  <Input
+                    id="w-disc"
+                    type="number"
+                    min={1}
+                    max={50}
+                    step="0.5"
+                    value={discountRatePct}
+                    onChange={(e) => setDraft((d) => ({ ...d, discountRatePct: e.target.value }))}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+              </div>
 
-          <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
-            <Button variant="secondary" size="sm" onClick={resetWhatIf}>
-              <RotateCcw className="h-3.5 w-3.5" />
-              {t.common.reset}
-            </Button>
-            <Button size="sm" onClick={saveWhatIf} disabled={updateMutation.isPending}>
-              <Save className="h-3.5 w-3.5" />
-              {updateMutation.isPending
-                ? t.detail.savingAssumptions
-                : t.detail.saveAssumptions}
-            </Button>
-          </div>
-        </Card>
+              <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
+                <Button variant="secondary" size="sm" onClick={resetWhatIf}>
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t.common.reset}
+                </Button>
+                <Button size="sm" onClick={saveWhatIf} disabled={updateMutation.isPending}>
+                  <Save className="h-3.5 w-3.5" aria-hidden="true" />
+                  {updateMutation.isPending
+                    ? t.detail.savingAssumptions
+                    : t.detail.saveAssumptions}
+                </Button>
+              </div>
+            </div>
+          </Card>
 
-        <Card className="flex flex-col justify-between">
-          <div>
-            <h2 className="font-display text-lg font-semibold text-ink">
-              {t.detail.thesisTitle}
-            </h2>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted">
-              {item.investmentThesis || t.detail.noThesis}
-            </p>
-          </div>
-          <div className="mt-4 border-t border-border pt-3 text-xs text-muted">
-            {t.detail.updatedAt}: {formatShortDate(item.updatedAt, lang)}
-          </div>
-        </Card>
-      </div>
+          <Card variant="display" className="flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-display text-sm font-bold text-ink">
+                    {t.detail.thesisTitle}
+                  </h3>
+                  <RolePill role="display" label={t.common.displayTag} />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditModalOpen(true)}
+                  className="h-7 px-2 text-xs"
+                >
+                  <Pencil className="h-3 w-3" aria-hidden="true" />
+                  {t.common.edit}
+                </Button>
+              </div>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted">
+                {item.investmentThesis || t.detail.noThesis}
+              </p>
+            </div>
+            <div className="mt-4 border-t border-border pt-3 text-xs text-muted">
+              {t.detail.updatedAt}: {formatShortDate(item.updatedAt, lang)}
+            </div>
+          </Card>
+        </div>
+      </section>
 
       <StockFormModal
         open={editModalOpen}

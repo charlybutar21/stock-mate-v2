@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react';
 import type { WatchlistItemDto } from '@/shared/contracts';
 import { calculateGoalSeekAverageDown } from '@/shared/domain';
-import { Card, Field, Input } from '@/client/components/ui/primitives';
+import {
+  Card,
+  Field,
+  IdxPriceInput,
+  Input,
+  RolePill,
+} from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatNumber } from '@/client/lib/formatters';
 
@@ -48,87 +54,100 @@ export function GoalSeekTab({
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-      <Card className="space-y-4 lg:col-span-5">
-        <h3 className="text-sm font-semibold text-ink">{t.simulator.goalSeekInputs}</h3>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={t.simulator.existingLots} htmlFor="gs-lots">
-            <Input
-              id="gs-lots"
-              type="number"
-              min={1}
-              step={1}
-              value={existingLots}
-              onChange={(e) => setExistingLots(e.target.value)}
-              className="font-mono tabular-nums"
-            />
-          </Field>
-          <Field label={t.simulator.existingAvgPrice} htmlFor="gs-ex-avg">
-            <Input
-              id="gs-ex-avg"
-              type="number"
-              min={1}
-              step={1}
-              value={existingAvgPrice}
-              onChange={(e) => setExistingAvgPrice(e.target.value)}
-              className="font-mono tabular-nums"
-            />
-          </Field>
+      {/* LEFT: Editable Goal Seek Inputs */}
+      <Card variant="editable" className="overflow-hidden p-0 lg:col-span-5">
+        <div className="flex items-center justify-between gap-2 border-b border-border bg-editable-header px-5 py-3.5">
+          <h2 className="font-display text-sm font-bold text-ink">
+            {t.simulator.goalSeekInputs}
+          </h2>
+          <RolePill role="editable" label={t.common.editableTag} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={t.simulator.plannedBuyPrice} htmlFor="gs-buy">
-            <Input
-              id="gs-buy"
-              type="number"
-              min={1}
-              step={1}
-              value={plannedBuyPrice}
-              onChange={(e) => setPlannedBuyPrice(e.target.value)}
-              className="font-mono tabular-nums"
-            />
-          </Field>
-          <Field label={t.simulator.targetPureAvg} htmlFor="gs-target">
-            <Input
-              id="gs-target"
-              type="number"
-              min={1}
-              step={1}
-              value={targetPureAvg}
-              onChange={(e) => setTargetPureAvg(e.target.value)}
-              className="font-mono tabular-nums"
-            />
-          </Field>
-        </div>
+        <div className="space-y-4 p-5">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t.simulator.existingLots} htmlFor="gs-lots">
+              <Input
+                id="gs-lots"
+                type="number"
+                min={1}
+                step={1}
+                value={existingLots}
+                onChange={(e) => setExistingLots(e.target.value)}
+                className="font-mono tabular-nums"
+              />
+            </Field>
+            <Field label={t.simulator.existingAvgPrice} htmlFor="gs-ex-avg">
+              <IdxPriceInput
+                id="gs-ex-avg"
+                value={existingAvgPrice}
+                onValueChange={setExistingAvgPrice}
+                tickHintLabel={t.common.tickStepLabel}
+                stepDownLabel={t.common.stepDown}
+                stepUpLabel={t.common.stepUp}
+              />
+            </Field>
+          </div>
 
-        <p className="text-xs text-muted">{t.simulator.goalSeekHint}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t.simulator.plannedBuyPrice} htmlFor="gs-buy">
+              <IdxPriceInput
+                id="gs-buy"
+                value={plannedBuyPrice}
+                onValueChange={setPlannedBuyPrice}
+                showTickHint
+                tickHintLabel={t.common.tickStepLabel}
+                stepDownLabel={t.common.stepDown}
+                stepUpLabel={t.common.stepUp}
+              />
+            </Field>
+            <Field label={t.simulator.targetPureAvg} htmlFor="gs-target">
+              <IdxPriceInput
+                id="gs-target"
+                value={targetPureAvg}
+                onValueChange={setTargetPureAvg}
+                showTickHint
+                tickHintLabel={t.common.tickStepLabel}
+                stepDownLabel={t.common.stepDown}
+                stepUpLabel={t.common.stepUp}
+              />
+            </Field>
+          </div>
+
+          <p className="text-xs text-muted">{t.simulator.goalSeekHint}</p>
+        </div>
       </Card>
 
-      <div className="lg:col-span-7">
+      {/* RIGHT: Auto-Calculated Results */}
+      <div className="space-y-4 lg:col-span-7">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-display text-sm font-bold text-ink">{t.simulator.sectionOutput}</h2>
+          <RolePill role="calculated" label={t.common.calculatedTag} />
+        </div>
+
         {!result.valid ? (
-          <Card className="p-8 text-center text-sm text-muted">
+          <Card variant="display" className="p-8 text-center text-sm text-muted">
             {t.simulator.goalSeekHint}
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 animate-fade-up">
-            <Card interactive className="border-t-2 border-t-brand-700 bg-brand-50/60 p-5">
+            <Card variant="highlight" className="border-t-2 border-t-brand-600 p-5">
               <div className="text-xs font-medium text-brand-700">{t.simulator.lotsNeeded}</div>
               <div className="mt-1 font-mono text-3xl font-bold text-brand-900 tabular-nums">
                 {formatNumber(result.lotsNeeded)}
               </div>
-              <div className="mt-1 font-mono text-xs text-brand-700/80 tabular-nums">
+              <div className="mt-1 font-mono text-xs text-brand-700/90 tabular-nums">
                 {formatNumber(result.sharesNeeded)} {t.common.shares}
               </div>
             </Card>
 
-            <Card interactive className="p-5">
+            <Card variant="display" className="p-5">
               <div className="text-xs text-muted">{t.simulator.resultingPureAvg}</div>
               <div className="mt-1 font-mono text-2xl font-bold text-ink tabular-nums">
                 {formatIdr(result.resultingPureAvg, true)}
               </div>
             </Card>
 
-            <Card interactive className="p-5">
+            <Card variant="display" className="p-5">
               <div className="text-xs text-muted">{t.simulator.cashRequired}</div>
               <div className="mt-1 font-mono text-xl font-bold text-ink tabular-nums">
                 {formatIdr(result.totalCashRequired)}

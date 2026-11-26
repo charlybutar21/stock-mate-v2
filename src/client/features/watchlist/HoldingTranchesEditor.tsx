@@ -3,7 +3,13 @@ import {
   aggregateHoldingTranches,
   calculatePositionSummary,
 } from '@/shared/domain';
-import { Button, Input, TermTooltip } from '@/client/components/ui/primitives';
+import {
+  Button,
+  IdxPriceInput,
+  Input,
+  RolePill,
+  TermTooltip,
+} from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
 import { MASKED_IDR, usePrivacy } from '@/client/lib/usePrivacy';
@@ -62,164 +68,183 @@ export function HoldingTranchesEditor({
   };
 
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-surface/70 p-3.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">
-            {t.watchlist.form.positionSection}
-          </span>
-          <button
-            type="button"
-            onClick={toggleHideBalances}
-            title={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
-            aria-label={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+    <div className="space-y-4">
+      {/* Editable Tranche Rows Box */}
+      <div className="space-y-3 rounded-lg border border-editable-border/70 bg-surface/50 p-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-ink">
+              {t.watchlist.form.positionSection}
+            </span>
+            <RolePill role="editable" label={t.common.editableTag} />
+          </div>
+          <Button
+            variant="outlineBrand"
+            size="sm"
+            onClick={addRow}
+            disabled={rows.length >= 20}
+            className="h-7 px-2.5 text-xs"
           >
-            {hideBalances ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          </button>
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+            {t.watchlist.form.addBuyEntry}
+          </Button>
         </div>
-        <Button
-          variant="outlineBrand"
-          size="sm"
-          onClick={addRow}
-          disabled={rows.length >= 20}
-          className="h-7 px-2.5 text-xs"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {t.watchlist.form.addBuyEntry}
-        </Button>
+
+        {rows.length === 0 ? (
+          <p className="py-1 text-xs text-muted">{t.watchlist.form.noHoldingsYet}</p>
+        ) : (
+          <div className="space-y-2">
+            {rows.map((row, idx) => (
+              <div key={row.id} className="flex min-w-0 items-end gap-1.5 sm:gap-2">
+                <div className="flex h-9 w-6 shrink-0 items-center justify-center rounded-md border border-border bg-panel font-mono text-[11px] font-semibold text-muted">
+                  #{idx + 1}
+                </div>
+                <div className="w-20 shrink-0 sm:w-24">
+                  {idx === 0 && (
+                    <label className="mb-1 block text-[11px] font-medium text-muted">
+                      {t.watchlist.form.buyEntryLots}
+                    </label>
+                  )}
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="10"
+                    value={row.lots}
+                    onChange={(e) => updateRow(row.id, 'lots', e.target.value)}
+                    className="px-2 font-mono tabular-nums"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  {idx === 0 && (
+                    <label className="mb-1 block text-[11px] font-medium text-muted">
+                      {t.watchlist.form.buyEntryPrice}
+                    </label>
+                  )}
+                  <IdxPriceInput
+                    placeholder={currentPrice >= 1 ? String(currentPrice) : '1000'}
+                    value={row.buyPrice}
+                    onValueChange={(val) => updateRow(row.id, 'buyPrice', val)}
+                    tickHintLabel={t.common.tickStepLabel}
+                    stepDownLabel={t.common.stepDown}
+                    stepUpLabel={t.common.stepUp}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeRow(row.id)}
+                  aria-label="Remove buy entry"
+                  className="flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {rows.length === 0 ? (
-        <p className="py-1 text-xs text-muted">{t.watchlist.form.noHoldingsYet}</p>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((row, idx) => (
-            <div key={row.id} className="flex items-end gap-2">
-              <div className="flex h-9 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-panel font-mono text-[11px] font-semibold text-muted">
-                #{idx + 1}
-              </div>
-              <div className="flex-1">
-                {idx === 0 && (
-                  <label className="mb-1 block text-[11px] font-medium text-muted">
-                    {t.watchlist.form.buyEntryLots}
-                  </label>
-                )}
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  placeholder="10"
-                  value={row.lots}
-                  onChange={(e) => updateRow(row.id, 'lots', e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </div>
-              <div className="flex-1">
-                {idx === 0 && (
-                  <label className="mb-1 block text-[11px] font-medium text-muted">
-                    {t.watchlist.form.buyEntryPrice}
-                  </label>
-                )}
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  placeholder={currentPrice >= 1 ? String(currentPrice) : '1000'}
-                  value={row.buyPrice}
-                  onChange={(e) => updateRow(row.id, 'buyPrice', e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => removeRow(row.id)}
-                aria-label="Remove buy entry"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-negative-50 hover:text-negative-600 cursor-pointer"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
+      {/* Auto-Calculated Position Display Summary */}
       {pos.ownedLots > 0 && (
-        <div className="grid grid-cols-1 gap-2.5 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-lg border border-border bg-panel px-3 py-2.5">
-            <div className="text-[11px] font-medium text-muted">
-              {t.watchlist.form.combinedSummary}
+        <div className="space-y-2.5 rounded-lg border border-border bg-display p-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-muted">
+                {t.watchlist.form.combinedSummary}
+              </span>
+              <RolePill role="calculated" label={t.common.calculatedTag} />
             </div>
-            <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
-              {formatNumber(pos.ownedLots)} {t.common.lots} · {formatIdr(pos.avgBuyPrice)}
-            </div>
-            <div className="font-mono text-[10px] text-muted tabular-nums">
-              {formatNumber(pos.ownedShares)} {t.common.shares}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border bg-panel px-3 py-2.5">
-            <div className="text-[11px] font-medium text-muted">
-              <TermTooltip
-                label={t.watchlist.form.totalInvestedLabel}
-                definition={t.glossary.totalInvested}
-              />
-            </div>
-            <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
-              {hideBalances ? MASKED_IDR : formatIdr(pos.costBasis)}
-            </div>
-            <div className="font-mono text-[10px] text-muted tabular-nums">
-              {hideBalances
-                ? t.watchlist.form.stockbitBuyFeeNote
-                : `+${formatIdr(pos.estimatedBuyFee)} (${t.watchlist.form.stockbitBuyFeeNote})`}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-brand-600/25 bg-brand-50/60 px-3 py-2.5">
-            <div className="text-[11px] font-medium text-brand-700">
-              <TermTooltip
-                label={t.watchlist.form.netMarketValueLabel}
-                definition={t.glossary.netMarketValue}
-              />
-            </div>
-            <div className="mt-0.5 font-mono text-xs font-bold text-brand-900 tabular-nums">
-              {hideBalances ? MASKED_IDR : formatIdr(pos.marketValue)}
-            </div>
-            <div className="font-mono text-[10px] text-brand-700/80 tabular-nums">
-              {hideBalances
-                ? t.watchlist.form.stockbitSellFeeNote
-                : `-${formatIdr(pos.estimatedSellFee)}${
-                    pos.estimatedSellStampDuty > 0
-                      ? ` ${t.watchlist.form.stampDutyShort}`
-                      : ` (${t.watchlist.form.stockbitSellFeeNote})`
-                  }`}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border bg-panel px-3 py-2.5">
-            <div className="text-[11px] font-medium text-muted">
-              <TermTooltip
-                label={t.detail.unrealizedPnL}
-                definition={t.glossary.unrealizedPnL}
-              />
-            </div>
-            <div
-              className={`mt-0.5 font-mono text-xs font-bold tabular-nums ${
-                pos.unrealizedPnL === null
-                  ? 'text-muted'
-                  : pos.unrealizedPnL >= 0
-                    ? 'text-positive-600'
-                    : 'text-negative-600'
-              }`}
+            <button
+              type="button"
+              onClick={toggleHideBalances}
+              title={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+              aria-label={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
             >
-              {pos.unrealizedPnL !== null
-                ? hideBalances
-                  ? MASKED_IDR
-                  : `${pos.unrealizedPnL >= 0 ? '+' : ''}${formatIdr(pos.unrealizedPnL)}`
-                : '—'}
+              {hideBalances ? (
+                <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border border-border bg-panel/70 px-3 py-2.5">
+              <div className="text-[11px] font-medium text-muted">
+                {t.watchlist.form.combinedSummary}
+              </div>
+              <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
+                {formatNumber(pos.ownedLots)} {t.common.lots} · {formatIdr(pos.avgBuyPrice)}
+              </div>
+              <div className="font-mono text-[10px] text-muted tabular-nums">
+                {formatNumber(pos.ownedShares)} {t.common.shares}
+              </div>
             </div>
-            <div className="font-mono text-[10px] text-muted tabular-nums">
-              {formatPercent(pos.unrealizedPnLPct, true)}
+
+            <div className="rounded-lg border border-border bg-panel/70 px-3 py-2.5">
+              <div className="text-[11px] font-medium text-muted">
+                <TermTooltip
+                  label={t.watchlist.form.totalInvestedLabel}
+                  definition={t.glossary.totalInvested}
+                />
+              </div>
+              <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
+                {hideBalances ? MASKED_IDR : formatIdr(pos.costBasis)}
+              </div>
+              <div className="font-mono text-[10px] text-muted tabular-nums">
+                {hideBalances
+                  ? t.watchlist.form.stockbitBuyFeeNote
+                  : `+${formatIdr(pos.estimatedBuyFee)} (${t.watchlist.form.stockbitBuyFeeNote})`}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-brand-600/30 bg-brand-50/75 px-3 py-2.5">
+              <div className="text-[11px] font-medium text-brand-700">
+                <TermTooltip
+                  label={t.watchlist.form.netMarketValueLabel}
+                  definition={t.glossary.netMarketValue}
+                />
+              </div>
+              <div className="mt-0.5 font-mono text-xs font-bold text-brand-900 tabular-nums">
+                {hideBalances ? MASKED_IDR : formatIdr(pos.marketValue)}
+              </div>
+              <div className="font-mono text-[10px] text-brand-700/90 tabular-nums">
+                {hideBalances
+                  ? t.watchlist.form.stockbitSellFeeNote
+                  : `-${formatIdr(pos.estimatedSellFee)}${
+                      pos.estimatedSellStampDuty > 0
+                        ? ` ${t.watchlist.form.stampDutyShort}`
+                        : ` (${t.watchlist.form.stockbitSellFeeNote})`
+                    }`}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-panel/70 px-3 py-2.5">
+              <div className="text-[11px] font-medium text-muted">
+                <TermTooltip
+                  label={t.detail.unrealizedPnL}
+                  definition={t.glossary.unrealizedPnL}
+                />
+              </div>
+              <div
+                className={`mt-0.5 font-mono text-xs font-bold tabular-nums ${
+                  pos.unrealizedPnL === null
+                    ? 'text-muted'
+                    : pos.unrealizedPnL >= 0
+                      ? 'text-positive-600'
+                      : 'text-negative-600'
+                }`}
+              >
+                {pos.unrealizedPnL !== null
+                  ? hideBalances
+                    ? MASKED_IDR
+                    : `${pos.unrealizedPnL >= 0 ? '+' : ''}${formatIdr(pos.unrealizedPnL)}`
+                  : '-'}
+              </div>
+              <div className="font-mono text-[10px] text-muted tabular-nums">
+                {formatPercent(pos.unrealizedPnLPct, true)}
+              </div>
             </div>
           </div>
         </div>
