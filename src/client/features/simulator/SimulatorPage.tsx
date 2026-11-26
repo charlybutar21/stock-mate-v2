@@ -1,4 +1,4 @@
-import { Info, Plus } from 'lucide-react';
+import { ArrowUpRight, Info, Layers, Plus, Target, TrendingDown } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { DEFAULT_BUY_FEE_PCT, DEFAULT_SELL_FEE_PCT } from '@/shared/domain';
@@ -224,20 +224,20 @@ export function SimulatorPage() {
         )}
       </div>
 
-      {/* Mode Switcher Tabs */}
+      {/* Balanced 4-Column Mode Switcher */}
       <div
-        className="flex flex-wrap gap-1 rounded-xl border border-border bg-subtle p-1"
+        className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-subtle p-1 sm:grid-cols-4"
         role="tablist"
         aria-label="Simulator modes"
       >
         {(
           [
-            ['forward', t.simulator.tabForward],
-            ['pyramiding', t.simulator.tabPyramiding],
-            ['takeProfit', t.simulator.tabTakeProfit],
-            ['goalSeek', t.simulator.tabGoalSeek],
+            ['forward', t.simulator.tabForward, TrendingDown],
+            ['pyramiding', t.simulator.tabPyramiding, Layers],
+            ['takeProfit', t.simulator.tabTakeProfit, ArrowUpRight],
+            ['goalSeek', t.simulator.tabGoalSeek, Target],
           ] as const
-        ).map(([mode, label]) => (
+        ).map(([mode, label, Icon]) => (
           <button
             key={mode}
             type="button"
@@ -245,13 +245,14 @@ export function SimulatorPage() {
             aria-selected={activeTab === mode}
             onClick={() => setActiveTab(mode)}
             className={cn(
-              'rounded-lg px-3.5 py-2 text-xs font-semibold transition-all sm:text-sm cursor-pointer',
+              'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all sm:text-sm cursor-pointer',
               activeTab === mode
                 ? 'bg-panel text-brand-700 shadow-xs ring-1 ring-border'
                 : 'text-muted hover:text-ink',
             )}
           >
-            {label}
+            <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{label}</span>
           </button>
         ))}
       </div>

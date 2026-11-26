@@ -9,11 +9,13 @@ import {
   Clock,
   Eye,
   EyeOff,
+  Filter,
   Layers,
   Pencil,
   PieChart,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldAlert,
   Sparkles,
@@ -674,7 +676,14 @@ export function WatchlistPage() {
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-positive-50 text-positive-600">
                   <TrendingUp className="h-4 w-4" aria-hidden="true" />
                 </span>
-                {viewFilter === 'undervalued' && <Badge tone="positive">Active</Badge>}
+                {viewFilter === 'undervalued' ? (
+                  <Badge tone="positive">Active</Badge>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold tracking-wide text-muted uppercase">
+                    <Filter className="h-3 w-3" aria-hidden="true" />
+                    Filter
+                  </span>
+                )}
               </div>
               <div className="mt-4">
                 <div className="text-xs font-medium text-muted">
@@ -708,8 +717,8 @@ export function WatchlistPage() {
                 </div>
                 {!isLoading && (
                   <div className="mt-1 font-mono text-[11px] text-muted tabular-nums">
-                    {kpis.portfolioCount} {t.watchlist.pillPortfolio} · {kpis.watchingCount}{' '}
-                    {t.watchlist.pillWatching}
+                    {kpis.portfolioCount} {t.watchlist.shortPortfolio} · {kpis.watchingCount}{' '}
+                    {t.watchlist.shortWatching}
                   </div>
                 )}
               </div>
@@ -752,131 +761,67 @@ export function WatchlistPage() {
           }
         />
 
-        {/* Quick Add Editable Strip */}
-        <Card variant="editable" className="p-4">
-          <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+        {/* Compact Single-Row Quick Add Editable Bar */}
+        <Card variant="editable" className="p-3.5 sm:px-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold text-ink">{t.watchlist.quickAddLabel}</span>
               <RolePill role="editable" label={t.common.editableTag} />
+              <span className="hidden text-xs text-muted xl:inline">·</span>
+              <span className="hidden text-xs text-muted xl:inline">
+                {t.watchlist.quickAddHint}
+              </span>
             </div>
-            <span className="text-[11px] text-muted">{t.watchlist.quickAddHint}</span>
+
+            <form
+              onSubmit={handleQuickAdd}
+              className="flex w-full flex-col gap-2 sm:flex-row sm:items-center md:w-auto"
+            >
+              <div className="relative w-full sm:w-64 md:w-72">
+                <Plus
+                  className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-brand-600"
+                  aria-hidden="true"
+                />
+                <Input
+                  type="text"
+                  maxLength={4}
+                  aria-label={t.watchlist.quickAddLabel}
+                  placeholder={t.watchlist.quickAddPlaceholder}
+                  value={quickTicker}
+                  onChange={(e) => {
+                    setQuickTicker(e.target.value.toUpperCase());
+                    if (quickError) setQuickError(null);
+                  }}
+                  disabled={isQuickAdding}
+                  className="pl-8 font-mono uppercase placeholder:font-sans placeholder:normal-case"
+                />
+              </div>
+              <Button
+                type="submit"
+                size="md"
+                disabled={isQuickAdding || quickTicker.trim().length < 4}
+                className="shrink-0"
+              >
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                {isQuickAdding ? t.watchlist.quickAdding : t.watchlist.quickAddBtn}
+              </Button>
+            </form>
           </div>
 
-          <form onSubmit={handleQuickAdd} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative flex-1 max-w-md">
-              <Plus
-                className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-brand-600"
-                aria-hidden="true"
-              />
-              <Input
-                type="text"
-                maxLength={4}
-                aria-label={t.watchlist.quickAddLabel}
-                placeholder={t.watchlist.quickAddPlaceholder}
-                value={quickTicker}
-                onChange={(e) => {
-                  setQuickTicker(e.target.value.toUpperCase());
-                  if (quickError) setQuickError(null);
-                }}
-                disabled={isQuickAdding}
-                className="pl-8 font-mono uppercase placeholder:font-sans placeholder:normal-case"
-              />
-            </div>
-            <Button
-              type="submit"
-              size="md"
-              disabled={isQuickAdding || quickTicker.trim().length < 4}
-              className="shrink-0"
-            >
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              {isQuickAdding ? t.watchlist.quickAdding : t.watchlist.quickAddBtn}
-            </Button>
-          </form>
-
-          {quickError && (
+          {quickError ? (
             <p className="mt-2 text-xs text-negative-600" role="alert">
               {quickError}
             </p>
+          ) : (
+            <p className="mt-1.5 text-[11px] text-muted xl:hidden">{t.watchlist.quickAddHint}</p>
           )}
         </Card>
 
-        {/* Filter & Search Bar */}
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-panel px-4 py-3 sm:px-5 lg:flex-row lg:items-center lg:justify-between surface-elevated">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setViewFilter('all')}
-              aria-pressed={viewFilter === 'all'}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
-                viewFilter === 'all'
-                  ? 'border-brand-600 bg-brand-50 text-brand-700'
-                  : 'border-border bg-surface text-muted hover:border-muted/50 hover:text-ink',
-              )}
-            >
-              {t.watchlist.pillAll}
-              <span className="font-mono text-[11px] opacity-80">({kpis.total})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewFilter('portfolio')}
-              aria-pressed={viewFilter === 'portfolio'}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
-                viewFilter === 'portfolio'
-                  ? 'border-brand-600 bg-brand-50 text-brand-700'
-                  : 'border-border bg-surface text-muted hover:border-muted/50 hover:text-ink',
-              )}
-            >
-              <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
-              {t.watchlist.pillPortfolio}
-              <span className="font-mono text-[11px] opacity-80">({kpis.portfolioCount})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewFilter('watching')}
-              aria-pressed={viewFilter === 'watching'}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
-                viewFilter === 'watching'
-                  ? 'border-brand-600 bg-brand-50 text-brand-700'
-                  : 'border-border bg-surface text-muted hover:border-muted/50 hover:text-ink',
-              )}
-            >
-              <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
-              {t.watchlist.pillWatching}
-              <span className="font-mono text-[11px] opacity-80">({kpis.watchingCount})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewFilter('undervalued')}
-              aria-pressed={viewFilter === 'undervalued'}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-all cursor-pointer',
-                viewFilter === 'undervalued'
-                  ? 'border-brand-600 bg-brand-50 text-brand-700'
-                  : 'border-border bg-surface text-muted hover:border-muted/50 hover:text-ink',
-              )}
-            >
-              {t.watchlist.pillUndervalued}
-              <span className="font-mono text-[11px] opacity-80">({kpis.undervalued})</span>
-            </button>
-
-            {sector && (
-              <button
-                type="button"
-                onClick={() => setSector('')}
-                title={t.watchlist.clearSectorFilter}
-                className="inline-flex h-8 items-center gap-1 rounded-full border border-brand-600/40 bg-brand-50 px-2.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100 cursor-pointer"
-              >
-                <span>{t.sectors[sector]}</span>
-                <X className="h-3 w-3" aria-hidden="true" />
-              </button>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative sm:w-44">
+        {/* Compact Single-Row Filter, Search, Sector & Sort Toolbar */}
+        <div className="space-y-2.5 rounded-xl border border-border bg-panel p-3 sm:px-4 surface-elevated">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:items-center">
+            {/* Search */}
+            <div className="relative flex h-9 items-center sm:col-span-2 lg:min-w-0 lg:flex-1">
               <Search
                 className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted"
                 aria-hidden="true"
@@ -885,13 +830,48 @@ export function WatchlistPage() {
                 placeholder={t.watchlist.searchPlaceholder}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-8 text-xs"
+                className="h-9 pl-8 text-xs"
               />
             </div>
+
+            {/* Compact View Filter Dropdown (All / My Portfolio / Watchlist Only / Undervalued) */}
+            <div className="relative flex h-9 items-center lg:w-48">
+              <Filter
+                className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-brand-600"
+                aria-hidden="true"
+              />
+              <Select
+                value={viewFilter}
+                onChange={(e) => setViewFilter(e.target.value as ViewFilter)}
+                aria-label={t.watchlist.filterViewLabel}
+                className={cn(
+                  'h-9 pl-8 text-xs font-medium',
+                  viewFilter !== 'all' && 'border-brand-600/55 text-brand-700',
+                )}
+              >
+                <option value="all">
+                  {t.watchlist.pillAll} ({kpis.total})
+                </option>
+                <option value="portfolio">
+                  {t.watchlist.pillPortfolio} ({kpis.portfolioCount})
+                </option>
+                <option value="watching">
+                  {t.watchlist.pillWatching} ({kpis.watchingCount})
+                </option>
+                <option value="undervalued">
+                  {t.watchlist.pillUndervalued} ({kpis.undervalued})
+                </option>
+              </Select>
+            </div>
+
+            {/* Sector Dropdown */}
             <Select
               value={sector}
               onChange={(e) => setSector(e.target.value as IdxSector | '')}
-              className="h-8 text-xs sm:w-44"
+              className={cn(
+                'h-9 text-xs lg:w-44',
+                sector && 'border-brand-600/55 font-medium text-brand-700',
+              )}
               aria-label={t.watchlist.allSectors}
             >
               <option value="">{t.watchlist.allSectors}</option>
@@ -901,19 +881,54 @@ export function WatchlistPage() {
                 </option>
               ))}
             </Select>
+
+            {/* Sort Dropdown */}
             <Select
               value={sort}
               onChange={(e) =>
                 setSort(e.target.value as 'updated_desc' | 'mos_desc' | 'ticker_asc')
               }
-              className="h-8 text-xs sm:w-44"
+              className="h-9 text-xs lg:w-44"
               aria-label="Sort watchlist"
             >
               <option value="updated_desc">{t.watchlist.sortUpdated}</option>
               <option value="mos_desc">{t.watchlist.sortMosDesc}</option>
               <option value="ticker_asc">{t.watchlist.sortTickerAsc}</option>
             </Select>
+
+            {/* Conditional 1-Click Reset */}
+            {(search.trim() !== '' || viewFilter !== 'all' || sector !== '') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch('');
+                  setViewFilter('all');
+                  setSector('');
+                }}
+                className="h-9 shrink-0 px-2.5 text-xs"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                {t.watchlist.resetFilters}
+              </Button>
+            )}
           </div>
+
+          {sector && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-2">
+              <button
+                type="button"
+                onClick={() => setSector('')}
+                title={t.watchlist.clearSectorFilter}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-brand-600/40 bg-brand-50 px-2.5 text-[11px] font-semibold text-brand-700 transition-colors hover:bg-brand-100 cursor-pointer"
+              >
+                <span>
+                  {t.watchlist.colSector}: {t.sectors[sector]}
+                </span>
+                <X className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Error / Loading / Tables */}
