@@ -270,7 +270,7 @@ describe('Stock-Mate v2 API Integration', () => {
     );
     expect(idorDelete.status).toBe(404);
 
-    // Patch price & assumptions for User A
+    // Patch price, 2-decimal holding tranches & assumptions for User A
     const patchRes = await app.request(
       `http://localhost/api/v1/watchlist/${created.item.id}`,
       {
@@ -278,6 +278,7 @@ describe('Stock-Mate v2 API Integration', () => {
         headers: { 'Content-Type': 'application/json', Cookie: cookieA },
         body: JSON.stringify({
           currentPrice: 5000,
+          holdingTranches: [{ lots: 25, buyPrice: 8425.67 }],
           fundamentals: { discountRatePct: 11.0 },
         }),
       },
@@ -285,10 +286,22 @@ describe('Stock-Mate v2 API Integration', () => {
     );
     expect(patchRes.status).toBe(200);
     const patched = (await patchRes.json()) as {
-      item: { currentPrice: number; valuation: { valuationStatus: string } };
+      item: {
+        currentPrice: number;
+        avgBuyPrice: number | null;
+        valuation: { valuationStatus: string };
+      };
     };
     expect(patched.item.currentPrice).toBe(5000);
+    expect(patched.item.avgBuyPrice).toBe(8425.67);
     expect(patched.item.valuation.valuationStatus).toBe('UNDERVALUED');
+
+    // Verify D1 fixed-point avg_buy_price_x100 stores exact 2-decimal cents
+    const dbRow = sqlite
+      .prepare('SELECT avg_buy_price, avg_buy_price_x100 FROM watchlist_items WHERE id = ?')
+      .get(created.item.id) as { avg_buy_price: number; avg_buy_price_x100: number };
+    expect(dbRow.avg_buy_price).toBe(8426);
+    expect(dbRow.avg_buy_price_x100).toBe(842567);
 
     // Soft delete ICBP -> 204, hidden from list, re-adding ICBP succeeds
     const delRes = await app.request(

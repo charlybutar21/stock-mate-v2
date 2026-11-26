@@ -100,14 +100,16 @@ export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()):
     dividendGrowthPct,
   });
 
+  const storedAvgBuyPrice =
+    record.avgBuyPriceX100 !== null ? fromX100(record.avgBuyPriceX100) : record.avgBuyPrice;
   const holdingTranches = parseHoldingTranches(
     record.holdingTranchesJson,
     record.ownedLots,
-    record.avgBuyPrice,
+    storedAvgBuyPrice,
   );
   const trancheAgg =
     holdingTranches.length > 0 ? aggregateHoldingTranches(holdingTranches) : null;
-  const preciseAvgBuyPrice = trancheAgg ? trancheAgg.avgBuyPrice : record.avgBuyPrice;
+  const preciseAvgBuyPrice = trancheAgg ? trancheAgg.avgBuyPrice : storedAvgBuyPrice;
 
   return {
     id: record.id,
@@ -229,6 +231,7 @@ export class CreateWatchlistItemUseCase {
       currentPrice: input.currentPrice,
       ownedLots: agg.ownedLots,
       avgBuyPrice: agg.avgBuyPrice !== null ? Math.round(agg.avgBuyPrice) : null,
+      avgBuyPriceX100: toX100(agg.avgBuyPrice),
       holdingTranchesJson,
       targetBuyPrice: input.targetBuyPrice ?? null,
       investmentThesis: input.investmentThesis ?? null,
@@ -300,12 +303,14 @@ export class UpdateWatchlistItemUseCase {
       const agg = aggregateHoldingTranches(input.holdingTranches);
       itemPatch.ownedLots = agg.ownedLots;
       itemPatch.avgBuyPrice = agg.avgBuyPrice !== null ? Math.round(agg.avgBuyPrice) : null;
+      itemPatch.avgBuyPriceX100 = toX100(agg.avgBuyPrice);
       itemPatch.holdingTranchesJson = JSON.stringify(input.holdingTranches);
     } else {
       if (input.ownedLots !== undefined) itemPatch.ownedLots = input.ownedLots;
       if (input.avgBuyPrice !== undefined) {
         itemPatch.avgBuyPrice =
           input.avgBuyPrice !== null ? Math.round(input.avgBuyPrice) : null;
+        itemPatch.avgBuyPriceX100 = toX100(input.avgBuyPrice);
         if (input.avgBuyPrice !== null) {
           const lotsForTranche = input.ownedLots ?? current.ownedLots;
           if (lotsForTranche > 0) {

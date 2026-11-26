@@ -286,9 +286,12 @@ export function aggregateHoldingTranches(tranches: PlannedTranche[]): {
 
 /**
  * Computes holding position summary in either:
- * - NET_AFTER_FEES (default): adds buy fee (0.15%) to cost basis and deducts sell fee (0.25%) + stamp duty (> Rp 10M).
- * - BROKER_GROSS: compares current price directly against entered average price without adding/deducting extra fees
- *   (matches standard Indonesian broker portfolio screens such as Stockbit).
+ * - NET_AFTER_FEES (default): adds buy fee (0.15% broker + exchange fee) to cost basis and
+ *   deducts sell fee (0.25% broker + exchange fee + PPh Final 0.1%). Optional stamp duty
+ *   (Rp 10,000 if > Rp 10M) defaults to false because IDX stamp duty applies per daily Trade
+ *   Confirmation rather than per stock holding.
+ * - BROKER_GROSS: compares current price directly against entered average price without adding
+ *   extra buy fee or deducting sell fee (matches standard Stockbit portfolio return %).
  */
 export function calculatePositionSummary(
   ownedLots: number,
@@ -297,6 +300,7 @@ export function calculatePositionSummary(
   buyFeePct: number = DEFAULT_BUY_FEE_PCT,
   sellFeePct: number = DEFAULT_SELL_FEE_PCT,
   mode: PositionCalcMode = 'NET_AFTER_FEES',
+  includeStampDuty: boolean = false,
 ): PositionSummary {
   const isGrossMode = mode === 'BROKER_GROSS';
   const effectiveBuyFeePct = isGrossMode ? 0 : buyFeePct;
@@ -306,7 +310,9 @@ export function calculatePositionSummary(
   const grossMarketValue = ownedShares * currentPrice;
   const estimatedSellFee = Math.round(grossMarketValue * (effectiveSellFeePct / 100));
   const estimatedSellStampDuty =
-    !isGrossMode && grossMarketValue > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
+    !isGrossMode && includeStampDuty && grossMarketValue > STAMP_DUTY_THRESHOLD_IDR
+      ? STAMP_DUTY_IDR
+      : 0;
   const marketValue = Math.max(
     0,
     grossMarketValue - estimatedSellFee - estimatedSellStampDuty,

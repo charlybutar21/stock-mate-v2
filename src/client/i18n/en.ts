@@ -77,19 +77,19 @@ export const en = {
     netPnL:
       'Estimated net profit or loss you actually keep after deducting broker buy fees, sell fees, and any applicable stamp duty.',
     unrealizedPnL:
-      'Estimated net profit or loss if you sold all your shares today, already accounting for 0.15% buy fee, 0.25% sell fee, and Rp 10,000 stamp duty (for transactions above Rp 10 million).',
+      'Estimated net profit or loss if you sold all shares today, including 0.15% buy fee and 0.25% sell fee (broker + exchange fee + sales tax, excluding Rp 10,000 daily stamp duty).',
     grossUnrealizedPnL:
       'Profit or loss calculated directly from current market price against your entered average buy price without adding extra buy fee or deducting sell fee. Matches what broker apps like Stockbit show.',
     netMarketValue:
-      'The actual clean cash you would receive in your account if you sold all shares at today’s price, after deducting the 0.25% sell fee and applicable stamp duty.',
+      'Estimated cash proceeds if you sold all shares at today’s price after deducting the 0.25% sell fee (broker + exchange fee + sales tax, excluding Rp 10,000 daily stamp duty).',
     grossMarketValue:
       'Total value of your shares at today’s market price before deducting broker sell fees or stamp duty.',
     totalInvested:
-      'Total money you have spent to buy all your owned lots, including the 0.15% broker buy fee.',
+      'Total money you have spent to buy all your owned lots, including the 0.15% broker and exchange buy fee.',
     grossTotalInvested:
       'Total purchase capital calculated directly from your owned lots multiplied by your entered average buy price, without adding an extra 0.15% buy fee.',
     calcMode:
-      'Choose how portfolio value and profit or loss are calculated. Net (After Fees) shows clean take-home cash after 0.15% buy fee, 0.25% sell fee, and Rp 10,000 stamp duty. Broker Mode (Gross) compares current price directly to your entered average price so percentages match broker apps like Stockbit.',
+      'Choose how portfolio value and profit or loss are calculated. Broker Mode (Gross) compares current price directly to your entered average price so percentages match broker apps like Stockbit. Net (After Fees) applies 0.15% buy fee and 0.25% sell fee (excluding Rp 10,000 daily stamp duty).',
     stampDuty:
       'Fixed Rp 10,000 Indonesian Stamp Duty (Bea Materai) automatically charged on any buy or sell transaction with a total value above Rp 10,000,000.',
     valueTrapShield:
@@ -245,7 +245,7 @@ export const en = {
     calcModeLabel: 'Calculation Mode',
     calcModeNet: 'Net (After Fees)',
     calcModeGross: 'Broker Mode (Gross)',
-    calcModeNetHint: 'Includes 0.15% buy fee, 0.25% sell fee, and Rp 10,000 stamp duty',
+    calcModeNetHint: 'Includes 0.15% buy fee and 0.25% sell fee (excluding Rp 10,000 daily stamp duty)',
     calcModeGrossHint: 'Matches broker apps like Stockbit without extra buy or sell fees',
     hideBalances: 'Hide balances',
     showBalances: 'Show balances',

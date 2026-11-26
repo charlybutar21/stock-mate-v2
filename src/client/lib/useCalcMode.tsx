@@ -9,9 +9,9 @@ function getInitialCalcMode(): PositionCalcMode {
     if (stored === 'BROKER_GROSS' || stored === 'NET_AFTER_FEES') {
       return stored;
     }
-    return 'NET_AFTER_FEES';
+    return 'BROKER_GROSS';
   } catch {
-    return 'NET_AFTER_FEES';
+    return 'BROKER_GROSS';
   }
 }
 

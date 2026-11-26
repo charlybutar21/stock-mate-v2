@@ -16,7 +16,13 @@ import {
   TermTooltip,
 } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
-import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
+import {
+  formatIdr,
+  formatNumber,
+  formatPercent,
+  formatStockbitPriceInput,
+  parseStockbitPriceInput,
+} from '@/client/lib/formatters';
 
 interface PyramidingTabProps {
   linkedStock: WatchlistItemDto;
@@ -130,11 +136,11 @@ export function PyramidingTab({
           <Field label={t.simulator.pyramiding.totalBudget} htmlFor="pyr-budget">
             <Input
               id="pyr-budget"
-              type="number"
-              min={100000}
-              step={500000}
-              value={totalCashBudget}
-              onChange={(e) => setTotalCashBudget(e.target.value)}
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={formatStockbitPriceInput(totalCashBudget, false)}
+              onChange={(e) => setTotalCashBudget(parseStockbitPriceInput(e.target.value, false))}
               className="font-mono tabular-nums"
             />
           </Field>

@@ -31,6 +31,7 @@ export const watchlistItems = sqliteTable('watchlist_items', {
   currentPrice: integer('current_price').notNull(),
   ownedLots: integer('owned_lots').notNull().default(0),
   avgBuyPrice: integer('avg_buy_price'),
+  avgBuyPriceX100: integer('avg_buy_price_x100'),
   holdingTranchesJson: text('holding_tranches_json'),
   targetBuyPrice: integer('target_buy_price'),
   investmentThesis: text('investment_thesis'),

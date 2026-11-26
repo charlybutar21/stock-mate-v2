@@ -16,6 +16,11 @@ import {
 import { createPortal } from 'react-dom';
 import { twMerge } from 'tailwind-merge';
 import { getIdxTickSize, MIN_IDX_PRICE, stepIdxPrice } from '@/shared/domain';
+import {
+  formatNumber,
+  formatStockbitPriceInput,
+  parseStockbitPriceInput,
+} from '@/client/lib/formatters';
 
 export function cn(...inputs: Array<string | undefined | null | false>) {
   return twMerge(clsx(inputs));
@@ -125,6 +130,18 @@ export function IdxPriceInput({
     }
   };
 
+  const formattedDisplay = formatStockbitPriceInput(value, allowDecimals);
+  const formattedPlaceholder = placeholder
+    ? formatStockbitPriceInput(parseStockbitPriceInput(placeholder, allowDecimals), allowDecimals) ||
+      placeholder
+    : undefined;
+
+  const handleBlur = () => {
+    if (allowDecimals && value.endsWith('.')) {
+      onValueChange(value.slice(0, -1));
+    }
+  };
+
   return (
     <div className={cn('min-w-0 w-full space-y-1', className)}>
       <div className="flex h-9 w-full min-w-0 items-stretch overflow-hidden rounded-lg border border-input-border bg-input-bg transition-all duration-150 hover:border-muted/60 focus-within:border-brand-600 focus-within:ring-2 focus-within:ring-brand-100">
@@ -141,14 +158,16 @@ export function IdxPriceInput({
 
         <input
           id={id}
-          type="number"
+          type="text"
           inputMode={allowDecimals ? 'decimal' : 'numeric'}
-          min={MIN_IDX_PRICE}
-          step={allowDecimals ? 'any' : activeTick}
-          placeholder={placeholder}
-          value={value}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={formattedPlaceholder}
+          value={formattedDisplay}
           disabled={disabled}
-          onChange={(e) => onValueChange(e.target.value)}
+          data-tick={activeTick}
+          onChange={(e) => onValueChange(parseStockbitPriceInput(e.target.value, allowDecimals))}
+          onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           className="no-spinner w-full min-w-0 flex-1 bg-transparent px-2 text-sm font-mono font-medium text-ink tabular-nums placeholder:text-muted/60 focus:outline-none disabled:cursor-not-allowed disabled:text-muted"
         />
@@ -177,7 +196,8 @@ export function IdxPriceInput({
           </span>
           {validNum > 0 && (
             <span className="font-mono text-[10px] text-muted/85 tabular-nums">
-              {nextDown} ← {Math.round(validNum)} → {nextUp}
+              {formatNumber(nextDown)} ← {formatNumber(Math.round(validNum))} →{' '}
+              {formatNumber(nextUp)}
             </span>
           )}
         </div>

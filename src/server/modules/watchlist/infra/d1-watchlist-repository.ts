@@ -22,6 +22,7 @@ function mapJoinedRow(row: {
     currentPrice: row.item.currentPrice,
     ownedLots: row.item.ownedLots,
     avgBuyPrice: row.item.avgBuyPrice,
+    avgBuyPriceX100: row.item.avgBuyPriceX100,
     holdingTranchesJson: row.item.holdingTranchesJson,
     targetBuyPrice: row.item.targetBuyPrice,
     investmentThesis: row.item.investmentThesis,
@@ -161,6 +162,7 @@ export class D1WatchlistRepository implements WatchlistRepository {
         currentPrice: item.currentPrice,
         ownedLots: item.ownedLots,
         avgBuyPrice: item.avgBuyPrice,
+        avgBuyPriceX100: item.avgBuyPriceX100,
         holdingTranchesJson: item.holdingTranchesJson,
         targetBuyPrice: item.targetBuyPrice,
         investmentThesis: item.investmentThesis,
@@ -199,6 +201,7 @@ export class D1WatchlistRepository implements WatchlistRepository {
       currentPrice: number;
       ownedLots: number;
       avgBuyPrice: number | null;
+      avgBuyPriceX100: number | null;
       holdingTranchesJson: string | null;
       targetBuyPrice: number | null;
       investmentThesis: string | null;
