@@ -5,6 +5,7 @@ import {
   DEFAULT_TERMINAL_GROWTH_PCT,
   IDX_SECTORS,
   MIN_IDX_PRICE,
+  round2,
   type IdxSector,
   type ValuationSummary,
 } from '../domain';
@@ -75,7 +76,12 @@ export const fundamentalsPatchSchema = z.object({
 
 export const holdingTrancheSchema = z.object({
   lots: z.number().int('Lots must be >= 1').min(1).max(MAX_OWNED_LOTS),
-  buyPrice: z.number().int('Price must be >= 1').min(MIN_IDX_PRICE).max(MAX_IDX_PRICE),
+  buyPrice: z
+    .number()
+    .finite('Price must be >= 1')
+    .min(MIN_IDX_PRICE, 'Price must be >= 1')
+    .max(MAX_IDX_PRICE, `Must be at most ${MAX_IDX_PRICE}`)
+    .transform(round2),
 });
 
 export type HoldingTrancheDto = z.infer<typeof holdingTrancheSchema>;
@@ -106,7 +112,7 @@ export const createWatchlistSchema = z.object({
     .max(MAX_OWNED_LOTS)
     .optional()
     .default(0),
-  avgBuyPrice: optionalNullableInt({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
+  avgBuyPrice: optionalNullableNumber({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
   holdingTranches: z.array(holdingTrancheSchema).max(20).optional(),
   targetBuyPrice: optionalNullableInt({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
   investmentThesis: z.string().trim().max(2000).nullable().optional(),
@@ -119,7 +125,7 @@ export const updateWatchlistSchema = z.object({
   sector: z.enum(IDX_SECTORS).optional(),
   currentPrice: z.number().int().min(MIN_IDX_PRICE).max(MAX_IDX_PRICE).optional(),
   ownedLots: z.number().int().min(0).max(MAX_OWNED_LOTS).optional(),
-  avgBuyPrice: optionalNullableInt({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
+  avgBuyPrice: optionalNullableNumber({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
   holdingTranches: z.array(holdingTrancheSchema).max(20).optional(),
   targetBuyPrice: optionalNullableInt({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
   investmentThesis: z.string().trim().max(2000).nullable().optional(),

@@ -78,10 +78,18 @@ export const en = {
       'Estimated net profit or loss you actually keep after deducting broker buy fees, sell fees, and any applicable stamp duty.',
     unrealizedPnL:
       'Estimated net profit or loss if you sold all your shares today, already accounting for 0.15% buy fee, 0.25% sell fee, and Rp 10,000 stamp duty (for transactions above Rp 10 million).',
+    grossUnrealizedPnL:
+      'Profit or loss calculated directly from current market price against your entered average buy price without adding extra buy fee or deducting sell fee. Matches what broker apps like Stockbit show.',
     netMarketValue:
       'The actual clean cash you would receive in your account if you sold all shares at today’s price, after deducting the 0.25% sell fee and applicable stamp duty.',
+    grossMarketValue:
+      'Total value of your shares at today’s market price before deducting broker sell fees or stamp duty.',
     totalInvested:
       'Total money you have spent to buy all your owned lots, including the 0.15% broker buy fee.',
+    grossTotalInvested:
+      'Total purchase capital calculated directly from your owned lots multiplied by your entered average buy price, without adding an extra 0.15% buy fee.',
+    calcMode:
+      'Choose how portfolio value and profit or loss are calculated. Net (After Fees) shows clean take-home cash after 0.15% buy fee, 0.25% sell fee, and Rp 10,000 stamp duty. Broker Mode (Gross) compares current price directly to your entered average price so percentages match broker apps like Stockbit.',
     stampDuty:
       'Fixed Rp 10,000 Indonesian Stamp Duty (Bea Materai) automatically charged on any buy or sell transaction with a total value above Rp 10,000,000.',
     valueTrapShield:
@@ -228,15 +236,24 @@ export const en = {
     kpiTotal: 'Tracked Stocks',
     kpiUndervalued: 'Undervalued',
     kpiPositions: 'Net Portfolio Value',
+    kpiPositionsGross: 'Portfolio Market Value',
     kpiInvested: 'Invested Capital',
+    kpiInvestedGross: 'Purchase Capital',
     kpiTotalPnL: 'Net Profit / Loss',
+    kpiTotalPnLGross: 'Broker Profit / Loss',
     kpiStale: 'Needs Refresh (> 14 Days)',
+    calcModeLabel: 'Calculation Mode',
+    calcModeNet: 'Net (After Fees)',
+    calcModeGross: 'Broker Mode (Gross)',
+    calcModeNetHint: 'Includes 0.15% buy fee, 0.25% sell fee, and Rp 10,000 stamp duty',
+    calcModeGrossHint: 'Matches broker apps like Stockbit without extra buy or sell fees',
     hideBalances: 'Hide balances',
     showBalances: 'Show balances',
     xray: {
       toggleBtn: 'Allocation & Risk',
       title: 'Portfolio Allocation & Risk',
       subtitle: 'Weighted by Net Market Value after broker sell fees.',
+      subtitleGross: 'Weighted by Gross Market Value matching standard broker apps.',
       byStockTitle: 'By Stock (25% Maximum Guideline)',
       bySectorTitle: 'By Industry Sector (40% Maximum Guideline)',
       healthyBadge: 'Balanced',
@@ -299,8 +316,11 @@ export const en = {
       combinedSummary: 'Position Summary',
       totalInvestedLabel: 'Invested Capital',
       stockbitBuyFeeNote: 'Includes 0.15% buy fee',
+      brokerGrossBuyNote: 'Uses entered average price directly',
       netMarketValueLabel: 'Net Market Value',
+      grossMarketValueLabel: 'Gross Market Value',
       stockbitSellFeeNote: 'After 0.25% sell fee',
+      brokerGrossSellNote: 'Before sell fee and stamp duty',
       stampDutyShort: '+ Rp 10,000 stamp duty',
       ownedLots: 'Owned Lots (1 Lot = 100 Shares)',
       avgBuyPrice: 'Average Buy Price (Rp)',

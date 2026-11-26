@@ -153,6 +153,7 @@ export function TakeProfitTab({
             <Field label={t.simulator.takeProfit.avgBuyPrice} htmlFor="tp-avg-buy">
               <IdxPriceInput
                 id="tp-avg-buy"
+                allowDecimals
                 value={avgBuyPrice}
                 onValueChange={setAvgBuyPrice}
                 tickHintLabel={t.common.tickStepLabel}

@@ -79,6 +79,7 @@ export function GoalSeekTab({
             <Field label={t.simulator.existingAvgPrice} htmlFor="gs-ex-avg">
               <IdxPriceInput
                 id="gs-ex-avg"
+                allowDecimals
                 value={existingAvgPrice}
                 onValueChange={setExistingAvgPrice}
                 tickHintLabel={t.common.tickStepLabel}

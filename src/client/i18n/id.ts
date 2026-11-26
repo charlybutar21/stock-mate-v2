@@ -80,10 +80,18 @@ export const id: I18nDictionary = {
       'Perkiraan untung atau rugi bersih yang benar-benar Anda terima setelah dipotong biaya beli, biaya jual, dan Bea Materai.',
     unrealizedPnL:
       'Perkiraan untung atau rugi bersih jika seluruh saham langsung dijual di harga sekarang, sudah memperhitungkan biaya beli 0,15%, biaya jual 0,25%, dan Bea Materai Rp10.000 (untuk transaksi di atas Rp10 juta).',
+    grossUnrealizedPnL:
+      'Untung atau rugi yang dihitung langsung dari selisih harga pasar hari ini terhadap harga rata-rata yang Anda input, tanpa tambahan biaya beli maupun potongan biaya jual. Cocok untuk menyamakan persentase dengan aplikasi sekuritas seperti Stockbit.',
     netMarketValue:
       'Total uang tunai bersih yang masuk ke rekening dana nasabah jika seluruh saham Anda dijual hari ini, setelah dikurangi biaya jual 0,25% dan Bea Materai (jika berlaku).',
+    grossMarketValue:
+      'Total nilai pasar saham Anda pada harga saat ini sebelum dikurangi biaya jual sekuritas maupun Bea Materai.',
     totalInvested:
       'Total uang modal yang sudah Anda keluarkan untuk membeli seluruh saham yang dimiliki, sudah termasuk biaya beli sekuritas 0,15%.',
+    grossTotalInvested:
+      'Total modal pembelian yang dihitung langsung dari jumlah lot dikali harga rata-rata yang Anda input, tanpa menambahkan biaya beli 0,15% lagi.',
+    calcMode:
+      'Pilih cara menghitung nilai portofolio dan laba/rugi. Mode Bersih (Potong Biaya) menghitung hasil bersih yang benar-benar diterima setelah biaya beli 0,15%, biaya jual 0,25%, dan Bea Materai Rp10.000. Mode Broker (Kotor) membandingkan harga sekarang langsung ke harga rata-rata Anda agar persentasenya sama persis dengan aplikasi sekuritas seperti Stockbit.',
     stampDuty:
       'Biaya Bea Materai tetap sebesar Rp10.000 yang otomatis dikenakan pada setiap transaksi beli atau jual dengan nilai total di atas Rp10.000.000.',
     valueTrapShield:
@@ -230,15 +238,25 @@ export const id: I18nDictionary = {
     kpiTotal: 'Total Emiten',
     kpiUndervalued: 'Undervalued',
     kpiPositions: 'Nilai Bersih Portofolio',
+    kpiPositionsGross: 'Nilai Pasar Portofolio',
     kpiInvested: 'Total Modal',
+    kpiInvestedGross: 'Modal Pembelian',
     kpiTotalPnL: 'Laba / Rugi Bersih',
+    kpiTotalPnLGross: 'Laba / Rugi Broker',
     kpiStale: 'Perlu Update (> 14 Hari)',
+    calcModeLabel: 'Mode Hitung',
+    calcModeNet: 'Bersih (Potong Biaya)',
+    calcModeGross: 'Mode Broker (Kotor)',
+    calcModeNetHint: 'Memperhitungkan biaya beli 0,15%, biaya jual 0,25%, dan Bea Materai Rp10.000',
+    calcModeGrossHint:
+      'Menyamakan tampilan aplikasi sekuritas seperti Stockbit tanpa tambahan biaya beli atau jual',
     hideBalances: 'Sembunyikan nominal',
     showBalances: 'Tampilkan nominal',
     xray: {
       toggleBtn: 'Alokasi & Risiko',
       title: 'Alokasi & Risiko Portofolio',
       subtitle: 'Bobot dihitung dari Nilai Pasar Bersih setelah biaya jual sekuritas.',
+      subtitleGross: 'Bobot dihitung dari Nilai Pasar Kotor sesuai tampilan aplikasi sekuritas.',
       byStockTitle: 'Per Saham (Batas Maksimal 25%)',
       bySectorTitle: 'Per Sektor Industri (Batas Maksimal 40%)',
       healthyBadge: 'Seimbang',
@@ -301,8 +319,11 @@ export const id: I18nDictionary = {
       combinedSummary: 'Ringkasan Posisi',
       totalInvestedLabel: 'Total Modal',
       stockbitBuyFeeNote: 'Termasuk biaya beli 0,15%',
+      brokerGrossBuyNote: 'Langsung dari harga rata-rata input',
       netMarketValueLabel: 'Nilai Pasar Bersih',
+      grossMarketValueLabel: 'Nilai Pasar Kotor',
       stockbitSellFeeNote: 'Setelah biaya jual 0,25%',
+      brokerGrossSellNote: 'Sebelum biaya jual dan Bea Materai',
       stampDutyShort: '+ Bea Materai Rp10.000',
       ownedLots: 'Lot Dimiliki (1 Lot = 100 Lembar)',
       avgBuyPrice: 'Harga Rata-Rata Beli (Rp)',

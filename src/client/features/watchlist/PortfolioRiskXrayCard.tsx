@@ -4,6 +4,7 @@ import type { PortfolioRiskSummary } from '@/shared/domain';
 import { Badge, Card, cn, RolePill, TermTooltip } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatPercent } from '@/client/lib/formatters';
+import { useCalcMode } from '@/client/lib/useCalcMode';
 import { MASKED_IDR, usePrivacy } from '@/client/lib/usePrivacy';
 
 interface PortfolioRiskXrayCardProps {
@@ -165,6 +166,7 @@ function AllocationDonutChart({
 export function PortfolioRiskXrayCard({ risk }: PortfolioRiskXrayCardProps) {
   const { t } = useI18n();
   const { hideBalances } = usePrivacy();
+  const { isBrokerGross } = useCalcMode();
   const [hoveredStockId, setHoveredStockId] = useState<string | null>(null);
   const [hoveredSectorId, setHoveredSectorId] = useState<string | null>(null);
   const [showAllStocks, setShowAllStocks] = useState(false);
@@ -264,7 +266,9 @@ export function PortfolioRiskXrayCard({ risk }: PortfolioRiskXrayCardProps) {
           </h3>
           <RolePill role="display" label={t.common.displayTag} />
           <span className="hidden text-xs text-muted sm:inline">·</span>
-          <p className="text-[11px] text-muted">{t.watchlist.xray.subtitle}</p>
+          <p className="text-[11px] text-muted">
+            {isBrokerGross ? t.watchlist.xray.subtitleGross : t.watchlist.xray.subtitle}
+          </p>
         </div>
 
         {risk.activeHoldingsCount === 1 ? (

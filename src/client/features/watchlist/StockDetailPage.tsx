@@ -15,6 +15,7 @@ import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {
   calculateValuation,
+  round2,
   type DerQualityFlag,
   type RoeQualityFlag,
   type ValueTrapRiskLevel,
@@ -97,7 +98,7 @@ export function StockDetailPage() {
     const validTranches = activeHoldingRows
       .map((r) => ({
         lots: r.lots.trim() ? Math.round(Number(r.lots)) : 0,
-        buyPrice: r.buyPrice.trim() ? Math.round(Number(r.buyPrice)) : 0,
+        buyPrice: r.buyPrice.trim() ? round2(Number(r.buyPrice)) : 0,
       }))
       .filter((r) => r.lots >= 1 && r.buyPrice >= 1);
 

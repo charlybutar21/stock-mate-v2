@@ -30,10 +30,13 @@ import type { WatchlistItemDto } from '@/shared/contracts';
 import {
   analyzePortfolioRisk,
   calculatePositionSummary,
+  DEFAULT_BUY_FEE_PCT,
+  DEFAULT_SELL_FEE_PCT,
   IDX_SECTORS,
   type IdxSector,
   type ValuationStatus,
 } from '@/shared/domain';
+import { CalcModeSwitcher } from '@/client/components/ui/CalcModeSwitcher';
 import {
   Badge,
   Button,
@@ -51,6 +54,7 @@ import {
 import { useI18n } from '@/client/i18n/useI18n';
 import { ApiClientError } from '@/client/lib/apiClient';
 import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
+import { useCalcMode } from '@/client/lib/useCalcMode';
 import { MASKED_IDR, MASKED_LOTS, usePrivacy } from '@/client/lib/usePrivacy';
 import { PortfolioRiskXrayCard } from './PortfolioRiskXrayCard';
 import { StockFormModal } from './StockFormModal';
@@ -91,6 +95,7 @@ function WatchlistTable({
   onDelete,
 }: WatchlistTableProps) {
   const { t } = useI18n();
+  const { calcMode, isBrokerGross } = useCalcMode();
 
   return (
     <div className="w-full overflow-x-auto">
@@ -127,7 +132,9 @@ function WatchlistTable({
               ) : (
                 <TermTooltip
                   label={t.watchlist.colPosition}
-                  definition={t.glossary.unrealizedPnL}
+                  definition={
+                    isBrokerGross ? t.glossary.grossUnrealizedPnL : t.glossary.unrealizedPnL
+                  }
                 />
               )}
             </th>
@@ -140,6 +147,9 @@ function WatchlistTable({
               item.ownedLots,
               item.avgBuyPrice,
               item.currentPrice,
+              DEFAULT_BUY_FEE_PCT,
+              DEFAULT_SELL_FEE_PCT,
+              calcMode,
             );
             const mosVal = item.valuation.mosPct;
             const priceColor =
@@ -277,7 +287,7 @@ function WatchlistTable({
                         </span>
                         {pos.avgBuyPrice && (
                           <span className="text-[11px] text-muted">
-                            @{formatNumber(pos.avgBuyPrice)}
+                            @{formatNumber(pos.avgBuyPrice, Number.isInteger(pos.avgBuyPrice) ? 0 : 2)}
                           </span>
                         )}
                       </div>
@@ -369,6 +379,7 @@ function WatchlistTable({
 export function WatchlistPage() {
   const { t } = useI18n();
   const { hideBalances, toggleHideBalances } = usePrivacy();
+  const { calcMode, isBrokerGross } = useCalcMode();
   const [search, setSearch] = useState('');
   const [sector, setSector] = useState<IdxSector | ''>('');
   const [sort, setSort] = useState<'updated_desc' | 'mos_desc' | 'ticker_asc'>('updated_desc');
@@ -446,7 +457,14 @@ export function WatchlistPage() {
     for (const item of list) {
       if (item.ownedLots > 0) {
         owned.push(item);
-        const pos = calculatePositionSummary(item.ownedLots, item.avgBuyPrice, item.currentPrice);
+        const pos = calculatePositionSummary(
+          item.ownedLots,
+          item.avgBuyPrice,
+          item.currentPrice,
+          DEFAULT_BUY_FEE_PCT,
+          DEFAULT_SELL_FEE_PCT,
+          calcMode,
+        );
         portfolioMarketValue += pos.marketValue;
         totalInvestedCapital += pos.costBasis;
       } else {
@@ -476,7 +494,7 @@ export function WatchlistPage() {
         stale: list.filter((i) => i.isStale).length,
       },
     };
-  }, [items]);
+  }, [items, calcMode]);
 
   const portfolioRisk = useMemo(() => {
     const list = items ?? [];
@@ -489,8 +507,9 @@ export function WatchlistPage() {
         avgBuyPrice: i.avgBuyPrice,
         currentPrice: i.currentPrice,
       })),
+      calcMode,
     );
-  }, [items]);
+  }, [items, calcMode]);
 
   const filteredItems = useMemo(() => {
     const list = items ?? [];
@@ -529,6 +548,7 @@ export function WatchlistPage() {
           subtitle={t.watchlist.sectionOverviewSub}
           role="calculated"
           roleLabel={t.common.calculatedTag}
+          action={<CalcModeSwitcher />}
         />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
@@ -541,8 +561,10 @@ export function WatchlistPage() {
                     <Wallet className="h-3.5 w-3.5" aria-hidden="true" />
                   </span>
                   <TermTooltip
-                    label={t.watchlist.kpiPositions}
-                    definition={t.glossary.netMarketValue}
+                    label={isBrokerGross ? t.watchlist.kpiPositionsGross : t.watchlist.kpiPositions}
+                    definition={
+                      isBrokerGross ? t.glossary.grossMarketValue : t.glossary.netMarketValue
+                    }
                   />
                   <button
                     type="button"
@@ -580,8 +602,12 @@ export function WatchlistPage() {
                 >
                   <span className="text-[11px] font-medium opacity-90">
                     <TermTooltip
-                      label={t.watchlist.kpiTotalPnL}
-                      definition={t.glossary.unrealizedPnL}
+                      label={
+                        isBrokerGross ? t.watchlist.kpiTotalPnLGross : t.watchlist.kpiTotalPnL
+                      }
+                      definition={
+                        isBrokerGross ? t.glossary.grossUnrealizedPnL : t.glossary.unrealizedPnL
+                      }
                       className="border-current/40 hover:text-current"
                     />
                   </span>
@@ -607,8 +633,10 @@ export function WatchlistPage() {
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/80 pt-3.5">
               <div className="flex items-center gap-2 text-xs text-muted">
                 <TermTooltip
-                  label={t.watchlist.kpiInvested}
-                  definition={t.glossary.totalInvested}
+                  label={isBrokerGross ? t.watchlist.kpiInvestedGross : t.watchlist.kpiInvested}
+                  definition={
+                    isBrokerGross ? t.glossary.grossTotalInvested : t.glossary.totalInvested
+                  }
                 />
                 <span className="font-mono text-sm font-bold text-ink tabular-nums">
                   {isLoading ? (

@@ -2,7 +2,11 @@ import { Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
 import {
   aggregateHoldingTranches,
   calculatePositionSummary,
+  DEFAULT_BUY_FEE_PCT,
+  DEFAULT_SELL_FEE_PCT,
+  round2,
 } from '@/shared/domain';
+import { CalcModeSwitcher } from '@/client/components/ui/CalcModeSwitcher';
 import {
   Button,
   IdxPriceInput,
@@ -12,6 +16,7 @@ import {
 } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
+import { useCalcMode } from '@/client/lib/useCalcMode';
 import { MASKED_IDR, usePrivacy } from '@/client/lib/usePrivacy';
 
 export interface EditableHoldingRow {
@@ -33,11 +38,12 @@ export function HoldingTranchesEditor({
 }: HoldingTranchesEditorProps) {
   const { t } = useI18n();
   const { hideBalances, toggleHideBalances } = usePrivacy();
+  const { calcMode, isBrokerGross } = useCalcMode();
 
   const parsedTranches = rows
     .map((r) => ({
       lots: r.lots.trim() ? Math.round(Number(r.lots)) : 0,
-      buyPrice: r.buyPrice.trim() ? Math.round(Number(r.buyPrice)) : 0,
+      buyPrice: r.buyPrice.trim() ? round2(Number(r.buyPrice)) : 0,
     }))
     .filter((r) => r.lots >= 1 && r.buyPrice >= 1);
 
@@ -46,6 +52,9 @@ export function HoldingTranchesEditor({
     agg.ownedLots,
     agg.avgBuyPrice,
     currentPrice >= 1 ? currentPrice : 0,
+    DEFAULT_BUY_FEE_PCT,
+    DEFAULT_SELL_FEE_PCT,
+    calcMode,
   );
 
   const addRow = () => {
@@ -122,6 +131,7 @@ export function HoldingTranchesEditor({
                     </label>
                   )}
                   <IdxPriceInput
+                    allowDecimals
                     placeholder={currentPrice >= 1 ? String(currentPrice) : '1000'}
                     value={row.buyPrice}
                     onValueChange={(val) => updateRow(row.id, 'buyPrice', val)}
@@ -147,26 +157,29 @@ export function HoldingTranchesEditor({
       {/* Auto-Calculated Position Display Summary */}
       {pos.ownedLots > 0 && (
         <div className="space-y-2.5 rounded-lg border border-border bg-display p-3.5">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-semibold text-muted">
                 {t.watchlist.form.combinedSummary}
               </span>
               <RolePill role="calculated" label={t.common.calculatedTag} />
             </div>
-            <button
-              type="button"
-              onClick={toggleHideBalances}
-              title={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
-              aria-label={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
-            >
-              {hideBalances ? (
-                <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
-              ) : (
-                <Eye className="h-3.5 w-3.5" aria-hidden="true" />
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              <CalcModeSwitcher compact showLabel={false} />
+              <button
+                type="button"
+                onClick={toggleHideBalances}
+                title={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+                aria-label={hideBalances ? t.watchlist.showBalances : t.watchlist.hideBalances}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+              >
+                {hideBalances ? (
+                  <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -175,7 +188,11 @@ export function HoldingTranchesEditor({
                 {t.watchlist.form.combinedSummary}
               </div>
               <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
-                {formatNumber(pos.ownedLots)} {t.common.lots} · {formatIdr(pos.avgBuyPrice)}
+                {formatNumber(pos.ownedLots)} {t.common.lots} ·{' '}
+                {formatIdr(
+                  pos.avgBuyPrice,
+                  pos.avgBuyPrice !== null && !Number.isInteger(pos.avgBuyPrice),
+                )}
               </div>
               <div className="font-mono text-[10px] text-muted tabular-nums">
                 {formatNumber(pos.ownedShares)} {t.common.shares}
@@ -185,38 +202,54 @@ export function HoldingTranchesEditor({
             <div className="rounded-lg border border-border bg-panel/70 px-3 py-2.5">
               <div className="text-[11px] font-medium text-muted">
                 <TermTooltip
-                  label={t.watchlist.form.totalInvestedLabel}
-                  definition={t.glossary.totalInvested}
+                  label={
+                    isBrokerGross
+                      ? t.watchlist.kpiInvestedGross
+                      : t.watchlist.form.totalInvestedLabel
+                  }
+                  definition={
+                    isBrokerGross ? t.glossary.grossTotalInvested : t.glossary.totalInvested
+                  }
                 />
               </div>
               <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
                 {hideBalances ? MASKED_IDR : formatIdr(pos.costBasis)}
               </div>
               <div className="font-mono text-[10px] text-muted tabular-nums">
-                {hideBalances
-                  ? t.watchlist.form.stockbitBuyFeeNote
-                  : `+${formatIdr(pos.estimatedBuyFee)} (${t.watchlist.form.stockbitBuyFeeNote})`}
+                {isBrokerGross
+                  ? t.watchlist.form.brokerGrossBuyNote
+                  : hideBalances
+                    ? t.watchlist.form.stockbitBuyFeeNote
+                    : `+${formatIdr(pos.estimatedBuyFee)} (${t.watchlist.form.stockbitBuyFeeNote})`}
               </div>
             </div>
 
             <div className="rounded-lg border border-brand-600/30 bg-brand-50/75 px-3 py-2.5">
               <div className="text-[11px] font-medium text-brand-700">
                 <TermTooltip
-                  label={t.watchlist.form.netMarketValueLabel}
-                  definition={t.glossary.netMarketValue}
+                  label={
+                    isBrokerGross
+                      ? t.watchlist.form.grossMarketValueLabel
+                      : t.watchlist.form.netMarketValueLabel
+                  }
+                  definition={
+                    isBrokerGross ? t.glossary.grossMarketValue : t.glossary.netMarketValue
+                  }
                 />
               </div>
               <div className="mt-0.5 font-mono text-xs font-bold text-brand-900 tabular-nums">
                 {hideBalances ? MASKED_IDR : formatIdr(pos.marketValue)}
               </div>
               <div className="font-mono text-[10px] text-brand-700/90 tabular-nums">
-                {hideBalances
-                  ? t.watchlist.form.stockbitSellFeeNote
-                  : `-${formatIdr(pos.estimatedSellFee)}${
-                      pos.estimatedSellStampDuty > 0
-                        ? ` ${t.watchlist.form.stampDutyShort}`
-                        : ` (${t.watchlist.form.stockbitSellFeeNote})`
-                    }`}
+                {isBrokerGross
+                  ? t.watchlist.form.brokerGrossSellNote
+                  : hideBalances
+                    ? t.watchlist.form.stockbitSellFeeNote
+                    : `-${formatIdr(pos.estimatedSellFee)}${
+                        pos.estimatedSellStampDuty > 0
+                          ? ` ${t.watchlist.form.stampDutyShort}`
+                          : ` (${t.watchlist.form.stockbitSellFeeNote})`
+                      }`}
               </div>
             </div>
 
@@ -224,7 +257,9 @@ export function HoldingTranchesEditor({
               <div className="text-[11px] font-medium text-muted">
                 <TermTooltip
                   label={t.detail.unrealizedPnL}
-                  definition={t.glossary.unrealizedPnL}
+                  definition={
+                    isBrokerGross ? t.glossary.grossUnrealizedPnL : t.glossary.unrealizedPnL
+                  }
                 />
               </div>
               <div

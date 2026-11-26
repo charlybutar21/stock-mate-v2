@@ -133,6 +133,7 @@ export function ForwardTab({
               <Field label={t.simulator.existingAvgPrice} htmlFor="sim-ex-avg">
                 <IdxPriceInput
                   id="sim-ex-avg"
+                  allowDecimals
                   value={existingAvgPrice}
                   onValueChange={setExistingAvgPrice}
                   tickHintLabel={t.common.tickStepLabel}

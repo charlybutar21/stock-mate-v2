@@ -12,6 +12,7 @@ import {
   DEFAULT_PROJECTION_YEARS,
   DEFAULT_TERMINAL_GROWTH_PCT,
   IDX_SECTORS,
+  round2,
   type IdxSector,
 } from '@/shared/domain';
 import {
@@ -190,7 +191,7 @@ function StockFormBody({
     const validHoldingTranches = holdingRows
       .map((r) => ({
         lots: r.lots.trim() ? Math.round(Number(r.lots)) : 0,
-        buyPrice: r.buyPrice.trim() ? Math.round(Number(r.buyPrice)) : 0,
+        buyPrice: r.buyPrice.trim() ? round2(Number(r.buyPrice)) : 0,
       }))
       .filter((r) => r.lots >= 1 && r.buyPrice >= 1);
 

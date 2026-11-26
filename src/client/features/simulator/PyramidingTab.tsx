@@ -117,6 +117,7 @@ export function PyramidingTab({
             <Field label={t.simulator.existingAvgPrice} htmlFor="pyr-ex-avg">
               <IdxPriceInput
                 id="pyr-ex-avg"
+                allowDecimals
                 value={existingAvgPrice}
                 onValueChange={setExistingAvgPrice}
                 tickHintLabel={t.common.tickStepLabel}

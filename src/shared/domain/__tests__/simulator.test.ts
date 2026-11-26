@@ -229,6 +229,18 @@ describe('simulator engine', () => {
       ]),
     ).toEqual({ ownedLots: 30, avgBuyPrice: 1100 });
 
+    // Preserves 2-decimal precision on weighted average & decimal buy prices (e.g. Stockbit Avg)
+    expect(
+      aggregateHoldingTranches([
+        { lots: 3, buyPrice: 5000 },
+        { lots: 4, buyPrice: 4550 },
+      ]),
+    ).toEqual({ ownedLots: 7, avgBuyPrice: 4742.86 });
+
+    const decimalPos = calculatePositionSummary(10, 4825.67, 2860);
+    expect(decimalPos.grossCostBasis).toBe(4_825_670);
+    expect(decimalPos.avgBuyPrice).toBe(4825.67);
+
     expect(calculatePositionSummary(0, 5000, 5500)).toEqual({
       ownedLots: 0,
       ownedShares: 0,
@@ -276,6 +288,26 @@ describe('simulator engine', () => {
       unrealizedPnL: 947_500,
       unrealizedPnLPct: 9.46,
     });
+
+    // BROKER_GROSS mode (Stockbit-style): no extra buy fee, no sell fee, no stamp duty
+    expect(calculatePositionSummary(20, 5000, 5500, 0.15, 0.25, 'BROKER_GROSS')).toEqual({
+      ownedLots: 20,
+      ownedShares: 2000,
+      avgBuyPrice: 5000,
+      grossCostBasis: 10_000_000,
+      estimatedBuyFee: 0,
+      costBasis: 10_000_000,
+      grossMarketValue: 11_000_000,
+      estimatedSellFee: 0,
+      estimatedSellStampDuty: 0,
+      marketValue: 11_000_000,
+      unrealizedPnL: 1_000_000,
+      unrealizedPnLPct: 10,
+    });
+
+    // Exact 2-decimal Stockbit-style loss match: avg 4825.67, current 2857 -> -40.80%
+    const stockbitMatch = calculatePositionSummary(10, 4825.67, 2857, 0.15, 0.25, 'BROKER_GROSS');
+    expect(stockbitMatch.unrealizedPnLPct).toBe(-40.8);
   });
 
   it('analyzes Portfolio Risk & Sector X-Ray weights and concentration alerts (Use Case 1)', () => {
@@ -340,6 +372,24 @@ describe('simulator engine', () => {
       'SINGLE_STOCK_CONCENTRATION',
       'SECTOR_CONCENTRATION',
     ]);
+
+    const grossRisk = analyzePortfolioRisk(
+      [
+        {
+          ticker: 'BBCA',
+          companyName: 'Bank Central Asia',
+          sector: 'FINANCIALS',
+          ownedLots: 10,
+          avgBuyPrice: 8000,
+          currentPrice: 9000,
+        },
+      ],
+      'BROKER_GROSS',
+    );
+    expect(grossRisk.totalInvestedCapital).toBe(8_000_000);
+    expect(grossRisk.totalNetMarketValue).toBe(9_000_000);
+    expect(grossRisk.totalUnrealizedPnL).toBe(1_000_000);
+    expect(grossRisk.totalUnrealizedPnLPct).toBe(12.5);
   });
 
   it('plans Pyramiding Buy Allocation across 3 IDX tick-aligned stages (Use Case 3)', () => {

@@ -73,6 +73,7 @@ export interface IdxPriceInputProps {
   onValueChange: (next: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  allowDecimals?: boolean;
   className?: string;
   showTickHint?: boolean;
   tickHintLabel?: string;
@@ -91,6 +92,7 @@ export function IdxPriceInput({
   onValueChange,
   placeholder,
   disabled = false,
+  allowDecimals = false,
   className,
   showTickHint = false,
   tickHintLabel = 'Fraksi',
@@ -140,9 +142,9 @@ export function IdxPriceInput({
         <input
           id={id}
           type="number"
-          inputMode="numeric"
+          inputMode={allowDecimals ? 'decimal' : 'numeric'}
           min={MIN_IDX_PRICE}
-          step={activeTick}
+          step={allowDecimals ? 'any' : activeTick}
           placeholder={placeholder}
           value={value}
           disabled={disabled}

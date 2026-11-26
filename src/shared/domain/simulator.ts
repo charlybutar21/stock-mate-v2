@@ -246,6 +246,8 @@ export function simulateForwardAverageDown(input: ForwardSimulationInput): Forwa
   };
 }
 
+export type PositionCalcMode = 'NET_AFTER_FEES' | 'BROKER_GROSS';
+
 export interface PositionSummary {
   ownedLots: number;
   ownedShares: number;
@@ -278,15 +280,15 @@ export function aggregateHoldingTranches(tranches: PlannedTranche[]): {
   }
   return {
     ownedLots: totalLots,
-    avgBuyPrice: Math.round(totalWeighted / totalLots),
+    avgBuyPrice: round2(totalWeighted / totalLots),
   };
 }
 
 /**
- * Computes net holding position value after all Stockbit fees:
- * - Net Market Value = Gross Market Value - Sell Fee (0.25%) - Stamp Duty (Rp 10,000 if > Rp 10,000,000)
- * - Total Cost Basis = Gross Cost + Buy Fee (0.15%)
- * - Net Unrealized P/L = Net Market Value - Total Cost Basis
+ * Computes holding position summary in either:
+ * - NET_AFTER_FEES (default): adds buy fee (0.15%) to cost basis and deducts sell fee (0.25%) + stamp duty (> Rp 10M).
+ * - BROKER_GROSS: compares current price directly against entered average price without adding/deducting extra fees
+ *   (matches standard Indonesian broker portfolio screens such as Stockbit).
  */
 export function calculatePositionSummary(
   ownedLots: number,
@@ -294,13 +296,17 @@ export function calculatePositionSummary(
   currentPrice: number,
   buyFeePct: number = DEFAULT_BUY_FEE_PCT,
   sellFeePct: number = DEFAULT_SELL_FEE_PCT,
+  mode: PositionCalcMode = 'NET_AFTER_FEES',
 ): PositionSummary {
+  const isGrossMode = mode === 'BROKER_GROSS';
+  const effectiveBuyFeePct = isGrossMode ? 0 : buyFeePct;
+  const effectiveSellFeePct = isGrossMode ? 0 : sellFeePct;
   const safeLots = Math.max(0, Math.floor(ownedLots));
   const ownedShares = safeLots * SHARES_PER_LOT;
   const grossMarketValue = ownedShares * currentPrice;
-  const estimatedSellFee = Math.round(grossMarketValue * (sellFeePct / 100));
+  const estimatedSellFee = Math.round(grossMarketValue * (effectiveSellFeePct / 100));
   const estimatedSellStampDuty =
-    grossMarketValue > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
+    !isGrossMode && grossMarketValue > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
   const marketValue = Math.max(
     0,
     grossMarketValue - estimatedSellFee - estimatedSellStampDuty,
@@ -323,8 +329,8 @@ export function calculatePositionSummary(
     };
   }
 
-  const grossCostBasis = ownedShares * avgBuyPrice;
-  const estimatedBuyFee = Math.round(grossCostBasis * (buyFeePct / 100));
+  const grossCostBasis = Math.round(ownedShares * avgBuyPrice);
+  const estimatedBuyFee = Math.round(grossCostBasis * (effectiveBuyFeePct / 100));
   const costBasis = grossCostBasis + estimatedBuyFee;
   const unrealizedPnL = marketValue - costBasis;
   const unrealizedPnLPct = round2((unrealizedPnL / costBasis) * 100);
@@ -447,11 +453,19 @@ export interface PortfolioRiskSummary {
 
 export function analyzePortfolioRisk(
   holdings: PortfolioHoldingInput[],
+  mode: PositionCalcMode = 'NET_AFTER_FEES',
 ): PortfolioRiskSummary {
   const active = holdings
     .map((h) => ({
       holding: h,
-      summary: calculatePositionSummary(h.ownedLots, h.avgBuyPrice, h.currentPrice),
+      summary: calculatePositionSummary(
+        h.ownedLots,
+        h.avgBuyPrice,
+        h.currentPrice,
+        DEFAULT_BUY_FEE_PCT,
+        DEFAULT_SELL_FEE_PCT,
+        mode,
+      ),
     }))
     .filter((entry) => entry.summary.ownedLots > 0 && entry.summary.costBasis > 0);
 

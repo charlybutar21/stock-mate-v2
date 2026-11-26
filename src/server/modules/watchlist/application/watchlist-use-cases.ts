@@ -100,6 +100,15 @@ export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()):
     dividendGrowthPct,
   });
 
+  const holdingTranches = parseHoldingTranches(
+    record.holdingTranchesJson,
+    record.ownedLots,
+    record.avgBuyPrice,
+  );
+  const trancheAgg =
+    holdingTranches.length > 0 ? aggregateHoldingTranches(holdingTranches) : null;
+  const preciseAvgBuyPrice = trancheAgg ? trancheAgg.avgBuyPrice : record.avgBuyPrice;
+
   return {
     id: record.id,
     ticker: record.ticker,
@@ -107,12 +116,8 @@ export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()):
     sector: record.sector,
     currentPrice: record.currentPrice,
     ownedLots: record.ownedLots,
-    avgBuyPrice: record.avgBuyPrice,
-    holdingTranches: parseHoldingTranches(
-      record.holdingTranchesJson,
-      record.ownedLots,
-      record.avgBuyPrice,
-    ),
+    avgBuyPrice: preciseAvgBuyPrice,
+    holdingTranches,
     targetBuyPrice: record.targetBuyPrice,
     investmentThesis: record.investmentThesis,
     createdAt: new Date(record.createdAt).toISOString(),
@@ -223,7 +228,7 @@ export class CreateWatchlistItemUseCase {
       sector: input.sector,
       currentPrice: input.currentPrice,
       ownedLots: agg.ownedLots,
-      avgBuyPrice: agg.avgBuyPrice,
+      avgBuyPrice: agg.avgBuyPrice !== null ? Math.round(agg.avgBuyPrice) : null,
       holdingTranchesJson,
       targetBuyPrice: input.targetBuyPrice ?? null,
       investmentThesis: input.investmentThesis ?? null,
@@ -294,11 +299,22 @@ export class UpdateWatchlistItemUseCase {
     if (input.holdingTranches !== undefined) {
       const agg = aggregateHoldingTranches(input.holdingTranches);
       itemPatch.ownedLots = agg.ownedLots;
-      itemPatch.avgBuyPrice = agg.avgBuyPrice;
+      itemPatch.avgBuyPrice = agg.avgBuyPrice !== null ? Math.round(agg.avgBuyPrice) : null;
       itemPatch.holdingTranchesJson = JSON.stringify(input.holdingTranches);
     } else {
       if (input.ownedLots !== undefined) itemPatch.ownedLots = input.ownedLots;
-      if (input.avgBuyPrice !== undefined) itemPatch.avgBuyPrice = input.avgBuyPrice;
+      if (input.avgBuyPrice !== undefined) {
+        itemPatch.avgBuyPrice =
+          input.avgBuyPrice !== null ? Math.round(input.avgBuyPrice) : null;
+        if (input.avgBuyPrice !== null) {
+          const lotsForTranche = input.ownedLots ?? current.ownedLots;
+          if (lotsForTranche > 0) {
+            itemPatch.holdingTranchesJson = JSON.stringify([
+              { lots: lotsForTranche, buyPrice: input.avgBuyPrice },
+            ]);
+          }
+        }
+      }
     }
     if (input.targetBuyPrice !== undefined) itemPatch.targetBuyPrice = input.targetBuyPrice;
     if (input.investmentThesis !== undefined) itemPatch.investmentThesis = input.investmentThesis;
