@@ -13,12 +13,15 @@ import {
   DEFAULT_TERMINAL_GROWTH_PCT,
   isStaleTimestamp,
 } from '@/shared/domain';
-import { conflictError, notFoundError } from '@/server/shared/http/problem';
+import { conflictError, notFoundError, validationError } from '@/server/shared/http/problem';
+import type { IdxMarketDataProvider } from '@/server/modules/market-data/domain/market-data.types';
 import type {
   FundamentalsRecord,
   WatchlistItemRecord,
   WatchlistRepository,
 } from '../domain/watchlist.types';
+
+export const MAX_WATCHLIST_ITEMS_PER_USER = 200;
 
 function toBps(pct: number | null | undefined): number | null {
   if (pct === null || pct === undefined) return null;
@@ -188,6 +191,13 @@ export class CreateWatchlistItemUseCase {
       throw conflictError(`Ticker ${input.ticker} is already in your watchlist.`);
     }
 
+    const activeCount = await this.repo.countActiveByUser(userId);
+    if (activeCount >= MAX_WATCHLIST_ITEMS_PER_USER) {
+      throw validationError(
+        `Watchlist limit reached (${MAX_WATCHLIST_ITEMS_PER_USER} active stocks maximum).`,
+      );
+    }
+
     const now = Date.now();
     const itemId = crypto.randomUUID();
     const fundamentalsId = crypto.randomUUID();
@@ -338,5 +348,53 @@ export class SoftDeleteWatchlistItemUseCase {
     if (!deleted) {
       throw notFoundError('Watchlist item not found.');
     }
+  }
+}
+
+export class SyncAllWatchlistUseCase {
+  constructor(
+    private readonly repo: WatchlistRepository,
+    private readonly marketDataProvider: IdxMarketDataProvider,
+  ) {}
+
+  async execute(userId: string): Promise<{ updatedCount: number }> {
+    const records = await this.repo.listByUser(userId);
+    if (records.length === 0) {
+      return { updatedCount: 0 };
+    }
+
+    const tickers = records.map((r) => r.ticker);
+    const quotesMap = this.marketDataProvider.fetchIdxQuotesBatch
+      ? await this.marketDataProvider.fetchIdxQuotesBatch(tickers)
+      : new Map();
+
+    const now = Date.now();
+    let updatedCount = 0;
+
+    for (const record of records) {
+      const quote = quotesMap.get(record.ticker);
+      if (!quote) continue;
+      await this.repo.update(
+        record.id,
+        userId,
+        {
+          currentPrice: quote.currentPrice,
+          updatedAt: now,
+        },
+        {
+          periodLabel: quote.periodLabel,
+          eps: quote.fundamentals.eps,
+          bvps: quote.fundamentals.bvps,
+          dps: quote.fundamentals.dps,
+          roeBps: toBps(quote.fundamentals.roePct),
+          derX100: toX100(quote.fundamentals.der),
+          epsGrowthBps: toBps(quote.fundamentals.epsGrowthPct),
+          updatedAt: now,
+        },
+      );
+      updatedCount += 1;
+    }
+
+    return { updatedCount };
   }
 }

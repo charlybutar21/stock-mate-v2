@@ -39,6 +39,7 @@ export interface WatchlistItemRecord {
 
 export interface WatchlistRepository {
   listByUser(userId: string, sector?: IdxSector): Promise<WatchlistItemRecord[]>;
+  countActiveByUser(userId: string): Promise<number>;
   findByIdForUser(id: string, userId: string): Promise<WatchlistItemRecord | null>;
   findActiveByUserAndTicker(userId: string, ticker: string): Promise<{ id: string } | null>;
   create(item: Omit<WatchlistItemRecord, 'deletedAt'>): Promise<void>;

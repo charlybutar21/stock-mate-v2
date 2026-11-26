@@ -31,7 +31,9 @@ export function useWatchlistItem(id: string | undefined) {
     queryKey: ['watchlist', 'detail', id],
     enabled: Boolean(id),
     queryFn: async () => {
-      const res = await apiRequest<{ item: WatchlistItemDto }>(`/api/v1/watchlist/${id}`);
+      const res = await apiRequest<{ item: WatchlistItemDto }>(
+        `/api/v1/watchlist/${encodeURIComponent(id!)}`,
+      );
       return res.item;
     },
   });
@@ -55,7 +57,7 @@ export function useUpdateWatchlistItem() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UpdateWatchlistRequest }) =>
-      apiRequest<{ item: WatchlistItemDto }>(`/api/v1/watchlist/${id}`, {
+      apiRequest<{ item: WatchlistItemDto }>(`/api/v1/watchlist/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
       }),
@@ -70,7 +72,7 @@ export function useDeleteWatchlistItem() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      apiRequest<void>(`/api/v1/watchlist/${id}`, {
+      apiRequest<void>(`/api/v1/watchlist/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       }),
     onSuccess: () => {

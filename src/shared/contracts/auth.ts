@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+const emailSchema = z
+  .string()
+  .trim()
+  .max(254, 'Email must be at most 254 characters')
+  .toLowerCase()
+  .pipe(z.email('Must be a valid email address'));
+
 const passwordSchema = z
   .string()
   .min(8, 'Password must be at least 8 characters')
@@ -8,11 +15,7 @@ const passwordSchema = z
   .regex(/\d/, 'Password must contain at least 1 digit');
 
 export const registerRequestSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .pipe(z.email('Must be a valid email address')),
+  email: emailSchema,
   name: z
     .string()
     .trim()
@@ -22,11 +25,7 @@ export const registerRequestSchema = z.object({
 });
 
 export const loginRequestSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .pipe(z.email('Must be a valid email address')),
+  email: emailSchema,
   password: z.string().min(1, 'Password is required').max(128),
 });
 

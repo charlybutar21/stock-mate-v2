@@ -1,5 +1,6 @@
 import type { IdxMarketQuoteDto } from '@/shared/contracts';
 import { MIN_IDX_PRICE, round2 } from '@/shared/domain';
+import { BoundedTtlCache } from '@/server/shared/cache/bounded-ttl-cache';
 import { AppError, notFoundError } from '@/server/shared/http/problem';
 import {
   mapYahooSectorToIdx,
@@ -11,15 +12,11 @@ const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const CRUMB_TTL_MS = 25 * 60 * 1000;
 const QUOTE_CACHE_TTL_MS = 15 * 60 * 1000;
+const UPSTREAM_TIMEOUT_MS = 8_000;
 
 interface CrumbSession {
   cookie: string;
   crumb: string;
-  expiresAt: number;
-}
-
-interface CachedQuote {
-  data: IdxMarketQuoteDto;
   expiresAt: number;
 }
 
@@ -60,7 +57,7 @@ interface YahooQuoteSummaryResponse {
 }
 
 let cachedCrumb: CrumbSession | null = null;
-const quoteCache = new Map<string, CachedQuote>();
+const quoteCache = new BoundedTtlCache<string, IdxMarketQuoteDto>(QUOTE_CACHE_TTL_MS, 500);
 
 function extractCookieHeader(headers: Headers): string {
   const getSetCookie = (headers as unknown as { getSetCookie?: () => string[] }).getSetCookie;
@@ -87,6 +84,7 @@ async function getYahooCrumb(forceRefresh = false): Promise<CrumbSession> {
   const initRes = await fetch('https://fc.yahoo.com', {
     headers: { 'User-Agent': USER_AGENT },
     redirect: 'manual',
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
   const cookie = extractCookieHeader(initRes.headers);
 
@@ -95,6 +93,7 @@ async function getYahooCrumb(forceRefresh = false): Promise<CrumbSession> {
       'User-Agent': USER_AGENT,
       ...(cookie ? { Cookie: cookie } : {}),
     },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
 
   if (!crumbRes.ok) {
@@ -134,9 +133,9 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
     const cleanTicker = ticker.trim().toUpperCase();
     const now = Date.now();
 
-    const cached = quoteCache.get(cleanTicker);
-    if (cached && cached.expiresAt > now) {
-      return cached.data;
+    const cached = quoteCache.get(cleanTicker, now);
+    if (cached) {
+      return cached;
     }
 
     const session = await getYahooCrumb();
@@ -149,6 +148,7 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
         'User-Agent': USER_AGENT,
         ...(session.cookie ? { Cookie: session.cookie } : {}),
       },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
 
     // Retry once if crumb expired on upstream
@@ -159,6 +159,7 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
           'User-Agent': USER_AGENT,
           ...(freshSession.cookie ? { Cookie: freshSession.cookie } : {}),
         },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });
     }
 
@@ -254,10 +255,7 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
       fetchedAt: new Date(now).toISOString(),
     };
 
-    quoteCache.set(cleanTicker, {
-      data: dto,
-      expiresAt: now + QUOTE_CACHE_TTL_MS,
-    });
+    quoteCache.set(cleanTicker, dto, now);
 
     return dto;
   }

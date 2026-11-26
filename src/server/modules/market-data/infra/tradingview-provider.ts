@@ -1,5 +1,6 @@
 import type { IdxMarketQuoteDto } from '@/shared/contracts';
 import { MIN_IDX_PRICE, round2 } from '@/shared/domain';
+import { BoundedTtlCache } from '@/server/shared/cache/bounded-ttl-cache';
 import { AppError, notFoundError } from '@/server/shared/http/problem';
 import {
   mapYahooSectorToIdx,
@@ -9,6 +10,7 @@ import {
 
 const TV_SCANNER_URL = 'https://scanner.tradingview.com/indonesia/scan';
 const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const UPSTREAM_TIMEOUT_MS = 8_000;
 
 const TV_COLUMNS = [
   'name',
@@ -23,11 +25,6 @@ const TV_COLUMNS = [
   'earnings_per_share_diluted_yoy_growth_ttm',
 ] as const;
 
-interface CachedQuote {
-  data: IdxMarketQuoteDto;
-  expiresAt: number;
-}
-
 interface TradingViewScanResponse {
   totalCount?: number;
   data?: Array<{
@@ -36,7 +33,7 @@ interface TradingViewScanResponse {
   }>;
 }
 
-const tvQuoteCache = new Map<string, CachedQuote>();
+const tvQuoteCache = new BoundedTtlCache<string, IdxMarketQuoteDto>(QUOTE_CACHE_TTL_MS, 500);
 
 function asFinite(val: unknown): number | null {
   return typeof val === 'number' && Number.isFinite(val) ? val : null;
@@ -133,9 +130,9 @@ export class TradingViewIdxProvider implements IdxMarketDataProvider {
     for (const raw of tickers) {
       const clean = raw.trim().toUpperCase();
       if (!clean) continue;
-      const cached = tvQuoteCache.get(clean);
-      if (cached && cached.expiresAt > now) {
-        result.set(clean, cached.data);
+      const cached = tvQuoteCache.get(clean, now);
+      if (cached) {
+        result.set(clean, cached);
       } else if (!missing.includes(clean)) {
         missing.push(clean);
       }
@@ -157,6 +154,7 @@ export class TradingViewIdxProvider implements IdxMarketDataProvider {
         },
         columns: [...TV_COLUMNS],
       }),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -173,10 +171,7 @@ export class TradingViewIdxProvider implements IdxMarketDataProvider {
       const dto = parseTradingViewRowToDto(row, now);
       if (dto) {
         result.set(dto.ticker, dto);
-        tvQuoteCache.set(dto.ticker, {
-          data: dto,
-          expiresAt: now + QUOTE_CACHE_TTL_MS,
-        });
+        tvQuoteCache.set(dto.ticker, dto, now);
       }
     }
 

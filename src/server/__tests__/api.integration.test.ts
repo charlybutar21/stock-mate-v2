@@ -429,12 +429,16 @@ describe('Stock-Mate v2 API Integration', () => {
     );
     expect(maliciousCorrelationRes.headers.get('x-frame-options')).toBe('DENY');
     expect(maliciousCorrelationRes.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(maliciousCorrelationRes.headers.get('strict-transport-security')).toContain(
+      'max-age=31536000',
+    );
+    expect(maliciousCorrelationRes.headers.get('permissions-policy')).toContain('camera=()');
     expect(maliciousCorrelationRes.headers.get('cache-control')).toContain('no-store');
     expect(maliciousCorrelationRes.headers.get('content-security-policy')).toContain(
       "frame-ancestors 'none'",
     );
 
-    // 2. Cross-Origin CSRF attack blocked with 403 RFC 7807
+    // 2. Cross-Origin CSRF & Cross-Origin Referer attacks blocked with 403 RFC 7807
     const csrfAttack = await app.request(
       'http://localhost/api/v1/auth/login',
       {
@@ -451,6 +455,20 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(csrfAttack.status).toBe(403);
     expect(csrfAttack.headers.get('content-type')).toContain('application/problem+json');
 
+    const crossRefererAttack = await app.request(
+      'http://localhost/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Referer: 'https://evil-phishing.example.com/attack',
+        },
+        body: JSON.stringify({ email: 'a@example.com', password: 'Password123' }),
+      },
+      { DB: d1 },
+    );
+    expect(crossRefererAttack.status).toBe(403);
+
     // 3. Content-Type text/plain form-CSRF bypass blocked with 415 RFC 7807
     const textPlainAttack = await app.request(
       'http://localhost/api/v1/auth/login',
@@ -464,7 +482,7 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(textPlainAttack.status).toBe(415);
     expect(textPlainAttack.headers.get('content-type')).toContain('application/problem+json');
 
-    // 4. Oversized payload (> 64 KB) blocked with 413 RFC 7807
+    // 4. Oversized payload (> 64 KB) blocked with 413 both WITH and WITHOUT Content-Length header
     const oversizedAttack = await app.request(
       'http://localhost/api/v1/auth/login',
       {
@@ -479,6 +497,31 @@ describe('Stock-Mate v2 API Integration', () => {
     );
     expect(oversizedAttack.status).toBe(413);
     expect(oversizedAttack.headers.get('content-type')).toContain('application/problem+json');
+
+    const chunkedOversizedAttack = await app.request(
+      'http://localhost/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'cf-connecting-ip': '198.51.100.77',
+        },
+        body: JSON.stringify({
+          email: 'a@example.com',
+          password: 'A'.repeat(70_000),
+        }),
+      },
+      { DB: d1 },
+    );
+    expect(chunkedOversizedAttack.status).toBe(413);
+
+    // 4b. Malformed non-hex session cookie rejected in O(1) with 401
+    const malformedCookieRes = await app.request(
+      'http://localhost/api/v1/auth/me',
+      { headers: { Cookie: 'sm_session=not-a-valid-64-hex-token!!!' } },
+      { DB: d1 },
+    );
+    expect(malformedCookieRes.status).toBe(401);
 
     // 5. Session Fixation Rotation: logging in while presenting an existing session invalidates the old session
     const regRes = await app.request(
@@ -550,6 +593,27 @@ describe('Stock-Mate v2 API Integration', () => {
       { DB: d1 },
     );
     expect(malformedIdRes.status).toBe(404);
+
+    // 6b. Extreme integer overflow financial input rejected with 400 RFC 7807
+    const overflowPriceRes = await app.request(
+      'http://localhost/api/v1/watchlist',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: rotatedCookie,
+        },
+        body: JSON.stringify({
+          ticker: 'OVER',
+          companyName: 'Overflow Corp',
+          sector: 'FINANCIALS',
+          currentPrice: 999_999_999_999,
+        }),
+      },
+      { DB: d1 },
+    );
+    expect(overflowPriceRes.status).toBe(400);
+    expect(overflowPriceRes.headers.get('content-type')).toContain('application/problem+json');
 
     // 7. Brute-Force Rate Limiter on /api/v1/auth/login triggers 429 Too Many Requests + Retry-After
     for (let i = 0; i < 4; i++) {

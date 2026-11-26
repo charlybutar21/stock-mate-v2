@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import type { IdxSector } from '@/shared/domain';
 import * as schema from '@/server/shared/db/schema';
@@ -94,6 +94,20 @@ export class D1WatchlistRepository implements WatchlistRepository {
       .orderBy(desc(schema.watchlistItems.updatedAt));
 
     return rows.map(mapJoinedRow);
+  }
+
+  async countActiveByUser(userId: string): Promise<number> {
+    const rows = await this.db
+      .select({ total: count() })
+      .from(schema.watchlistItems)
+      .where(
+        and(
+          eq(schema.watchlistItems.userId, userId),
+          isNull(schema.watchlistItems.deletedAt),
+        ),
+      );
+
+    return Number(rows[0]?.total ?? 0);
   }
 
   async findByIdForUser(id: string, userId: string): Promise<WatchlistItemRecord | null> {
@@ -204,10 +218,21 @@ export class D1WatchlistRepository implements WatchlistRepository {
       );
 
     if (fundamentalsPatch) {
+      const ownedItemSubquery = this.db
+        .select({ id: schema.watchlistItems.id })
+        .from(schema.watchlistItems)
+        .where(
+          and(
+            eq(schema.watchlistItems.id, id),
+            eq(schema.watchlistItems.userId, userId),
+            isNull(schema.watchlistItems.deletedAt),
+          ),
+        );
+
       const updateFundamentalsStmt = this.db
         .update(schema.stockFundamentals)
         .set(fundamentalsPatch)
-        .where(eq(schema.stockFundamentals.watchlistItemId, id));
+        .where(inArray(schema.stockFundamentals.watchlistItemId, ownedItemSubquery));
 
       await this.db.batch([updateItemStmt, updateFundamentalsStmt]);
     } else {

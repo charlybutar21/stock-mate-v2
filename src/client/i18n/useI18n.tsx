@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { en, type I18nDictionary } from './en';
 import { id } from './id';
 
@@ -27,14 +27,20 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Language>(getInitialLang);
 
-  const setLang = (next: Language) => {
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = lang;
+    }
+  }, [lang]);
+
+  const setLang = useCallback((next: Language) => {
     setLangState(next);
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
     } catch {
       // Ignore storage access errors
     }
-  };
+  }, []);
 
   const value = useMemo<I18nContextValue>(
     () => ({
@@ -42,7 +48,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       setLang,
       t: lang === 'id' ? id : en,
     }),
-    [lang],
+    [lang, setLang],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

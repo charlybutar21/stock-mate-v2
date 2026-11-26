@@ -7,17 +7,16 @@ import {
 import type { AuthRepository, PasswordHasher } from '@/server/modules/auth/domain/auth.types';
 import type { IdxMarketDataProvider } from '@/server/modules/market-data/domain/market-data.types';
 import { createAuthMiddleware } from '@/server/shared/http/auth-mw';
-import {
-  notFoundError,
-  validationError,
-  zodToValidationError,
-} from '@/server/shared/http/problem';
+import { parseJsonBody } from '@/server/shared/http/json-body';
+import { notFoundError, zodToValidationError } from '@/server/shared/http/problem';
+import { createRateLimitMiddleware } from '@/server/shared/http/rate-limit-mw';
 import type { AppEnv } from '@/server/shared/types';
 import {
   CreateWatchlistItemUseCase,
   GetWatchlistItemUseCase,
   ListWatchlistUseCase,
   SoftDeleteWatchlistItemUseCase,
+  SyncAllWatchlistUseCase,
   UpdateWatchlistItemUseCase,
 } from '../application/watchlist-use-cases';
 import type { WatchlistRepository } from '../domain/watchlist.types';
@@ -44,6 +43,12 @@ export function createWatchlistRoutes(
 ): Hono<AppEnv> {
   const router = new Hono<AppEnv>();
   const requireAuth = createAuthMiddleware(getDeps);
+  const syncAllRateLimiter = createRateLimitMiddleware({
+    maxRequests: 6,
+    windowMs: 60_000,
+    keyBy: 'userOrIp',
+    keyPrefix: 'watchlist:sync-all',
+  });
 
   router.use('*', requireAuth);
 
@@ -67,62 +72,22 @@ export function createWatchlistRoutes(
   });
 
   router.post('/', async (c) => {
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      throw validationError('Request body must be valid JSON.');
-    }
-
-    const parsed = createWatchlistSchema.safeParse(rawBody);
-    if (!parsed.success) {
-      throw zodToValidationError(parsed.error);
-    }
-
+    const input = await parseJsonBody(c, createWatchlistSchema);
     const user = c.get('user')!;
     const { watchlistRepo } = getDeps(c.env.DB);
     const useCase = new CreateWatchlistItemUseCase(watchlistRepo);
-    const item = await useCase.execute(user.id, parsed.data);
+    const item = await useCase.execute(user.id, input);
 
     return c.json({ item }, 201);
   });
 
-  router.post('/sync-all', async (c) => {
+  router.post('/sync-all', syncAllRateLimiter, async (c) => {
     const user = c.get('user')!;
     const { watchlistRepo, marketDataProvider } = getDeps(c.env.DB, c.env);
-    const records = await watchlistRepo.listByUser(user.id);
+    const useCase = new SyncAllWatchlistUseCase(watchlistRepo, marketDataProvider);
+    const result = await useCase.execute(user.id);
 
-    if (records.length === 0) {
-      return c.json({ updatedCount: 0 }, 200);
-    }
-
-    const tickers = records.map((r) => r.ticker);
-    const quotesMap = marketDataProvider.fetchIdxQuotesBatch
-      ? await marketDataProvider.fetchIdxQuotesBatch(tickers)
-      : new Map();
-
-    const updateUseCase = new UpdateWatchlistItemUseCase(watchlistRepo);
-    let updatedCount = 0;
-
-    for (const record of records) {
-      const quote = quotesMap.get(record.ticker);
-      if (!quote) continue;
-      await updateUseCase.execute(user.id, record.id, {
-        currentPrice: quote.currentPrice,
-        fundamentals: {
-          periodLabel: quote.periodLabel,
-          eps: quote.fundamentals.eps,
-          bvps: quote.fundamentals.bvps,
-          dps: quote.fundamentals.dps,
-          roePct: quote.fundamentals.roePct,
-          der: quote.fundamentals.der,
-          epsGrowthPct: quote.fundamentals.epsGrowthPct,
-        },
-      });
-      updatedCount++;
-    }
-
-    return c.json({ updatedCount }, 200);
+    return c.json(result, 200);
   });
 
   router.get('/:id', async (c) => {
@@ -137,22 +102,11 @@ export function createWatchlistRoutes(
 
   router.patch('/:id', async (c) => {
     const id = assertValidItemId(c.req.param('id'));
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      throw validationError('Request body must be valid JSON.');
-    }
-
-    const parsed = updateWatchlistSchema.safeParse(rawBody);
-    if (!parsed.success) {
-      throw zodToValidationError(parsed.error);
-    }
-
+    const input = await parseJsonBody(c, updateWatchlistSchema);
     const user = c.get('user')!;
     const { watchlistRepo } = getDeps(c.env.DB);
     const useCase = new UpdateWatchlistItemUseCase(watchlistRepo);
-    const item = await useCase.execute(user.id, id, parsed.data);
+    const item = await useCase.execute(user.id, id, input);
 
     return c.json({ item }, 200);
   });

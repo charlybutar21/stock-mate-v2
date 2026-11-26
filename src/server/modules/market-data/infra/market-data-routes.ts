@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AuthRepository, PasswordHasher } from '@/server/modules/auth/domain/auth.types';
 import { createAuthMiddleware } from '@/server/shared/http/auth-mw';
 import { zodToValidationError } from '@/server/shared/http/problem';
+import { createRateLimitMiddleware } from '@/server/shared/http/rate-limit-mw';
 import type { AppEnv } from '@/server/shared/types';
 import type { IdxMarketDataProvider } from '../domain/market-data.types';
 
@@ -26,10 +27,16 @@ export function createMarketDataRoutes(
 ): Hono<AppEnv> {
   const router = new Hono<AppEnv>();
   const requireAuth = createAuthMiddleware(getDeps);
+  const marketDataRateLimiter = createRateLimitMiddleware({
+    maxRequests: 60,
+    windowMs: 60_000,
+    keyBy: 'userOrIp',
+    keyPrefix: 'market-data:idx',
+  });
 
   router.use('*', requireAuth);
 
-  router.get('/idx/:ticker', async (c) => {
+  router.get('/idx/:ticker', marketDataRateLimiter, async (c) => {
     const parsed = tickerParamSchema.safeParse({ ticker: c.req.param('ticker') });
     if (!parsed.success) {
       throw zodToValidationError(parsed.error);

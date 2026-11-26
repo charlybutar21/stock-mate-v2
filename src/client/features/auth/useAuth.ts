@@ -32,6 +32,7 @@ export function useLogin() {
         body: JSON.stringify(payload),
       }),
     onSuccess: (data) => {
+      queryClient.removeQueries({ queryKey: ['watchlist'] });
       queryClient.setQueryData(AUTH_QUERY_KEY, data.user);
     },
   });
@@ -46,6 +47,7 @@ export function useRegister() {
         body: JSON.stringify(payload),
       }),
     onSuccess: (data) => {
+      queryClient.removeQueries({ queryKey: ['watchlist'] });
       queryClient.setQueryData(AUTH_QUERY_KEY, data.user);
     },
   });
@@ -59,8 +61,8 @@ export function useLogout() {
         method: 'POST',
       }),
     onSuccess: () => {
+      queryClient.clear();
       queryClient.setQueryData(AUTH_QUERY_KEY, null);
-      queryClient.removeQueries({ queryKey: ['watchlist'] });
     },
   });
 }

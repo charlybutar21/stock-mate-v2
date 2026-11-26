@@ -9,11 +9,14 @@ import {
   type ValuationSummary,
 } from '../domain';
 
-const optionalNullableInt = (min?: number) => {
+export const MAX_IDX_PRICE = 100_000_000;
+export const MAX_OWNED_LOTS = 100_000_000;
+export const MAX_PER_SHARE_VALUE = 100_000_000;
+
+const optionalNullableInt = (opts?: { min?: number; max?: number }) => {
   let schema = z.number().int();
-  if (min !== undefined) {
-    schema = schema.min(min);
-  }
+  if (opts?.min !== undefined) schema = schema.min(opts.min);
+  if (opts?.max !== undefined) schema = schema.max(opts.max);
   return schema.nullable().optional();
 };
 
@@ -25,16 +28,21 @@ const optionalNullableNumber = (opts?: { min?: number; max?: number; positive?: 
   return schema.nullable().optional();
 };
 
-export const fundamentalsInputSchema = z.object({
+const sharedFundamentalsFields = {
   periodLabel: z.string().trim().max(40).nullable().optional(),
-  eps: optionalNullableInt(),
-  bvps: optionalNullableInt(),
-  dps: optionalNullableInt(0),
+  eps: optionalNullableInt({ min: -MAX_PER_SHARE_VALUE, max: MAX_PER_SHARE_VALUE }),
+  bvps: optionalNullableInt({ min: -MAX_PER_SHARE_VALUE, max: MAX_PER_SHARE_VALUE }),
+  dps: optionalNullableInt({ min: 0, max: MAX_PER_SHARE_VALUE }),
   roePct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
   der: optionalNullableNumber({ min: 0, max: 100_000 }),
   epsGrowthPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
   targetPer: optionalNullableNumber({ positive: true, max: 1000 }),
   targetPbv: optionalNullableNumber({ positive: true, max: 500 }),
+  dividendGrowthPct: optionalNullableNumber({ min: 0.0, max: 30.0 }),
+};
+
+export const fundamentalsInputSchema = z.object({
+  ...sharedFundamentalsFields,
   discountRatePct: z
     .number()
     .finite()
@@ -56,38 +64,30 @@ export const fundamentalsInputSchema = z.object({
     .max(15.0)
     .optional()
     .default(DEFAULT_TERMINAL_GROWTH_PCT),
-  dividendGrowthPct: optionalNullableNumber({ min: 0.0, max: 30.0 }),
 });
 
 export const fundamentalsPatchSchema = z.object({
-  periodLabel: z.string().trim().max(40).nullable().optional(),
-  eps: optionalNullableInt(),
-  bvps: optionalNullableInt(),
-  dps: optionalNullableInt(0),
-  roePct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
-  der: optionalNullableNumber({ min: 0, max: 100_000 }),
-  epsGrowthPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
-  targetPer: optionalNullableNumber({ positive: true, max: 1000 }),
-  targetPbv: optionalNullableNumber({ positive: true, max: 500 }),
+  ...sharedFundamentalsFields,
   discountRatePct: z.number().finite().min(1.0).max(50.0).optional(),
   projectionYears: z.number().int().min(1).max(15).optional(),
   terminalGrowthPct: z.number().finite().min(0.0).max(15.0).optional(),
-  dividendGrowthPct: optionalNullableNumber({ min: 0.0, max: 30.0 }),
 });
 
 export const holdingTrancheSchema = z.object({
-  lots: z.number().int('Lots must be >= 1').min(1),
-  buyPrice: z.number().int('Price must be >= 1').min(MIN_IDX_PRICE),
+  lots: z.number().int('Lots must be >= 1').min(1).max(MAX_OWNED_LOTS),
+  buyPrice: z.number().int('Price must be >= 1').min(MIN_IDX_PRICE).max(MAX_IDX_PRICE),
 });
 
 export type HoldingTrancheDto = z.infer<typeof holdingTrancheSchema>;
 
+const tickerSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{4}$/, 'Must be a 4-letter IDX ticker (e.g. BBCA)');
+
 export const createWatchlistSchema = z.object({
-  ticker: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z]{4}$/, 'Must be a 4-letter IDX ticker (e.g. BBCA)'),
+  ticker: tickerSchema,
   companyName: z
     .string()
     .trim()
@@ -97,29 +97,31 @@ export const createWatchlistSchema = z.object({
   currentPrice: z
     .number()
     .int('Must be an integer >= 1')
-    .min(MIN_IDX_PRICE, 'Must be an integer >= 1'),
-  ownedLots: z.number().int('Must be an integer >= 0').min(0).optional().default(0),
-  avgBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
+    .min(MIN_IDX_PRICE, 'Must be an integer >= 1')
+    .max(MAX_IDX_PRICE, `Must be at most ${MAX_IDX_PRICE}`),
+  ownedLots: z
+    .number()
+    .int('Must be an integer >= 0')
+    .min(0)
+    .max(MAX_OWNED_LOTS)
+    .optional()
+    .default(0),
+  avgBuyPrice: optionalNullableInt({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
   holdingTranches: z.array(holdingTrancheSchema).max(20).optional(),
-  targetBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
+  targetBuyPrice: optionalNullableInt({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
   investmentThesis: z.string().trim().max(2000).nullable().optional(),
   fundamentals: fundamentalsInputSchema.optional(),
 });
 
 export const updateWatchlistSchema = z.object({
-  ticker: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z]{4}$/, 'Must be a 4-letter IDX ticker (e.g. BBCA)')
-    .optional(),
+  ticker: tickerSchema.optional(),
   companyName: z.string().trim().min(1).max(120).optional(),
   sector: z.enum(IDX_SECTORS).optional(),
-  currentPrice: z.number().int().min(MIN_IDX_PRICE).optional(),
-  ownedLots: z.number().int().min(0).optional(),
-  avgBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
+  currentPrice: z.number().int().min(MIN_IDX_PRICE).max(MAX_IDX_PRICE).optional(),
+  ownedLots: z.number().int().min(0).max(MAX_OWNED_LOTS).optional(),
+  avgBuyPrice: optionalNullableInt({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
   holdingTranches: z.array(holdingTrancheSchema).max(20).optional(),
-  targetBuyPrice: optionalNullableInt(MIN_IDX_PRICE),
+  targetBuyPrice: optionalNullableInt({ min: MIN_IDX_PRICE, max: MAX_IDX_PRICE }),
   investmentThesis: z.string().trim().max(2000).nullable().optional(),
   fundamentals: fundamentalsPatchSchema.optional(),
 });

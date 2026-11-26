@@ -4,6 +4,7 @@ import { csrf } from 'hono/csrf';
 import { HTTPException } from 'hono/http-exception';
 import { secureHeaders } from 'hono/secure-headers';
 import * as schema from './shared/db/schema';
+import { MAX_JSON_BODY_BYTES } from './shared/http/json-body';
 import {
   AppError,
   forbiddenError,
@@ -29,11 +30,19 @@ import { YahooFinanceIdxProvider } from './modules/market-data/infra/yahoo-finan
 import { createMarketDataRoutes } from './modules/market-data/infra/market-data-routes';
 
 const SAFE_CORRELATION_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
-const MAX_JSON_BODY_BYTES = 64 * 1024; // 64 KB
 const JSON_BODY_FREE_POST_PATHS = new Set([
   '/api/v1/auth/logout',
   '/api/v1/watchlist/sync-all',
 ]);
+
+function extractOriginFromReferer(referer: string | undefined): string | null {
+  if (!referer) return null;
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return null;
+  }
+}
 
 export function createApp(options?: {
   marketDataProvider?: IdxMarketDataProvider;
@@ -91,12 +100,19 @@ export function createApp(options?: {
     });
   });
 
-  // 2. Hardened Security Headers (CSP, X-Frame-Options: DENY, nosniff, Referrer-Policy)
+  // 2. Hardened Security Headers (HSTS, CSP, X-Frame-Options: DENY, nosniff, Permissions-Policy)
   app.use(
     '/api/*',
     secureHeaders({
       xFrameOptions: 'DENY',
       referrerPolicy: 'strict-origin-when-cross-origin',
+      strictTransportSecurity: 'max-age=31536000; includeSubDomains',
+      permissionsPolicy: {
+        camera: [],
+        microphone: [],
+        geolocation: [],
+        payment: [],
+      },
       contentSecurityPolicy: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
@@ -112,7 +128,7 @@ export function createApp(options?: {
     }),
   );
 
-  // 3. Defense-in-Depth Same-Origin CSRF, Fetch Metadata, Body Size & Content-Type Guard
+  // 3. Defense-in-Depth Same-Origin CSRF (Origin + Referer + Fetch Metadata), Size & Media-Type Guard
   app.use('/api/*', async (c, next) => {
     const method = c.req.method.toUpperCase();
     const isMutating =
@@ -121,10 +137,14 @@ export function createApp(options?: {
     if (isMutating) {
       const expectedOrigin = new URL(c.req.url).origin;
       const originHeader = c.req.header('origin');
+      const refererOrigin = extractOriginFromReferer(c.req.header('referer'));
       const fetchSite = c.req.header('sec-fetch-site')?.toLowerCase();
 
       if (originHeader && originHeader !== expectedOrigin) {
         throw forbiddenError('Cross-origin state-changing request blocked by CSRF policy.');
+      }
+      if (!originHeader && refererOrigin && refererOrigin !== expectedOrigin) {
+        throw forbiddenError('Cross-origin referer blocked by CSRF policy.');
       }
       if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') {
         throw forbiddenError('Cross-site request blocked by Fetch Metadata policy.');

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { loginRequestSchema, registerRequestSchema } from '@/shared/contracts';
 import {
@@ -8,13 +8,30 @@ import {
   SESSION_TTL_SECONDS,
 } from '../application/auth-use-cases';
 import type { AuthRepository, PasswordHasher } from '../domain/auth.types';
-import { createAuthMiddleware, SESSION_COOKIE_NAME } from '@/server/shared/http/auth-mw';
-import { validationError, zodToValidationError } from '@/server/shared/http/problem';
+import {
+  createAuthMiddleware,
+  isValidSessionTokenFormat,
+  SESSION_COOKIE_NAME,
+} from '@/server/shared/http/auth-mw';
+import { parseJsonBody } from '@/server/shared/http/json-body';
 import { createRateLimitMiddleware } from '@/server/shared/http/rate-limit-mw';
 import type { AppEnv } from '@/server/shared/types';
 
-function isSecureRequest(url: string): boolean {
-  return url.startsWith('https://');
+function isSecureRequest(c: Context<AppEnv>): boolean {
+  return (
+    c.req.url.startsWith('https://') ||
+    c.req.header('x-forwarded-proto')?.toLowerCase() === 'https'
+  );
+}
+
+function setSessionCookie(c: Context<AppEnv>, rawSessionToken: string): void {
+  setCookie(c, SESSION_COOKIE_NAME, rawSessionToken, {
+    httpOnly: true,
+    secure: isSecureRequest(c),
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: SESSION_TTL_SECONDS,
+  });
 }
 
 export function createAuthRoutes(
@@ -29,68 +46,32 @@ export function createAuthRoutes(
   });
 
   router.post('/register', authRateLimiter, async (c) => {
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      throw validationError('Request body must be valid JSON.');
-    }
-
-    const parsed = registerRequestSchema.safeParse(rawBody);
-    if (!parsed.success) {
-      throw zodToValidationError(parsed.error);
-    }
-
+    const input = await parseJsonBody(c, registerRequestSchema);
     const { authRepo, hasher } = getDeps(c.env.DB);
     const priorRawCookie = getCookie(c, SESSION_COOKIE_NAME);
-    const priorTokenHash = priorRawCookie
+    const priorTokenHash = isValidSessionTokenFormat(priorRawCookie)
       ? await hasher.hashToken(priorRawCookie)
       : undefined;
 
     const useCase = new RegisterUseCase(authRepo, hasher);
-    const { user, rawSessionToken } = await useCase.execute(parsed.data, priorTokenHash);
+    const { user, rawSessionToken } = await useCase.execute(input, priorTokenHash);
 
-    setCookie(c, SESSION_COOKIE_NAME, rawSessionToken, {
-      httpOnly: true,
-      secure: isSecureRequest(c.req.url),
-      sameSite: 'Lax',
-      path: '/',
-      maxAge: SESSION_TTL_SECONDS,
-    });
-
+    setSessionCookie(c, rawSessionToken);
     return c.json({ user }, 201);
   });
 
   router.post('/login', authRateLimiter, async (c) => {
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      throw validationError('Request body must be valid JSON.');
-    }
-
-    const parsed = loginRequestSchema.safeParse(rawBody);
-    if (!parsed.success) {
-      throw zodToValidationError(parsed.error);
-    }
-
+    const input = await parseJsonBody(c, loginRequestSchema);
     const { authRepo, hasher } = getDeps(c.env.DB);
     const priorRawCookie = getCookie(c, SESSION_COOKIE_NAME);
-    const priorTokenHash = priorRawCookie
+    const priorTokenHash = isValidSessionTokenFormat(priorRawCookie)
       ? await hasher.hashToken(priorRawCookie)
       : undefined;
 
     const useCase = new LoginUseCase(authRepo, hasher);
-    const { user, rawSessionToken } = await useCase.execute(parsed.data, priorTokenHash);
+    const { user, rawSessionToken } = await useCase.execute(input, priorTokenHash);
 
-    setCookie(c, SESSION_COOKIE_NAME, rawSessionToken, {
-      httpOnly: true,
-      secure: isSecureRequest(c.req.url),
-      sameSite: 'Lax',
-      path: '/',
-      maxAge: SESSION_TTL_SECONDS,
-    });
-
+    setSessionCookie(c, rawSessionToken);
     return c.json({ user }, 200);
   });
 
@@ -104,7 +85,7 @@ export function createAuthRoutes(
 
     deleteCookie(c, SESSION_COOKIE_NAME, {
       httpOnly: true,
-      secure: isSecureRequest(c.req.url),
+      secure: isSecureRequest(c),
       sameSite: 'Lax',
       path: '/',
     });

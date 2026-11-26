@@ -1,5 +1,6 @@
 import type { IdxMarketQuoteDto } from '@/shared/contracts';
 import { MIN_IDX_PRICE, round2 } from '@/shared/domain';
+import { BoundedTtlCache } from '@/server/shared/cache/bounded-ttl-cache';
 import { AppError, notFoundError } from '@/server/shared/http/problem';
 import {
   mapYahooSectorToIdx,
@@ -8,13 +9,9 @@ import {
 } from '../domain/market-data.types';
 
 const QUOTE_CACHE_TTL_MS = 15 * 60 * 1000;
+const UPSTREAM_TIMEOUT_MS = 8_000;
 
-interface CachedQuote {
-  data: IdxMarketQuoteDto;
-  expiresAt: number;
-}
-
-const sectorsQuoteCache = new Map<string, CachedQuote>();
+const sectorsQuoteCache = new BoundedTtlCache<string, IdxMarketQuoteDto>(QUOTE_CACHE_TTL_MS, 500);
 
 interface SectorsHistoricalValuationRow {
   year?: number;
@@ -231,9 +228,9 @@ export class SectorsIdxProvider implements IdxMarketDataProvider {
     const cleanTicker = ticker.trim().toUpperCase();
     const now = Date.now();
 
-    const cached = sectorsQuoteCache.get(cleanTicker);
-    if (cached && cached.expiresAt > now) {
-      return cached.data;
+    const cached = sectorsQuoteCache.get(cleanTicker, now);
+    if (cached) {
+      return cached;
     }
 
     const url = `https://api.sectors.app/v1/company/report/${encodeURIComponent(cleanTicker)}/?sections=overview,valuation,financials,dividend`;
@@ -242,6 +239,7 @@ export class SectorsIdxProvider implements IdxMarketDataProvider {
         Authorization: this.apiKey,
         Accept: 'application/json',
       },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
 
     if (res.status === 404) {
@@ -260,10 +258,7 @@ export class SectorsIdxProvider implements IdxMarketDataProvider {
     const payload = (await res.json()) as SectorsCompanyReportResponse;
     const dto = parseSectorsReportToDto(cleanTicker, payload, now);
 
-    sectorsQuoteCache.set(cleanTicker, {
-      data: dto,
-      expiresAt: now + QUOTE_CACHE_TTL_MS,
-    });
+    sectorsQuoteCache.set(cleanTicker, dto, now);
 
     return dto;
   }
