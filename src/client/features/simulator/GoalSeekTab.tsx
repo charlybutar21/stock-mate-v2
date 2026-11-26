@@ -131,31 +131,43 @@ export function GoalSeekTab({
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 animate-fade-up">
-            <Card variant="highlight" className="border-t-2 border-t-brand-600 p-5">
+            <Card variant="highlight" className="border-t-2 border-t-brand-600 p-4">
               <div className="text-xs font-medium text-brand-700">{t.simulator.lotsNeeded}</div>
-              <div className="mt-1 font-mono text-3xl font-bold text-brand-900 tabular-nums">
+              <div className="mt-1.5 font-mono text-2xl font-bold text-brand-900 tabular-nums whitespace-nowrap xl:text-3xl">
                 {formatNumber(result.lotsNeeded)}
               </div>
-              <div className="mt-1 font-mono text-xs text-brand-700/90 tabular-nums">
+              <div className="mt-1 font-mono text-xs text-brand-700/90 tabular-nums whitespace-nowrap">
                 {formatNumber(result.sharesNeeded)} {t.common.shares}
               </div>
             </Card>
 
-            <Card variant="display" className="p-5">
+            <Card variant="display" className="p-4">
               <div className="text-xs text-muted">{t.simulator.resultingPureAvg}</div>
-              <div className="mt-1 font-mono text-2xl font-bold text-ink tabular-nums">
+              <div className="mt-1.5 font-mono text-lg font-bold text-ink tabular-nums whitespace-nowrap xl:text-xl">
                 {formatIdr(result.resultingPureAvg, true)}
               </div>
             </Card>
 
-            <Card variant="display" className="p-5">
+            <Card variant="display" className="p-4">
               <div className="text-xs text-muted">{t.simulator.cashRequired}</div>
-              <div className="mt-1 font-mono text-xl font-bold text-ink tabular-nums">
+              <div className="mt-1.5 font-mono text-lg font-bold text-ink tabular-nums whitespace-nowrap xl:text-xl">
                 {formatIdr(result.totalCashRequired)}
               </div>
-              <div className="mt-1 font-mono text-[11px] text-muted tabular-nums">
-                Fee: {formatIdr(result.cashBuyFee)}
-                {result.cashStampDuty > 0 ? ` + Materai ${formatIdr(result.cashStampDuty)}` : ''}
+              <div className="mt-2 space-y-0.5 border-t border-border/70 pt-2 text-[11px] text-muted">
+                <div className="flex items-center justify-between gap-2">
+                  <span>{t.simulator.buyFeeLabel}</span>
+                  <span className="font-mono font-medium text-ink tabular-nums whitespace-nowrap">
+                    {formatIdr(result.cashBuyFee)}
+                  </span>
+                </div>
+                {result.cashStampDuty > 0 && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{t.simulator.stampDutyLabel}</span>
+                    <span className="font-mono font-medium text-ink tabular-nums whitespace-nowrap">
+                      {formatIdr(result.cashStampDuty)}
+                    </span>
+                  </div>
+                )}
               </div>
             </Card>
           </div>

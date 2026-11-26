@@ -14,7 +14,7 @@ export function formatIdr(value: number | null | undefined, showDecimals = false
     minimumFractionDigits: showDecimals ? 2 : 0,
     maximumFractionDigits: showDecimals ? 2 : 0,
   }).format(abs);
-  return `${value < 0 ? '-' : ''}Rp ${formatted}`;
+  return `${value < 0 ? '-' : ''}Rp\u00A0${formatted}`;
 }
 
 export function formatNumber(value: number | null | undefined, decimals = 0): string {

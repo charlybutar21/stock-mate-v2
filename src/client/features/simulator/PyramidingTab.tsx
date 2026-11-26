@@ -222,11 +222,14 @@ export function PyramidingTab({
                 <div className="text-xs text-muted">
                   {t.simulator.pyramiding.totalDeployed}
                 </div>
-                <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
+                <div className="mt-1.5 font-mono text-lg font-bold text-ink tabular-nums whitespace-nowrap xl:text-xl">
                   {formatIdr(result.totalCashUsed)}
                 </div>
-                <div className="mt-0.5 font-mono text-[11px] text-muted tabular-nums">
-                  {t.simulator.pyramiding.idleCash}: {formatIdr(result.remainingIdleCash)}
+                <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-border/70 pt-1.5 text-[11px] text-muted">
+                  <span>{t.simulator.pyramiding.idleCash}</span>
+                  <span className="font-mono font-medium text-ink tabular-nums whitespace-nowrap">
+                    {formatIdr(result.remainingIdleCash)}
+                  </span>
                 </div>
               </Card>
 
@@ -237,11 +240,14 @@ export function PyramidingTab({
                     definition={t.glossary.realBepTick}
                   />
                 </div>
-                <div className="mt-1.5 font-mono text-xl font-bold text-brand-900 tabular-nums">
+                <div className="mt-1.5 font-mono text-lg font-bold text-brand-900 tabular-nums whitespace-nowrap xl:text-xl">
                   {formatIdr(result.simulation.bepIdxTick)}
                 </div>
-                <div className="mt-0.5 font-mono text-[11px] text-brand-700/90 tabular-nums">
-                  {t.simulator.pureAvg}: {formatIdr(result.simulation.pureAvgPrice, true)}
+                <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-brand-600/20 pt-1.5 text-[11px] text-brand-700/90">
+                  <span>{t.simulator.pureAvg}</span>
+                  <span className="font-mono font-semibold tabular-nums whitespace-nowrap">
+                    {formatIdr(result.simulation.pureAvgPrice, true)}
+                  </span>
                 </div>
               </Card>
 
@@ -253,16 +259,18 @@ export function PyramidingTab({
                   />
                 </div>
                 <div
-                  className={`mt-1.5 font-mono text-xl font-bold tabular-nums ${
+                  className={`mt-1.5 font-mono text-lg font-bold tabular-nums whitespace-nowrap xl:text-xl ${
                     result.simulation.netPnL >= 0 ? 'text-positive-600' : 'text-negative-600'
                   }`}
                 >
                   {result.simulation.netPnL >= 0 ? '+' : ''}
                   {formatIdr(result.simulation.netPnL)}
                 </div>
-                <div className="mt-0.5 font-mono text-xs font-semibold text-muted tabular-nums">
-                  {formatPercent(result.simulation.netPnLPct, true)} ·{' '}
-                  {formatNumber(result.simulation.totalLots)} {t.common.lots}
+                <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-border/70 pt-1.5 font-mono text-[11px] font-semibold text-muted tabular-nums whitespace-nowrap">
+                  <span>{formatPercent(result.simulation.netPnLPct, true)}</span>
+                  <span>
+                    {formatNumber(result.simulation.totalLots)} {t.common.lots}
+                  </span>
                 </div>
               </Card>
             </div>
@@ -272,16 +280,22 @@ export function PyramidingTab({
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="border-b border-border bg-subtle/70 font-semibold text-muted">
-                      <th className="py-3 pr-2 pl-4">{t.simulator.pyramiding.stageCol}</th>
-                      <th className="px-2 py-3 text-right">{t.simulator.pyramiding.weightCol}</th>
-                      <th className="px-2 py-3 text-right">
+                      <th className="py-3 pr-2 pl-4 whitespace-nowrap">
+                        {t.simulator.pyramiding.stageCol}
+                      </th>
+                      <th className="px-2 py-3 text-right whitespace-nowrap">
+                        {t.simulator.pyramiding.weightCol}
+                      </th>
+                      <th className="px-2 py-3 text-right whitespace-nowrap">
                         {t.simulator.pyramiding.triggerPriceCol}
                       </th>
-                      <th className="px-2 py-3 text-right">{t.simulator.pyramiding.lotsCol}</th>
-                      <th className="px-2 py-3 text-right">
+                      <th className="px-2 py-3 text-right whitespace-nowrap">
+                        {t.simulator.pyramiding.lotsCol}
+                      </th>
+                      <th className="px-2 py-3 text-right whitespace-nowrap">
                         {t.simulator.pyramiding.cashUsedCol}
                       </th>
-                      <th className="py-3 pr-4 pl-2 text-right">
+                      <th className="py-3 pr-4 pl-2 text-right whitespace-nowrap">
                         {t.simulator.pyramiding.cumAvgCol}
                       </th>
                     </tr>
@@ -289,22 +303,22 @@ export function PyramidingTab({
                   <tbody className="divide-y divide-border/80 bg-panel/60 font-mono tabular-nums">
                     {result.stages.map((st) => (
                       <tr key={st.stageNumber} className="hover:bg-brand-50/35">
-                        <td className="py-3 pr-2 pl-4 font-sans font-semibold text-ink">
+                        <td className="py-3 pr-2 pl-4 font-sans font-semibold text-ink whitespace-nowrap">
                           #{st.stageNumber}
                         </td>
-                        <td className="px-2 py-3 text-right">
+                        <td className="px-2 py-3 text-right whitespace-nowrap">
                           <Badge tone="info">{st.allocationWeightPct}%</Badge>
                         </td>
-                        <td className="px-2 py-3 text-right font-bold text-brand-700">
+                        <td className="px-2 py-3 text-right font-bold text-brand-700 whitespace-nowrap">
                           {formatIdr(st.triggerPrice)}
                         </td>
-                        <td className="px-2 py-3 text-right font-bold text-ink">
+                        <td className="px-2 py-3 text-right font-bold text-ink whitespace-nowrap">
                           {formatNumber(st.lots)} {t.common.lots}
                         </td>
-                        <td className="px-2 py-3 text-right text-ink">
+                        <td className="px-2 py-3 text-right text-ink whitespace-nowrap">
                           {formatIdr(st.cashUsed)}
                         </td>
-                        <td className="py-3 pr-4 pl-2 text-right font-semibold text-ink">
+                        <td className="py-3 pr-4 pl-2 text-right font-semibold text-ink whitespace-nowrap">
                           {st.cumulativePureAvg > 0
                             ? formatIdr(st.cumulativePureAvg, true)
                             : '-'}

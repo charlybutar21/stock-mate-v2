@@ -185,10 +185,10 @@ export function SimulatorPage() {
               <Badge tone="neutral">{t.sectors[linkedStock.sector]}</Badge>
             </div>
 
-            <div className="grid flex-1 grid-cols-3 gap-2.5 p-4">
+            <div className="grid flex-1 grid-cols-1 gap-2.5 p-4 sm:grid-cols-3">
               <div className="flex flex-col justify-center rounded-lg border border-border bg-panel/70 px-3 py-2.5">
                 <div className="text-[11px] text-muted">{t.simulator.linkedPrice}</div>
-                <div className="mt-0.5 font-mono text-sm font-bold text-ink tabular-nums">
+                <div className="mt-0.5 font-mono text-sm font-bold text-ink tabular-nums whitespace-nowrap">
                   {formatIdr(linkedStock.currentPrice)}
                 </div>
               </div>
@@ -199,7 +199,7 @@ export function SimulatorPage() {
                     definition={t.glossary.fairValueMedian}
                   />
                 </div>
-                <div className="mt-0.5 font-mono text-sm font-bold text-brand-900 tabular-nums">
+                <div className="mt-0.5 font-mono text-sm font-bold text-brand-900 tabular-nums whitespace-nowrap">
                   {formatIdr(linkedStock.valuation.fairValue.moderate)}
                 </div>
               </div>
@@ -211,7 +211,7 @@ export function SimulatorPage() {
                   />
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                  <span className="font-mono text-sm font-bold text-ink tabular-nums">
+                  <span className="font-mono text-sm font-bold text-ink tabular-nums whitespace-nowrap">
                     {formatPercent(linkedStock.valuation.mosPct, true)}
                   </span>
                   <Badge tone={statusTone(linkedStock.valuation.valuationStatus)}>

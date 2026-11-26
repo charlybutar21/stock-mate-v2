@@ -213,13 +213,13 @@ function WatchlistTable({
 
                 {/* Current Price */}
                 <td
-                  className={`px-3 py-3.5 text-right align-middle font-mono text-sm font-bold tabular-nums ${priceColor}`}
+                  className={`px-3 py-3.5 text-right align-middle font-mono text-sm font-bold tabular-nums whitespace-nowrap ${priceColor}`}
                 >
                   {formatIdr(item.currentPrice)}
                 </td>
 
                 {/* Moderate Fair Value */}
-                <td className="px-3 py-3.5 text-right align-middle font-mono text-sm font-semibold text-ink tabular-nums">
+                <td className="px-3 py-3.5 text-right align-middle font-mono text-sm font-semibold text-ink tabular-nums whitespace-nowrap">
                   {formatIdr(item.valuation.fairValue.moderate)}
                 </td>
 

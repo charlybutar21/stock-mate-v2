@@ -10,10 +10,10 @@ import {
 
 describe('Stockbit-standard formatters and price input parsing', () => {
   it('formats IDR, numbers, percentages, and multiples in Stockbit format (comma thousands, dot decimals)', () => {
-    expect(formatIdr(4825)).toBe('Rp 4,825');
-    expect(formatIdr(4825.67, true)).toBe('Rp 4,825.67');
-    expect(formatIdr(-947500)).toBe('-Rp 947,500');
-    expect(formatIdr(10_962_500)).toBe('Rp 10,962,500');
+    expect(formatIdr(4825)).toBe('Rp\u00A04,825');
+    expect(formatIdr(4825.67, true)).toBe('Rp\u00A04,825.67');
+    expect(formatIdr(-947500)).toBe('-Rp\u00A0947,500');
+    expect(formatIdr(10_962_500)).toBe('Rp\u00A010,962,500');
     expect(formatIdr(null)).toBe('-');
 
     expect(formatNumber(4825.67, 2)).toBe('4,825.67');

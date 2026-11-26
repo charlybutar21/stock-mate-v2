@@ -274,7 +274,7 @@ export function ForwardTab({
                 <div className="text-xs text-muted">
                   <TermTooltip label={t.simulator.pureAvg} definition={t.glossary.pureAvg} />
                 </div>
-                <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
+                <div className="mt-1.5 font-mono text-lg font-bold text-ink tabular-nums whitespace-nowrap xl:text-xl">
                   {formatIdr(result.pureAvgPrice, true)}
                 </div>
               </Card>
@@ -285,7 +285,7 @@ export function ForwardTab({
                     definition={t.glossary.effectiveAvg}
                   />
                 </div>
-                <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
+                <div className="mt-1.5 font-mono text-lg font-bold text-ink tabular-nums whitespace-nowrap xl:text-xl">
                   {formatIdr(result.effectiveAvgPrice, true)}
                 </div>
               </Card>
@@ -296,68 +296,96 @@ export function ForwardTab({
                     definition={t.glossary.realBepTick}
                   />
                 </div>
-                <div className="mt-1.5 font-mono text-xl font-bold text-brand-900 tabular-nums">
+                <div className="mt-1.5 font-mono text-lg font-bold text-brand-900 tabular-nums whitespace-nowrap xl:text-xl">
                   {formatIdr(result.bepIdxTick)}
                 </div>
-                <div className="mt-0.5 font-mono text-[11px] text-brand-700/90 tabular-nums">
-                  {t.simulator.bepRawHint}: {formatIdr(result.bepRaw, true)}
+                <div className="mt-1 flex flex-wrap items-baseline justify-between gap-1 text-[11px] text-brand-700/90">
+                  <span>{t.simulator.bepRawHint}</span>
+                  <span className="font-mono font-semibold tabular-nums whitespace-nowrap">
+                    {formatIdr(result.bepRaw, true)}
+                  </span>
                 </div>
               </Card>
             </div>
 
             {/* Net P/L & Capital Summary (Display Card) */}
             <Card variant="display" className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
                 <div>
                   <div className="text-xs text-muted">
                     <TermTooltip label={t.simulator.netPnL} definition={t.glossary.netPnL} />
                   </div>
                   <div
-                    className={`mt-0.5 font-mono text-2xl font-bold tabular-nums ${
+                    className={`mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono text-2xl font-bold tabular-nums ${
                       result.netPnL >= 0 ? 'text-positive-600' : 'text-negative-600'
                     }`}
                   >
-                    {result.netPnL >= 0 ? '+' : ''}
-                    {formatIdr(result.netPnL)}{' '}
-                    <span className="text-base font-semibold">
+                    <span className="whitespace-nowrap">
+                      {result.netPnL >= 0 ? '+' : ''}
+                      {formatIdr(result.netPnL)}
+                    </span>
+                    <span className="text-base font-semibold whitespace-nowrap">
                       ({formatPercent(result.netPnLPct, true)})
                     </span>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="sm:text-right">
                   <div className="text-xs text-muted">{t.simulator.totalLots}</div>
-                  <div className="font-mono text-base font-semibold text-ink tabular-nums">
-                    {formatNumber(result.totalLots)} {t.common.lots} (
-                    {formatNumber(result.totalShares)} {t.common.shares})
+                  <div className="mt-0.5 font-mono text-base font-semibold text-ink tabular-nums whitespace-nowrap">
+                    {formatNumber(result.totalLots)} {t.common.lots}
+                  </div>
+                  <div className="font-mono text-xs text-muted tabular-nums whitespace-nowrap">
+                    {formatNumber(result.totalShares)} {t.common.shares}
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                <div className="flex items-center justify-between rounded-lg border border-border/70 bg-panel/70 px-3 py-2">
-                  <span className="text-xs text-muted">{t.simulator.plannedCash}</span>
-                  <span className="font-mono font-semibold text-ink tabular-nums">
+              {/* Capital & Proceeds 3-Column Summary */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-border/70 bg-panel/70 px-3.5 py-2.5">
+                  <div className="text-[11px] font-medium text-muted">{t.simulator.plannedCash}</div>
+                  <div className="mt-1 font-mono text-sm font-bold text-ink tabular-nums whitespace-nowrap">
                     {formatIdr(result.plannedCashRequired)}
-                  </span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-border/70 bg-panel/70 px-3 py-2">
-                  <span className="text-xs text-muted">{t.simulator.totalCapital}</span>
-                  <span className="font-mono font-semibold text-ink tabular-nums">
+                <div className="rounded-lg border border-border/70 bg-panel/70 px-3.5 py-2.5">
+                  <div className="text-[11px] font-medium text-muted">{t.simulator.totalCapital}</div>
+                  <div className="mt-1 font-mono text-sm font-bold text-ink tabular-nums whitespace-nowrap">
                     {formatIdr(result.totalCost)}
-                  </span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-border/70 bg-panel/70 px-3 py-2">
-                  <span className="text-xs text-muted">{t.simulator.netProceeds}</span>
-                  <span className="font-mono font-semibold text-ink tabular-nums">
+                <div className="rounded-lg border border-border/70 bg-panel/70 px-3.5 py-2.5">
+                  <div className="text-[11px] font-medium text-muted">{t.simulator.netProceeds}</div>
+                  <div className="mt-1 font-mono text-sm font-bold text-ink tabular-nums whitespace-nowrap">
                     {formatIdr(result.netProceeds)}
-                  </span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-border/70 bg-panel/70 px-3 py-2">
-                  <span className="text-xs text-muted">{t.simulator.feesBreakdown}</span>
-                  <span className="font-mono text-xs font-medium text-ink tabular-nums">
-                    {formatIdr(result.totalBuyFee)} / {formatIdr(result.sellFee)} /{' '}
-                    {formatIdr(result.stampDutyBuy + result.stampDutySell)}
-                  </span>
+              </div>
+
+              {/* Clean 3-Column Transaction Fee Breakdown */}
+              <div className="rounded-lg border border-border/70 bg-panel/70 px-3.5 py-3">
+                <div className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">
+                  {t.simulator.feesBreakdown}
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:divide-x sm:divide-border/70">
+                  <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start sm:gap-0.5 sm:pr-3">
+                    <span className="text-xs text-muted">{t.simulator.buyFeeLabel}</span>
+                    <span className="font-mono text-sm font-semibold text-ink tabular-nums whitespace-nowrap">
+                      {formatIdr(result.totalBuyFee)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start sm:gap-0.5 sm:px-3">
+                    <span className="text-xs text-muted">{t.simulator.sellFeeLabel}</span>
+                    <span className="font-mono text-sm font-semibold text-ink tabular-nums whitespace-nowrap">
+                      {formatIdr(result.sellFee)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start sm:gap-0.5 sm:pl-3">
+                    <span className="text-xs text-muted">{t.simulator.stampDutyLabel}</span>
+                    <span className="font-mono text-sm font-semibold text-ink tabular-nums whitespace-nowrap">
+                      {formatIdr(result.stampDutyBuy + result.stampDutySell)}
+                    </span>
+                  </div>
                 </div>
               </div>
 

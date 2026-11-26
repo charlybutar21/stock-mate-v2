@@ -267,7 +267,7 @@ export function TakeProfitTab({
                   {t.simulator.takeProfit.totalRealizedPnL}
                 </div>
                 <div
-                  className={`mt-1.5 font-mono text-xl font-bold tabular-nums ${
+                  className={`mt-1.5 font-mono text-lg font-bold tabular-nums whitespace-nowrap xl:text-xl ${
                     result.totalRealizedNetPnL >= 0
                       ? 'text-positive-600'
                       : 'text-negative-600'
@@ -276,7 +276,7 @@ export function TakeProfitTab({
                   {result.totalRealizedNetPnL >= 0 ? '+' : ''}
                   {formatIdr(result.totalRealizedNetPnL)}
                 </div>
-                <div className="mt-0.5 font-mono text-xs font-semibold text-brand-900/80 tabular-nums">
+                <div className="mt-1 font-mono text-xs font-semibold text-brand-900/80 tabular-nums whitespace-nowrap">
                   {formatPercent(result.totalRealizedPnLPct, true)}
                 </div>
               </Card>
@@ -285,12 +285,15 @@ export function TakeProfitTab({
                 <div className="text-xs text-muted">
                   {t.simulator.takeProfit.totalNetProceeds}
                 </div>
-                <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
+                <div className="mt-1.5 font-mono text-lg font-bold text-ink tabular-nums whitespace-nowrap xl:text-xl">
                   {formatIdr(result.totalNetProceeds)}
                 </div>
-                <div className="mt-0.5 font-mono text-[11px] text-muted tabular-nums">
-                  {formatNumber(result.totalLotsSold)} / {formatNumber(result.totalOwnedLots)}{' '}
-                  {t.common.lots}
+                <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-border/70 pt-1.5 text-[11px] text-muted">
+                  <span>{t.simulator.takeProfit.lotsSoldSummary}</span>
+                  <span className="font-mono font-medium text-ink tabular-nums whitespace-nowrap">
+                    {formatNumber(result.totalLotsSold)} / {formatNumber(result.totalOwnedLots)}{' '}
+                    {t.common.lots}
+                  </span>
                 </div>
               </Card>
 
@@ -298,12 +301,14 @@ export function TakeProfitTab({
                 <div className="text-xs text-muted">
                   {t.simulator.takeProfit.remainingLotsLabel}
                 </div>
-                <div className="mt-1.5 font-mono text-xl font-bold text-ink tabular-nums">
+                <div className="mt-1.5 font-mono text-lg font-bold text-ink tabular-nums whitespace-nowrap xl:text-xl">
                   {formatNumber(result.remainingLots)} {t.common.lots}
                 </div>
-                <div className="mt-0.5 font-mono text-[11px] text-muted tabular-nums">
-                  {t.simulator.takeProfit.effectiveRemainingCostLabel}:{' '}
-                  {formatIdr(result.remainingEffectiveCostPerShare)}
+                <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-border/70 pt-1.5 text-[11px] text-muted">
+                  <span>{t.simulator.takeProfit.effectiveRemainingCostLabel}</span>
+                  <span className="font-mono font-medium text-ink tabular-nums whitespace-nowrap">
+                    {formatIdr(result.remainingEffectiveCostPerShare)}
+                  </span>
                 </div>
               </Card>
             </div>
@@ -313,17 +318,19 @@ export function TakeProfitTab({
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="border-b border-border bg-subtle/70 font-semibold text-muted">
-                      <th className="py-3 pr-2 pl-4">{t.simulator.takeProfit.rungCol}</th>
-                      <th className="px-2 py-3 text-right">
+                      <th className="py-3 pr-2 pl-4 whitespace-nowrap">
+                        {t.simulator.takeProfit.rungCol}
+                      </th>
+                      <th className="px-2 py-3 text-right whitespace-nowrap">
                         {t.simulator.takeProfit.lotsShareCol}
                       </th>
-                      <th className="px-2 py-3 text-right">
+                      <th className="px-2 py-3 text-right whitespace-nowrap">
                         {t.simulator.takeProfit.targetPriceCol}
                       </th>
-                      <th className="px-2 py-3 text-right">
+                      <th className="px-2 py-3 text-right whitespace-nowrap">
                         {t.simulator.takeProfit.netProceedsCol}
                       </th>
-                      <th className="py-3 pr-4 pl-2 text-right">
+                      <th className="py-3 pr-4 pl-2 text-right whitespace-nowrap">
                         {t.simulator.takeProfit.realizedProfitCol}
                       </th>
                     </tr>
@@ -331,35 +338,37 @@ export function TakeProfitTab({
                   <tbody className="divide-y divide-border/80 bg-panel/60 font-mono tabular-nums">
                     {result.rungs.map((r) => (
                       <tr key={r.rungNumber} className="hover:bg-brand-50/35">
-                        <td className="py-3 pr-2 pl-4 font-sans font-semibold text-ink">
+                        <td className="py-3 pr-2 pl-4 font-sans font-semibold text-ink whitespace-nowrap">
                           #{r.rungNumber}
                         </td>
-                        <td className="px-2 py-3 text-right">
+                        <td className="px-2 py-3 text-right whitespace-nowrap">
                           <span className="font-bold text-ink">
                             {formatNumber(r.lotsSold)} {t.common.lots}
                           </span>{' '}
                           <span className="text-muted">({formatPercent(r.sellPctOfTotal)})</span>
                         </td>
-                        <td className="px-2 py-3 text-right font-bold text-brand-700">
+                        <td className="px-2 py-3 text-right font-bold text-brand-700 whitespace-nowrap">
                           {formatIdr(r.targetSellPrice)}
                         </td>
-                        <td className="px-2 py-3 text-right text-ink">
+                        <td className="px-2 py-3 text-right text-ink whitespace-nowrap">
                           {formatIdr(r.netProceeds)}
                         </td>
-                        <td className="py-3 pr-4 pl-2 text-right">
-                          <span
-                            className={`font-bold ${
-                              r.realizedNetPnL >= 0
-                                ? 'text-positive-600'
-                                : 'text-negative-600'
-                            }`}
-                          >
-                            {r.realizedNetPnL >= 0 ? '+' : ''}
-                            {formatIdr(r.realizedNetPnL)}
-                          </span>{' '}
-                          <Badge tone={r.realizedPnLPct >= 0 ? 'positive' : 'negative'}>
-                            {formatPercent(r.realizedPnLPct, true)}
-                          </Badge>
+                        <td className="py-3 pr-4 pl-2 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            <span
+                              className={`font-bold ${
+                                r.realizedNetPnL >= 0
+                                  ? 'text-positive-600'
+                                  : 'text-negative-600'
+                              }`}
+                            >
+                              {r.realizedNetPnL >= 0 ? '+' : ''}
+                              {formatIdr(r.realizedNetPnL)}
+                            </span>
+                            <Badge tone={r.realizedPnLPct >= 0 ? 'positive' : 'negative'}>
+                              {formatPercent(r.realizedPnLPct, true)}
+                            </Badge>
+                          </div>
                         </td>
                       </tr>
                     ))}

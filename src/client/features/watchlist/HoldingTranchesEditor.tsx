@@ -187,14 +187,14 @@ export function HoldingTranchesEditor({
               <div className="text-[11px] font-medium text-muted">
                 {t.watchlist.form.combinedSummary}
               </div>
-              <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
+              <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums whitespace-nowrap">
                 {formatNumber(pos.ownedLots)} {t.common.lots} ·{' '}
                 {formatIdr(
                   pos.avgBuyPrice,
                   pos.avgBuyPrice !== null && !Number.isInteger(pos.avgBuyPrice),
                 )}
               </div>
-              <div className="font-mono text-[10px] text-muted tabular-nums">
+              <div className="font-mono text-[10px] text-muted tabular-nums whitespace-nowrap">
                 {formatNumber(pos.ownedShares)} {t.common.shares}
               </div>
             </div>
@@ -212,15 +212,20 @@ export function HoldingTranchesEditor({
                   }
                 />
               </div>
-              <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums">
+              <div className="mt-0.5 font-mono text-xs font-bold text-ink tabular-nums whitespace-nowrap">
                 {hideBalances ? MASKED_IDR : formatIdr(pos.costBasis)}
               </div>
-              <div className="font-mono text-[10px] text-muted tabular-nums">
-                {isBrokerGross
-                  ? t.watchlist.form.brokerGrossBuyNote
-                  : hideBalances
-                    ? t.watchlist.form.stockbitBuyFeeNote
-                    : `+${formatIdr(pos.estimatedBuyFee)} (${t.watchlist.form.stockbitBuyFeeNote})`}
+              <div className="mt-0.5 text-[10px] leading-snug text-muted">
+                {isBrokerGross ? (
+                  t.watchlist.form.brokerGrossBuyNote
+                ) : hideBalances ? (
+                  t.watchlist.form.stockbitBuyFeeNote
+                ) : (
+                  <span className="font-mono tabular-nums">
+                    +{formatIdr(pos.estimatedBuyFee)}{' '}
+                    <span className="font-sans">({t.watchlist.form.stockbitBuyFeeNote})</span>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -237,19 +242,24 @@ export function HoldingTranchesEditor({
                   }
                 />
               </div>
-              <div className="mt-0.5 font-mono text-xs font-bold text-brand-900 tabular-nums">
+              <div className="mt-0.5 font-mono text-xs font-bold text-brand-900 tabular-nums whitespace-nowrap">
                 {hideBalances ? MASKED_IDR : formatIdr(pos.marketValue)}
               </div>
-              <div className="font-mono text-[10px] text-brand-700/90 tabular-nums">
-                {isBrokerGross
-                  ? t.watchlist.form.brokerGrossSellNote
-                  : hideBalances
-                    ? t.watchlist.form.stockbitSellFeeNote
-                    : `-${formatIdr(pos.estimatedSellFee)}${
-                        pos.estimatedSellStampDuty > 0
-                          ? ` ${t.watchlist.form.stampDutyShort}`
-                          : ` (${t.watchlist.form.stockbitSellFeeNote})`
-                      }`}
+              <div className="mt-0.5 text-[10px] leading-snug text-brand-700/90">
+                {isBrokerGross ? (
+                  t.watchlist.form.brokerGrossSellNote
+                ) : hideBalances ? (
+                  t.watchlist.form.stockbitSellFeeNote
+                ) : (
+                  <span className="font-mono tabular-nums">
+                    -{formatIdr(pos.estimatedSellFee)}{' '}
+                    <span className="font-sans">
+                      {pos.estimatedSellStampDuty > 0
+                        ? t.watchlist.form.stampDutyShort
+                        : `(${t.watchlist.form.stockbitSellFeeNote})`}
+                    </span>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -263,7 +273,7 @@ export function HoldingTranchesEditor({
                 />
               </div>
               <div
-                className={`mt-0.5 font-mono text-xs font-bold tabular-nums ${
+                className={`mt-0.5 font-mono text-xs font-bold tabular-nums whitespace-nowrap ${
                   pos.unrealizedPnL === null
                     ? 'text-muted'
                     : pos.unrealizedPnL >= 0
@@ -277,7 +287,7 @@ export function HoldingTranchesEditor({
                     : `${pos.unrealizedPnL >= 0 ? '+' : ''}${formatIdr(pos.unrealizedPnL)}`
                   : '-'}
               </div>
-              <div className="font-mono text-[10px] text-muted tabular-nums">
+              <div className="font-mono text-[10px] text-muted tabular-nums whitespace-nowrap">
                 {formatPercent(pos.unrealizedPnLPct, true)}
               </div>
             </div>
