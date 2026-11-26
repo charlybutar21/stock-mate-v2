@@ -104,7 +104,7 @@ export function SimulatorPage() {
       {/* Top Strip: Clearly Separated Editable Setup (Left) vs Display Stock Snapshot (Right) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         {/* Editable Setup Card */}
-        <Card variant="editable" className="overflow-hidden p-0 lg:col-span-7">
+        <Card variant="editable" className="overflow-hidden p-0 lg:col-span-6">
           <div className="flex items-center justify-between gap-2 border-b border-border bg-editable-header px-4 py-2.5">
             <span className="text-xs font-bold text-ink">{t.simulator.sectionConfig}</span>
             <RolePill role="editable" label={t.common.editableTag} />
@@ -176,7 +176,7 @@ export function SimulatorPage() {
 
         {/* Read-Only Selected Stock Reference Display Card */}
         {linkedStock && (
-          <Card variant="display" className="flex flex-col justify-between overflow-hidden p-0 lg:col-span-5">
+          <Card variant="display" className="flex flex-col justify-between overflow-hidden p-0 lg:col-span-6">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-subtle/60 px-4 py-2.5">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-ink">{t.simulator.sectionStockRef}</span>

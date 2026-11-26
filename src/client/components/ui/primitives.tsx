@@ -278,9 +278,9 @@ export function TermTooltip({
                 ? 'translate(-50%, 0)'
                 : 'translate(-50%, -100%)',
             }}
-            className="pointer-events-none z-[100] w-72 rounded-lg border border-slate-700/80 bg-slate-900 px-3.5 py-2.5 text-left text-xs leading-relaxed font-normal tracking-normal text-slate-100 normal-case shadow-xl dark:border-slate-600 dark:bg-slate-800"
+            className="pointer-events-none z-[100] w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-700/80 bg-slate-900 px-4 py-3 text-left text-xs leading-relaxed font-normal tracking-normal text-slate-100 normal-case shadow-xl dark:border-slate-600 dark:bg-slate-800"
           >
-            <div className="mb-0.5 font-semibold text-emerald-300">{label}</div>
+            <div className="mb-1 font-semibold text-emerald-300">{label}</div>
             <p className="text-slate-200">{definition}</p>
           </div>,
           document.body,
