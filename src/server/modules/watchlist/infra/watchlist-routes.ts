@@ -63,10 +63,7 @@ function assertValidTickerParam(ticker: string): string {
 }
 
 export function createWatchlistRoutes(
-  getDeps: (
-    db: D1Database,
-    env?: { SECTORS_API_KEY?: string },
-  ) => {
+  getDeps: (db: D1Database) => {
     authRepo: AuthRepository;
     hasher: PasswordHasher;
     revocationStore: SessionRevocationStore;
@@ -127,7 +124,7 @@ export function createWatchlistRoutes(
 
   router.post('/sync-all', syncAllRateLimiter, async (c) => {
     const user = c.get('user')!;
-    const { watchlistRepo, idxCatalogRepo, marketDataProvider } = getDeps(c.env.DB, c.env);
+    const { watchlistRepo, idxCatalogRepo, marketDataProvider } = getDeps(c.env.DB);
     const useCase = new SyncAllWatchlistUseCase(watchlistRepo, marketDataProvider, idxCatalogRepo);
     const result = await useCase.execute(user.id);
 
@@ -137,7 +134,7 @@ export function createWatchlistRoutes(
   router.post('/ensure', async (c) => {
     const input = await parseJsonBody(c, ensureWatchlistStockSchema);
     const user = c.get('user')!;
-    const { watchlistRepo, idxCatalogRepo, marketDataProvider } = getDeps(c.env.DB, c.env);
+    const { watchlistRepo, idxCatalogRepo, marketDataProvider } = getDeps(c.env.DB);
     const useCase = new EnsureWatchlistItemUseCase(
       watchlistRepo,
       idxCatalogRepo,
@@ -184,7 +181,7 @@ export function createWatchlistRoutes(
       customWatchlistRepo,
       marketDataProvider,
       snapshotStore,
-    } = getDeps(c.env.DB, c.env);
+    } = getDeps(c.env.DB);
     const useCase = new ListCatalogStocksUseCase(
       idxCatalogRepo,
       watchlistRepo,
@@ -210,10 +207,7 @@ export function createWatchlistRoutes(
     }
 
     const user = c.get('user')!;
-    const { idxCatalogRepo, watchlistRepo, marketDataProvider, snapshotStore } = getDeps(
-      c.env.DB,
-      c.env,
-    );
+    const { idxCatalogRepo, watchlistRepo, marketDataProvider, snapshotStore } = getDeps(c.env.DB);
     const useCase = new SyncIdxCatalogUseCase(
       idxCatalogRepo,
       watchlistRepo,
@@ -241,7 +235,6 @@ export function createWatchlistRoutes(
     const user = c.get('user')!;
     const { customWatchlistRepo, idxCatalogRepo, watchlistRepo, marketDataProvider } = getDeps(
       c.env.DB,
-      c.env,
     );
     const useCase = new CreateCustomWatchlistUseCase(
       customWatchlistRepo,
@@ -315,7 +308,6 @@ export function createWatchlistRoutes(
     const user = c.get('user')!;
     const { customWatchlistRepo, idxCatalogRepo, watchlistRepo, marketDataProvider } = getDeps(
       c.env.DB,
-      c.env,
     );
     const useCase = new AddStockToCustomWatchlistUseCase(
       customWatchlistRepo,

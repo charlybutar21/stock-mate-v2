@@ -61,7 +61,7 @@ Sederhananya, aplikasi ini membantu investor menjawab 4 pertanyaan utama dalam s
 ### Yang Sudah Dibangun (In Scope)
 - Registrasi & login email/password dengan sesi cookie aman (`HttpOnly`) dan rotasi sesi otomatis.
 - Pencatatan portofolio multi-tranche (maks. 20 cicilan beli per saham), watchlist kustom (maks. 30 daftar), dan screener seluruh saham aktif IHSG (~900 emiten).
-- Sinkronisasi data saham IHSG otomatis tiap 5 menit selama jam bursa (via TradingView + fallback Yahoo Finance & opsi Sectors.app).
+- Sinkronisasi data saham IHSG otomatis tiap 5 menit selama jam bursa (via TradingView 33 kolom + fallback otomatis ke katalog D1 `idx_stocks`).
 - Mesin valuasi Core-3, FQS v2 4-track, QARP Screener (*Radar*), dan 4 mode Simulator IDX.
 - Antarmuka dwibahasa (`EN` / `ID`), mode Terang/Gelap (*Light/Dark*), tombol sensor saldo (*Privacy Mode*), dan mode responsif HP tanpa scroll menyamping.
 
@@ -166,9 +166,7 @@ flowchart TB
     end
 
     subgraph Upstream["Sumber Data Pasar"]
-        TV["TradingView IDX Scanner"]
-        YF["Yahoo Finance (Fallback)"]
-        SA["Sectors.app (Opsional)"]
+        TV["TradingView IDX Scanner (33 Kolom)"]
     end
 
     User -->|"Halaman & Aset"| Assets
@@ -177,9 +175,7 @@ flowchart TB
     User -->|"API Terautentikasi"| Worker
     Worker --> KV
     Worker --> D1
-    Worker -.-> TV
-    Worker -.-> YF
-    Worker -.-> SA
+    Worker -.->|"Live Quote (Fallback ke D1 idx_stocks)"| TV
     Cron --> TV
     Cron --> D1
     Cron --> KV
@@ -214,7 +210,7 @@ flowchart TB
 | [`src/server/index.ts`](../../src/server/index.ts) | Pintu masuk Worker: middleware keamanan, health check, snapshot edge cache, dan Cron handler. |
 | [`src/server/modules/auth/`](../../src/server/modules/auth/) | Logika daftar, login, logout, hashing password, dan manajemen sesi D1. |
 | [`src/server/modules/watchlist/`](../../src/server/modules/watchlist/) | Logika portofolio pribadi, katalog IHSG, custom watchlist, dan `CatalogSnapshotStore`. |
-| [`src/server/modules/market-data/`](../../src/server/modules/market-data/) | Adapter ambil data dari TradingView, Yahoo Finance, dan Sectors.app (opsional). |
+| [`src/server/modules/market-data/`](../../src/server/modules/market-data/) | Adapter ambil data 33 kolom dari TradingView + use case fallback otomatis ke D1 `idx_stocks`. |
 | [`src/server/shared/`](../../src/server/shared/) | Skema DB Drizzle, auth middleware, CSRF, rate limiter, RFC 7807 error, logger anti-PII, circuit breaker. |
 | [`src/client/features/`](../../src/client/features/) | Halaman & komponen UI per fitur (`auth`, `watchlist`, `radar`, `simulator`). |
 | [`src/client/i18n/`](../../src/client/i18n/) | Kamus bahasa Inggris (`en.ts`) dan Bahasa Indonesia (`id.ts`) yang dimuat secara *lazy*. |
@@ -257,10 +253,9 @@ Terdapat **7 tabel SQLite di Cloudflare D1**:
 
 > Detail teknis adapter & parsing kolom ada di [**`docs/id/integration-guide.md`**](integration-guide.md).
 
-Sistem menerapkan pola rantai cadangan (*fallback*) otomatis:
-1. **Sectors.app API** *(opsional, aktif hanya jika secret `SECTORS_API_KEY` diisi)* → hanya untuk pencarian 1 ticker.
-2. **TradingView Indonesia Scanner** *(utama)* → mengambil 33 kolom fundamental, likuiditas, FQS, dan harga intraday untuk 1 ticker, batch, maupun seluruh ~900 emiten IHSG. Dilindungi `CircuitBreaker` (3x gagal → jeda 60 detik).
-3. **Yahoo Finance v10** *(cadangan otomatis)* → memakai otentikasi cookie + crumb untuk ticker `{TICKER}.JK`, juga dilindungi `CircuitBreaker`.
+Sistem memakai **TradingView** sebagai satu-satunya sumber data live dengan fallback otomatis ke katalog D1 lokal:
+1. **TradingView Indonesia Scanner** *(sumber live utama)* → mengambil 33 kolom fundamental, likuiditas, FQS, dan harga intraday untuk 1 ticker, batch, maupun seluruh ~900 emiten IHSG. Dilindungi `CircuitBreaker` (3x gagal → jeda 60 detik).
+2. **Fallback D1 `idx_stocks`** ([`get-idx-quote-use-case.ts`](../../src/server/modules/market-data/application/get-idx-quote-use-case.ts)) → saat TradingView error atau circuit terbuka, `GET /api/v1/market-data/idx/:ticker` otomatis mengembalikan data 33 kolom terakhir dari D1 (`source: 'idx_catalog'`, disync Cron tiap 5 menit).
 
 ---
 
@@ -279,7 +274,7 @@ Sistem menerapkan pola rantai cadangan (*fallback*) otomatis:
 - **Anti-Brute Force & Anti-Enumeration:** Password di-hash pakai `PBKDF2-SHA256` (100.000 iterasi) dengan perbandingan *constant-time*. Email yang sudah terdaftar saat register tetap menjalankan hash dummy dan mengembalikan pesan error netral (`400`) agar penyerang tidak bisa menebak akun terdaftar.
 - **Proteksi CSRF Berlapis:** Semua request ubah data (`POST/PATCH/DELETE`) dicek `Origin`, `Referer`, `Sec-Fetch-Site`, dan header `X-Requested-With: StockMate`.
 - **Anti-IDOR:** Setiap akses ke data watchlist/grup selalu memfilter `user_id` pemilik dan mengembalikan `404` jika milik orang lain.
-- **Header Keamanan & Log Bersih:** CSP ketat (`script-src 'self'`), HSTS, `X-Frame-Options: DENY`, batas ukuran body `64 KB`, dan sensor otomatis (redaksi) 23 jenis data sensitif (password, email, cookie, token, IP) di semua log JSON.
+- **Header Keamanan & Log Bersih:** CSP ketat (`script-src 'self'`), HSTS, `X-Frame-Options: DENY`, batas ukuran body `64 KB`, dan sensor otomatis (redaksi) 22 jenis data sensitif (password, email, cookie, token, IP) di semua log JSON.
 
 ---
 
@@ -291,7 +286,6 @@ Sistem menerapkan pola rantai cadangan (*fallback*) otomatis:
 | `STOCK_MATE_KV` (KV) | Disarankan di Prod | Menyimpan snapshot IHSG, lock sync, revokasi sesi, dan counter rate limit |
 | `JWT_SECRET` | Wajib di Prod multi-PoP | Kunci penandatangan token akses 15 menit (`≥ 32` byte acak) |
 | `CATALOG_SYNC_SECRET` | Disarankan di Prod | Mengunci endpoint `POST /api/v1/watchlist/catalog/sync` khusus admin |
-| `SECTORS_API_KEY` | Opsional | Mengaktifkan Sectors.app sebagai sumber data utama 1 ticker |
 
 ---
 
@@ -312,8 +306,8 @@ npm run dev
 ## 17. Testing & Penjaga Kualitas
 
 - **Domain Unit Tests (100% Coverage Wajib):** `idx-rules`, `valuation`, `quality-score`, `simulator`.
-- **Parser & Formatter Tests:** `tradingview-provider`, `sectors-provider`, `formatters`.
-- **API Integration Tests (`api.integration.test.ts`):** Menjalankan seluruh 7 file migrasi SQL pada `node:sqlite` untuk menguji alur Auth, CRUD Watchlist, isolasi anti-IDOR, penggunaan indeks (`EXPLAIN QUERY PLAN`), proteksi OWASP, Radar screener, ETag `304`, dan Custom Watchlist.
+- **Parser & Formatter Tests:** `tradingview-provider`, `formatters`.
+- **API Integration Tests (`api.integration.test.ts`):** Menjalankan seluruh 7 file migrasi SQL pada `node:sqlite` untuk menguji alur Auth, CRUD Watchlist, isolasi anti-IDOR, penggunaan indeks (`EXPLAIN QUERY PLAN`), fallback TradingView → D1 `idx_stocks`, proteksi OWASP, Radar screener, ETag `304`, dan Custom Watchlist.
 
 ```bash
 npm run typecheck      # Cek TypeScript ketat
@@ -348,11 +342,10 @@ Beberapa hal penting yang perlu diketahui dari implementasi saat ini:
 1. **Belum Ada Fitur Akun Lanjutan:** Belum ada lupa password, verifikasi email, 2FA, atau peran admin berbasis role (admin sync memakai bearer secret `CATALOG_SYNC_SECRET`).
 2. **Halaman Screener SPA Masih Lewat Endpoint Terautentikasi:** `WatchlistPage` dan `RadarPage` memanggil `GET /api/v1/watchlist/catalog` (yang tetap cepat karena membaca snapshot dari KV, tetapi masih query D1 untuk overlay posisi user dan filter di Worker), belum langsung mengambil endpoint publik Edge-cached `/api/v1/catalog/snapshot` dari browser.
 3. **Rate Limit KV Bersifat Eventual:** Counter `get` + `put` di KV tidak atomik sempurna jika diserbu bersamaan dalam milidetik yang sama (cukup untuk proteksi awal; untuk skala besar perlu Cloudflare WAF Rate Limiting).
-4. **Sectors.app Belum Pakai Circuit Breaker & Metrik FQS Lengkap:** Hanya mengambil data valuasi dasar.
-5. **Perbedaan Default Mode P/L:** UI browser default ke `BROKER_GROSS` (cocok dengan tampilan Stockbit), sedangkan fungsi domain `calculatePositionSummary` default ke `NET_AFTER_FEES`.
-6. **Cakupan Tes UI:** Belum ada tes E2E browser (Playwright) maupun tes komponen React DOM; tes integrasi API memakai shim `node:sqlite` in-memory.
-7. **Ketergantungan Endpoint Publik:** TradingView scanner dan Yahoo Finance adalah endpoint web tidak resmi (tidak punya SLA komersial), sehingga perubahan format di pihak mereka bisa memengaruhi sinkronisasi.
-8. **Sinkronisasi Dokumen Lama:** [ADR-001](../ADR-001-100k-scaling-architecture.md) masih menyebut jadwal Cron lama (`*/15 1-9 UTC`) dan cache `s-maxage=300`, padahal kode aktif memakai `*/5 1-10 * * 1-5` + `0 15 * * *` dan `max-age=60, s-maxage=120, stale-while-revalidate=300`.
+4. **Perbedaan Default Mode P/L:** UI browser default ke `BROKER_GROSS` (cocok dengan tampilan Stockbit), sedangkan fungsi domain `calculatePositionSummary` default ke `NET_AFTER_FEES`.
+5. **Cakupan Tes UI:** Belum ada tes E2E browser (Playwright) maupun tes komponen React DOM; tes integrasi API memakai shim `node:sqlite` in-memory.
+6. **Ketergantungan 1 Endpoint Publik:** TradingView scanner adalah endpoint web tidak resmi (tidak punya SLA komersial), sehingga perubahan format di pihak TradingView bisa memengaruhi sinkronisasi live (dimitigasi saat gangguan oleh fallback D1 `idx_stocks` + snapshot KV).
+7. **Sinkronisasi Dokumen Lama:** [ADR-001](../ADR-001-100k-scaling-architecture.md) masih menyebut jadwal Cron lama (`*/15 1-9 UTC`), cache `s-maxage=300`, dan fallback Yahoo Finance yang sudah dihapus.
 
 ---
 

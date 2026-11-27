@@ -1,6 +1,6 @@
 /**
- * Lightweight circuit breaker protecting upstream market-data calls
- * (TradingView, Yahoo Finance, Sectors.app) against cascading latency spikes.
+ * Lightweight circuit breaker protecting upstream TradingView market-data calls
+ * against cascading latency spikes.
  */
 export class CircuitBreaker {
   private consecutiveFailures = 0;

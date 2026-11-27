@@ -8,45 +8,30 @@
 
 ## Table of Contents
 
-1. [External Provider Chain & Fallback Topology](#1-external-provider-chain--fallback-topology)
+1. [Market Data Architecture & D1 Fallback Flow](#1-market-data-architecture--d1-fallback-flow)
 2. [TradingView Indonesia Scanner Integration](#2-tradingview-indonesia-scanner-integration)
-3. [Yahoo Finance v10 QuoteSummary Integration](#3-yahoo-finance-v10-quotesummary-integration)
-4. [Sectors.app Company Report Integration (Optional)](#4-sectorsapp-company-report-integration-optional)
-5. [Cloudflare Platform Bindings](#5-cloudflare-platform-bindings)
-6. [Frontend-to-Backend API Client Integration](#6-frontend-to-backend-api-client-integration)
-7. [External Fonts & Static Asset Dependencies](#7-external-fonts--static-asset-dependencies)
+3. [D1 `idx_stocks` Catalog Fallback (`GetIdxQuoteUseCase`)](#3-d1-idx_stocks-catalog-fallback-getidxquoteusecase)
+4. [Cloudflare Platform Bindings](#4-cloudflare-platform-bindings)
+5. [Frontend-to-Backend API Client Integration](#5-frontend-to-backend-api-client-integration)
+6. [External Fonts & Static Asset Dependencies](#6-external-fonts--static-asset-dependencies)
 
 ---
 
-## 1. External Provider Chain & Fallback Topology
+## 1. Market Data Architecture & D1 Fallback Flow
 
-Stock-Mate v2 abstracts all external market data behind the [`IdxMarketDataProvider`](../src/server/modules/market-data/domain/market-data.types.ts) port interface and composes adapters using [`CompositeIdxMarketDataProvider`](../src/server/modules/market-data/infra/sectors-provider.ts#L267-L317).
+Stock-Mate v2 uses **TradingView Indonesia Scanner** as its sole live external market-data source (guaranteeing 100% consistent 33-column Core-3 + FQS v2 + intraday coverage), paired with an automatic **Cloudflare D1 `idx_stocks` fallback** for single-ticker quote requests (`GET /api/v1/market-data/idx/:ticker`).
 
 ```mermaid
 flowchart LR
-    Caller["Use Case / Route<br/>(fetchIdxQuote / fetchIdxQuotesBatch / fetchAllIdxStocks)"]
+    Caller["GET /api/v1/market-data/idx/:ticker<br/>(GetIdxQuoteUseCase)"]
+    TV["1. TradingViewIdxProvider<br/>(Live 33-col IDX Scan)<br/>3m isolate cache · CircuitBreaker (3 / 60s)"]
+    D1["2. D1 idx_stocks Fallback<br/>(Synced every 5m by Cron)<br/>Full 33-col intraday + FQS · source: idx_catalog"]
+    Err["Rethrow Original Upstream Error<br/>(404 / 502 / 503 RFC 7807)"]
 
-    subgraph Chain["CompositeIdxMarketDataProvider Chain"]
-        Sectors["1. SectorsIdxProvider<br/>(Only if SECTORS_API_KEY set)<br/>Single-quote only · 15m cache"]
-        TV["2. TradingViewIdxProvider<br/>(Default Primary)<br/>Single + Batch + Full IHSG Universe<br/>3m cache · CircuitBreaker (3 / 60s)"]
-        Yahoo["3. YahooFinanceIdxProvider<br/>(Fallback)<br/>Single-quote · Crumb Auth<br/>15m cache · CircuitBreaker (3 / 60s)"]
-    end
-
-    Caller --> Sectors
-    Sectors -.->|"Unset, not implemented, or error"| TV
-    TV -.->|"Error or circuit open"| Yahoo
+    Caller --> TV
+    TV -.->|"Circuit open / 5xx / timeout / miss"| D1
+    D1 -.->|"Ticker not in D1 catalog"| Err
 ```
-
-### Capability Matrix
-
-| Operation | `SectorsIdxProvider` | `TradingViewIdxProvider` | `YahooFinanceIdxProvider` |
-| :--- | :---: | :---: | :---: |
-| `fetchIdxQuote(ticker)` | Supported | Supported (via 1-ticker batch) | Supported |
-| `fetchIdxQuotesBatch(tickers)` | Not implemented (delegates to fallback) | Supported (single POST) | Not implemented (sequential loop fallback) |
-| `fetchAllIdxStocks()` | Not implemented (delegates to fallback) | Supported (full IHSG universe scan) | Not implemented |
-| Extended 19 FQS Metrics | No (core valuation only) | Full 33-column scan (including Piotroski & Altman Z) | Partial (no ROIC, Equity/Assets, Piotroski, Altman Z) |
-| Intraday `openPrice` & `dailyChange` | No | Yes | Yes |
-| Circuit Breaker | None | `CircuitBreaker(3, 60_000)` | `CircuitBreaker(3, 60_000)` (ignores `404`) |
 
 ---
 
@@ -57,6 +42,7 @@ Source: [`src/server/modules/market-data/infra/tradingview-provider.ts`](../src/
 - **Endpoint:** `POST https://scanner.tradingview.com/indonesia/scan`
 - **Authentication:** Unauthenticated public scanner endpoint (`Content-Type: application/json`).
 - **Timeouts:** `8,000 ms` for single/batch symbol lookups; `15,000 ms` for full IHSG universe scans.
+- **Circuit Breaker:** `CircuitBreaker(3, 60_000)` — opens for 60 seconds after 3 consecutive upstream failures.
 - **In-Isolate Cache:** `BoundedTtlCache` — `3 minutes` TTL, max `500` entries.
 - **Universe Scan Filter (`fetchAllIdxStocks`):**
   - `exchange == "IDX"`, `type == "stock"`, `subtype == "common"`, `is_primary == true`, `active_symbol == true`, `market_cap_basic > 0`, `close > 0`.
@@ -70,39 +56,22 @@ Source: [`src/server/modules/market-data/infra/tradingview-provider.ts`](../src/
   - `fcfYieldPct = (free_cash_flow_ttm / market_cap_basic) * 100`
   - `netDebtToEbitda`: Computed for non-financials; negative net debt yields clamped negative ratio (or `-0.01` when EBITDA `<= 0`), positive net debt with EBITDA `<= 0` clamps to `50`.
   - **Banking Rule:** When mapped sector is `FINANCIALS`, `der` and `currentRatio` are forced to `null` and `debt_to_equity` is stored in `wholesaleDer`.
-  - **Property Sector Override:** `industry` is passed into `mapYahooSectorToIdx()` and checked **before** `sector` so Indonesian property developers nested under TradingView's `Finance` sector are correctly classified as `PROPERTY_REAL_ESTATE`.
+  - **Property Sector Override:** `industry` is passed into `mapMarketSectorToIdx()` and checked **before** `sector` so Indonesian property developers nested under TradingView's `Finance` sector are correctly classified as `PROPERTY_REAL_ESTATE`.
 
 ---
 
-## 3. Yahoo Finance v10 QuoteSummary Integration
+## 3. D1 `idx_stocks` Catalog Fallback (`GetIdxQuoteUseCase`)
 
-Source: [`src/server/modules/market-data/infra/yahoo-finance-provider.ts`](../src/server/modules/market-data/infra/yahoo-finance-provider.ts)
+Source: [`src/server/modules/market-data/application/get-idx-quote-use-case.ts`](../src/server/modules/market-data/application/get-idx-quote-use-case.ts)
 
-- **Endpoints:**
-  1. Cookie handshake: `GET https://fc.yahoo.com` (`redirect: 'manual'`)
-  2. Crumb exchange: `GET https://query2.finance.yahoo.com/v1/test/getcrumb`
-  3. Quote query: `GET https://query2.finance.yahoo.com/v10/finance/quoteSummary/{TICKER}.JK?modules=price,summaryDetail,defaultKeyStatistics,financialData,assetProfile&crumb={CRUMB}`
-- **Session Management:** Caches `{ cookie, crumb }` per isolate for `25 minutes` (`CRUMB_TTL_MS`). Automatically refreshes crumb and retries once on HTTP `401` or `403`.
-- **In-Isolate Cache:** `BoundedTtlCache` — `15 minutes` TTL, max `500` entries.
-- **Data Normalization Safeguards:**
-  - Converts Yahoo's percentage-based `debtToEquity` (e.g., `64.97`) to ratio (`0.65x`) by dividing by `100`.
-  - Guards against stale positive `trailingEps` contradicting negative `netIncomeToCommon / sharesOutstanding` or negative ROE.
-  - Multiplies decimal ratios (`returnOnEquity`, `operatingMargins`, `revenueGrowth`, etc.) by `100` into percentages.
+When `GET /api/v1/market-data/idx/:ticker` encounters a TradingView error (network timeout, `502`, or `503` circuit breaker open):
+1. `GetIdxQuoteUseCase` queries `idxCatalogRepo.findByTicker(ticker)` (primary-key `O(1)` lookup on D1 `idx_stocks`, refreshed every 5 minutes during IDX hours by Cloudflare Cron).
+2. If found, `mapIdxStockRecordToQuoteDto()` converts the persisted row into a full `IdxMarketQuoteDto` preserving all intraday fields (`openPrice`, `dailyChange`, `dailyChangePct`) and all 19 FQS metrics, setting `source: 'idx_catalog'` and `fetchedAt` to the row's `syncedAt` ISO timestamp.
+3. If the ticker does not exist in `idx_stocks` (or D1 itself fails), the original upstream error is rethrown unchanged as an RFC 7807 response.
 
 ---
 
-## 4. Sectors.app Company Report Integration (Optional)
-
-Source: [`src/server/modules/market-data/infra/sectors-provider.ts`](../src/server/modules/market-data/infra/sectors-provider.ts)
-
-- **Activation:** Activated automatically when the Cloudflare secret `SECTORS_API_KEY` is present in `AppBindings`.
-- **Endpoint:** `GET https://api.sectors.app/v1/company/report/{TICKER}/?sections=overview,valuation,financials,dividend`
-- **Authentication:** `Authorization: <SECTORS_API_KEY>` header.
-- **Unique Behavior:** Extracts peer-average multiples (`pe_peer_avg`, `pb_peer_avg`) as `targetPer` / `targetPbv` (falling back to static `SECTOR_BENCHMARK_MULTIPLES` when absent or out of range). Derives EPS from `Price / PE`, BVPS from `Price / PB`, DER from `total_debt / total_equity`, and DPS from `yield_ttm` when direct fields are absent.
-
----
-
-## 5. Cloudflare Platform Bindings
+## 4. Cloudflare Platform Bindings
 
 Defined in [`wrangler.jsonc`](../wrangler.jsonc) and typed in [`src/server/shared/types.ts`](../src/server/shared/types.ts):
 
@@ -112,12 +81,11 @@ Defined in [`wrangler.jsonc`](../wrangler.jsonc) and typed in [`src/server/share
 | `STOCK_MATE_KV` | Cloudflare KV | Optional (Recommended in Prod) | Stores precomputed IHSG catalog snapshot, SWR sync lock, session revocations, and distributed rate-limit counters. |
 | `JWT_SECRET` | Worker Secret | Optional (Required for Multi-PoP Prod) | HMAC-SHA256 signing key (≥16 chars; recommended ≥32 random bytes) for 15m `__Host-sm_at` fast-path tokens. Falls back to ephemeral per-isolate key when unset. |
 | `CATALOG_SYNC_SECRET` | Worker Secret | Optional (Recommended in Prod) | Restricts `POST /api/v1/watchlist/catalog/sync` to `Authorization: Bearer <secret>`. |
-| `SECTORS_API_KEY` | Worker Secret | Optional | Enables `SectorsIdxProvider` as primary single-quote source ahead of TradingView. |
 | `caches.default` | Cloudflare Edge Cache API | Runtime-provided | Caches `GET /api/v1/catalog/snapshot` at Cloudflare PoPs. |
 
 ---
 
-## 6. Frontend-to-Backend API Client Integration
+## 5. Frontend-to-Backend API Client Integration
 
 Source: [`src/client/lib/apiClient.ts`](../src/client/lib/apiClient.ts)
 
@@ -130,7 +98,7 @@ Source: [`src/client/lib/apiClient.ts`](../src/client/lib/apiClient.ts)
 
 ---
 
-## 7. External Fonts & Static Asset Dependencies
+## 6. External Fonts & Static Asset Dependencies
 
 In [`index.html`](../index.html) and permitted explicitly by the Content Security Policy in [`public/_headers`](../public/_headers) and [`src/server/index.ts`](../src/server/index.ts):
 - **Google Fonts (`https://fonts.googleapis.com`, `https://fonts.gstatic.com`):** Loads `Inter`, `Plus Jakarta Sans`, and `JetBrains Mono` (used for tabular financial figures via `.tabular-nums`).

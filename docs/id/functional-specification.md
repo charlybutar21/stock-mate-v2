@@ -58,7 +58,7 @@ Halaman [`WatchlistPage.tsx`](../../src/client/features/watchlist/WatchlistPage.
 - Tambah saham super cepat lewat kotak pencarian autocomplete ([`CustomWatchlistQuickAdd.tsx`](../../src/client/features/watchlist/CustomWatchlistQuickAdd.tsx)) atau menu tombol `+` di setiap baris saham.
 
 ### D. Tambah/Edit Saham & Auto-Fetch Live
-- Di modal [`StockFormModal.tsx`](../../src/client/features/watchlist/StockFormModal.tsx), ketik 4 huruf ticker (misal `BBCA`) lalu klik tombol sinkronisasi untuk mengisi otomatis harga dan seluruh data fundamental dari TradingView/Yahoo Finance.
+- Di modal [`StockFormModal.tsx`](../../src/client/features/watchlist/StockFormModal.tsx), ketik 4 huruf ticker (misal `BBCA`) lalu klik tombol sinkronisasi untuk mengisi otomatis harga dan seluruh data fundamental dari TradingView (dengan fallback otomatis ke katalog D1 `idx_stocks`).
 - Kamu juga bisa klik tombol **Sync Semua** (`POST /api/v1/watchlist/sync-all`) untuk menyegarkan semua saham pribadimu sekaligus.
 
 ---

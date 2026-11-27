@@ -63,7 +63,7 @@ The frontend adopts a compact, mobile-first Stockbit/Ajaib-inspired interface wi
 | :--- | :--- |
 | Email/password auth with `HttpOnly` dual-cookie sessions | OAuth/SSO, MFA, email verification, password reset flows |
 | Personal portfolio holdings (up to 20 buy tranches per stock) & custom watchlists | Live brokerage order execution, RDN cash ledger, realized P&L/dividend cash history |
-| Automated IHSG catalog sync (TradingView primary + Yahoo/Sectors fallback) | Real-time WebSocket Level-2 orderbook streaming or intraday tick charts |
+| Automated IHSG catalog sync (TradingView 33-col scanner + D1 `idx_stocks` fallback) | Real-time WebSocket Level-2 orderbook streaming or intraday tick charts |
 | Core-3 Fair Value, 4-Track FQS v2, QARP screener, Value Trap Shield | Corporate action auto-adjustment (stock splits, rights issues, bonus shares) |
 | Client-side IDX Trade Simulator (Average Down, Pyramiding, Take-Profit, Goal-Seek) | Saving/persisting simulator scenarios to the database |
 | Bilingual UI (`EN`/`ID`), Light/Dark theme, Privacy Mask, Gross/Net P&L toggle | Multi-currency portfolios (strictly IDR / IDX equities) |
@@ -197,9 +197,7 @@ flowchart TB
     end
 
     subgraph Upstream["External Market Data"]
-        TV["TradingView IDX Scanner"]
-        YF["Yahoo Finance v10 Fallback"]
-        SA["Sectors.app (Optional)"]
+        TV["TradingView IDX Scanner (33 cols)"]
     end
 
     Browser -->|"SPA Assets"| Assets
@@ -208,9 +206,7 @@ flowchart TB
     Browser -->|"Authenticated /api/v1/*"| Worker
     Worker --> KV
     Worker --> D1
-    Worker -.-> TV
-    Worker -.-> YF
-    Worker -.-> SA
+    Worker -.->|"On-demand quote (D1 idx_stocks fallback)"| TV
     Cron --> TV
     Cron --> D1
     Cron --> KV
@@ -255,7 +251,7 @@ stock-mate-v2/
 │   ├── business-rules.md              # Formulas, FQS v2, Core-3, IDX rules
 │   ├── database-design.md             # ERD, tables, indexes, KV keys
 │   ├── api-specification.md           # Full REST contract & RFC 7807 errors
-│   ├── integration-guide.md           # TradingView, Yahoo, Sectors.app, CF bindings
+│   ├── integration-guide.md           # TradingView scanner, D1 fallback, CF bindings
 │   ├── deployment-guide.md            # Build, migrations, CI/CD, rollback
 │   └── operational-runbook.md         # Probes, logging, Cron, playbooks
 ├── migrations/                        # Sequential SQLite D1 migrations (0001..0007)
@@ -275,7 +271,7 @@ stock-mate-v2/
 │   │   ├── modules/
 │   │   │   ├── auth/                  # domain, application use cases, D1 repo, WebCryptoHasher, routes
 │   │   │   ├── watchlist/             # domain, watchlist/catalog/custom use cases, D1 repos, SnapshotStore, routes
-│   │   │   └── market-data/           # domain types/sectors, TradingView, Yahoo, Sectors, Composite, routes
+│   │   │   └── market-data/           # domain types/sectors, GetIdxQuoteUseCase (D1 fallback), TradingView, routes
 │   │   └── __tests__/                 # API integration (node:sqlite) & provider parser tests
 │   └── client/                        # React 19 SPA
 │       ├── App.tsx & main.tsx         # Providers, ErrorBoundary, lazy routes
@@ -350,9 +346,8 @@ Base path: `/api/v1` — all errors conform to **RFC 7807 (`application/problem+
 
 | Integration | Direction | Role | Resilience & Caching |
 | :--- | :--- | :--- | :--- |
-| **TradingView Indonesia Scanner** (`scanner.tradingview.com/indonesia/scan`) | Outbound HTTPS | Default primary provider for single, batch, and full 33-column IHSG universe scans | `CircuitBreaker(3, 60s)`, `8s`/`15s` timeouts, `3m` in-isolate cache (max 500) |
-| **Yahoo Finance v10** (`query2.finance.yahoo.com`) | Outbound HTTPS | Automatic single-quote fallback (`{TICKER}.JK`) with cookie+crumb auth | `CircuitBreaker(3, 60s)` (ignores `404`), `8s` timeout, `25m` crumb cache, `15m` quote cache |
-| **Sectors.app API** (`api.sectors.app/v1/company/report/`) | Outbound HTTPS | Optional primary single-quote provider (active only when `SECTORS_API_KEY` secret is set) | `8s` timeout, `15m` quote cache; falls back to TradingView/Yahoo |
+| **TradingView Indonesia Scanner** (`scanner.tradingview.com/indonesia/scan`) | Outbound HTTPS | Sole live external provider for single, batch, and full 33-column IHSG universe scans | `CircuitBreaker(3, 60s)`, `8s`/`15s` timeouts, `3m` in-isolate cache (max 500) |
+| **D1 `idx_stocks` Quote Fallback** ([`get-idx-quote-use-case.ts`](src/server/modules/market-data/application/get-idx-quote-use-case.ts)) | Internal D1 | Automatic single-ticker fallback (`source: 'idx_catalog'`) when TradingView is unavailable or circuit-open | Primary-key `O(1)` lookup on Cron-synced 33-col rows (max ~5m lag in IDX hours) |
 | **Cloudflare D1 / KV / Edge Cache** | Platform Bindings | Relational persistence (`DB`), snapshot/revocation/rate-limit KV (`STOCK_MATE_KV`), PoP caching (`caches.default`) | Graceful degradation when `STOCK_MATE_KV` is unbound |
 | **Google Fonts** | Client Asset | `Inter`, `Plus Jakarta Sans`, `JetBrains Mono` typography | Explicitly allowlisted in CSP `style-src` & `font-src` |
 
@@ -362,11 +357,11 @@ Base path: `/api/v1` — all errors conform to **RFC 7807 (`application/problem+
 
 Stock-Mate v2 uses **Cloudflare Cron Triggers** and **`ExecutionContext.waitUntil()`** background tasks (no external message broker is used):
 
-1. **Scheduled IHSG Catalog Sync ([`wrangler.jsonc`](wrangler.jsonc#L14-L16), [`src/server/index.ts`](src/server/index.ts#L435-L495)):**
+1. **Scheduled IHSG Catalog Sync ([`wrangler.jsonc`](wrangler.jsonc#L14-L16), [`src/server/index.ts`](src/server/index.ts#L420-L476)):**
    - `*/5 1-10 * * 1-5` — Every **5 minutes** during IDX trading hours (`08:00 – 17:55 WIB`, Mon–Fri).
    - `0 15 * * *` — Daily **nightly EOD sync** (`22:00 WIB`).
    - Executes `runScheduledCatalogSync(env)` → fetches active 4-letter IHSG common stocks via TradingView → batch-upserts & prunes `idx_stocks` → publishes precomputed `catalog:v3:latest` snapshot to `STOCK_MATE_KV`.
-2. **Stale-While-Revalidate (SWR) Snapshot Self-Healing ([`src/server/index.ts`](src/server/index.ts#L329-L340)):**
+2. **Stale-While-Revalidate (SWR) Snapshot Self-Healing ([`src/server/index.ts`](src/server/index.ts#L314-L325)):**
    - When `GET /api/v1/catalog/snapshot` serves a snapshot older than `5 minutes`, missing `openPrice`, or missing `PROPERTY_REAL_ESTATE` stocks (when `>= 200` rows exist), it dispatches `triggerGuardedBackgroundSync(env)` asynchronously via `c.executionCtx.waitUntil()`, coordinated by a 240-second KV lock (`catalog:sync:lock`).
 3. **Edge Cache Backfill:** On `GET /api/v1/catalog/snapshot` misses, `edgeCache.put()` executes asynchronously via `c.executionCtx.waitUntil()`.
 4. **Client-Side Periodic Polling:** TanStack Query hooks in [`useWatchlist.ts`](src/client/features/watchlist/useWatchlist.ts) auto-refresh active watchlist, detail, catalog, and custom group queries every **3 minutes** while the browser tab is visible (`refetchIntervalInBackground: false`).
@@ -385,13 +380,13 @@ Stock-Mate v2 implements OWASP ASVS-aligned security controls across transport, 
 - **Password Hashing & Anti-Enumeration ([`web-crypto-hasher.ts`](src/server/modules/auth/infra/web-crypto-hasher.ts), [`auth-use-cases.ts`](src/server/modules/auth/application/auth-use-cases.ts)):**
   - Native Web Crypto `PBKDF2-SHA256` (`100,000` iterations, 16-byte random salt from `@noble/hashes`) with constant-time byte comparison.
   - Both `/login` (unknown email) and `/register` (duplicate email) execute a dummy PBKDF2 verification to equalize timing; `/register` returns a neutral `400` detail to prevent email enumeration.
-- **Defense-in-Depth CSRF Protection ([`src/server/index.ts`](src/server/index.ts#L172-L212)):**
+- **Defense-in-Depth CSRF Protection ([`src/server/index.ts`](src/server/index.ts#L157-L197)):**
   - Blocks cross-origin `Origin`, cross-origin `Referer`, and non-`same-origin`/`none` `Sec-Fetch-Site` on mutating requests.
   - Requires at least one same-origin proof (`Origin`, `Referer`, `Sec-Fetch-Site: same-origin`, or `X-Requested-With: StockMate`) on every cookie-authenticated mutating request.
 - **Authorization & Anti-IDOR:** Every watchlist and custom-watchlist query/mutation scopes strictly by `userId` and returns `404 Not Found` (never `403`) for nonexistent or foreign IDs to avoid resource existence leakage.
 - **Input & Payload Hardening:** Strict Zod v4 validation at route boundaries, `Content-Type: application/json` enforcement (`415`), `64 KB` body cap (`413`) verified on buffered bytes, and Drizzle parameterized queries preventing SQL injection.
 - **Security Headers ([`public/_headers`](public/_headers) & Hono `secureHeaders`):** Strict `Content-Security-Policy` (`script-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`), `Strict-Transport-Security`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy`.
-- **PII-Redacted Structured Logging ([`logger.ts`](src/server/shared/logger.ts)):** Recursively redacts 23 sensitive keys (`password`, `email`, cookies, tokens, API keys, secrets, client IPs) and sanitizes `x-correlation-id` against log injection.
+- **PII-Redacted Structured Logging ([`logger.ts`](src/server/shared/logger.ts)):** Recursively redacts 22 sensitive keys (`password`, `email`, cookies, tokens, API keys, secrets, client IPs) and sanitizes `x-correlation-id` against log injection.
 
 ---
 
@@ -415,7 +410,6 @@ Stock-Mate v2 implements OWASP ASVS-aligned security controls across transport, 
 | `STOCK_MATE_KV` | Cloudflare KV Binding | Optional (Recommended Prod) | Falls back to D1 + in-isolate `BoundedTtlCache` & local rate-limit `Map` |
 | `JWT_SECRET` | Worker Secret (`>= 16` chars, rec. `>= 32` random bytes) | Optional (Required Multi-PoP Prod) | Generates ephemeral per-isolate 32-byte random key lazily |
 | `CATALOG_SYNC_SECRET` | Worker Secret | Optional (Recommended Prod) | When unset, any authenticated user can call `POST /api/v1/watchlist/catalog/sync` |
-| `SECTORS_API_KEY` | Worker Secret | Optional | Uses TradingView primary + Yahoo Finance fallback |
 
 > Never commit secrets or `.dev.vars` files to Git (`.dev.vars` is excluded via [`.gitignore`](.gitignore)).
 
@@ -477,9 +471,8 @@ Stock-Mate v2 enforces automated quality gates using **Vitest 4** (`environment:
 | [`quality-score.test.ts`](src/shared/domain/__tests__/quality-score.test.ts) | 4-Track FQS v2 | Interpolation, all 4 tracks, S–E grading, all 7 weak-link caps, QARP quadrants & rank |
 | [`simulator.test.ts`](src/shared/domain/__tests__/simulator.test.ts) | Simulator & Risk | Golden cases for Forward, Goal-Seek, Pyramiding, Take-Profit Free-Ride, Portfolio Risk X-Ray |
 | [`tradingview-provider.test.ts`](src/server/__tests__/tradingview-provider.test.ts) | TradingView parser | 33-column parsing, banking DER rule, Property sector override, turnaround extremes |
-| [`sectors-provider.test.ts`](src/server/__tests__/sectors-provider.test.ts) | Sectors.app parser | Peer multiples, DER/DPS derivations, banking rule |
 | [`formatters.test.ts`](src/client/lib/__tests__/formatters.test.ts) | Client formatters | Stockbit IDR/number formatting & EN/ID pasted price normalization |
-| [`api.integration.test.ts`](src/server/__tests__/api.integration.test.ts) | Full API integration | Runs all 7 SQL migrations against `node:sqlite` ([`d1-test-helper.ts`](src/server/__tests__/d1-test-helper.ts)); verifies Auth lifecycle, Watchlist CRUD, anti-IDOR, `EXPLAIN QUERY PLAN` index usage, OWASP controls (CSP/CSRF/413/415/429/session fixation/max-5 cap), Catalog/Radar filtering, Edge `ETag`/`304`, and Custom Watchlists |
+| [`api.integration.test.ts`](src/server/__tests__/api.integration.test.ts) | Full API integration | Runs all 7 SQL migrations against `node:sqlite` ([`d1-test-helper.ts`](src/server/__tests__/d1-test-helper.ts)); verifies Auth lifecycle, Watchlist CRUD, anti-IDOR, `EXPLAIN QUERY PLAN` index usage, TradingView + D1 `idx_stocks` quote fallback, OWASP controls (CSP/CSRF/413/415/429/session fixation/max-5 cap), Catalog/Radar filtering, Edge `ETag`/`304`, and Custom Watchlists |
 
 ### Coverage & Pre-Merge Verification
 
@@ -523,12 +516,11 @@ The following limitations and technical debt items were directly verified in the
 | **Auth & Account Management** | No password reset, email verification, MFA, OAuth, or RBAC user roles. Admin catalog sync relies on a shared bearer secret (`CATALOG_SYNC_SECRET`), and is open to any authenticated user when unset. | [`auth-routes.ts`](src/server/modules/auth/infra/auth-routes.ts), [`watchlist-routes.ts`](src/server/modules/watchlist/infra/watchlist-routes.ts#L203-L210) |
 | **Client Catalog Edge Utilization** | The SPA (`WatchlistPage`, `RadarPage`) queries authenticated `GET /api/v1/watchlist/catalog` rather than consuming public Edge-cached `GET /api/v1/catalog/snapshot` directly from the browser. Although `/watchlist/catalog` reads the snapshot from `CatalogSnapshotStore` (KV/hot cache, 0 D1 catalog reads), it still executes D1 reads for the user's personal items/groups and filters/sorts ~900 stocks in the Worker per request. | [`useWatchlist.ts`](src/client/features/watchlist/useWatchlist.ts#L86-L97), [`watchlist-catalog-use-cases.ts`](src/server/modules/watchlist/application/watchlist-catalog-use-cases.ts#L624-L706) |
 | **Rate-Limit Atomicity** | `STOCK_MATE_KV` rate-limit counters use non-atomic `get` + `put` operations (eventually consistent across PoPs; small burst overshoot possible under high concurrency). | [`rate-limit-mw.ts`](src/server/shared/http/rate-limit-mw.ts#L69-L86) |
-| **Sectors.app Provider Parity** | `SectorsIdxProvider` lacks a `CircuitBreaker` wrapper and returns only core valuation fields (omitting extended 19 FQS metrics and intraday open/change fields). | [`sectors-provider.ts`](src/server/modules/market-data/infra/sectors-provider.ts) |
 | **Portfolio Accounting Depth** | Holdings model current snapshot tranches (`holding_tranches_json`, max 20) without historical buy/sell ledger, realized P&L tracking, dividend income tracking, or automatic corporate action adjustments (splits/rights). | [`schema.ts`](src/server/shared/db/schema.ts), [`simulator.ts`](src/shared/domain/simulator.ts) |
 | **Calculation Mode Default Difference** | Client UI defaults to `BROKER_GROSS` (`useCalcMode.tsx`), whereas domain function `calculatePositionSummary()` defaults to `NET_AFTER_FEES` (`simulator.ts`). | [`useCalcMode.tsx`](src/client/lib/useCalcMode.tsx#L12), [`simulator.ts`](src/shared/domain/simulator.ts#L302) |
 | **Testing Gaps** | No browser E2E tests (Playwright/Cypress) and no React DOM/component tests; API integration tests run on Node 24's in-memory `node:sqlite` D1 shim rather than Miniflare/Wrangler D1 runtime. | [`vitest.config.ts`](vitest.config.ts), [`d1-test-helper.ts`](src/server/__tests__/d1-test-helper.ts) |
-| **Minor Code/Doc Drift** | `CATALOG_AUTO_SYNC_TTL_MS` (`watchlist-catalog-use-cases.ts`) and `hasQualityMetrics()` (`d1-idx-catalog-repository.ts`) are unused legacy exports. Also, [`docs/ADR-001-100k-scaling-architecture.md`](docs/ADR-001-100k-scaling-architecture.md) still cites an earlier Cron (`*/15 1-9 UTC`) and cache header (`s-maxage=300, SWR=600`), whereas live code uses `*/5 1-10 * * 1-5` + `0 15 * * *` and `max-age=60, s-maxage=120, stale-while-revalidate=300`. | [`wrangler.jsonc`](wrangler.jsonc), [`src/server/index.ts`](src/server/index.ts#L49), [`ADR-001`](docs/ADR-001-100k-scaling-architecture.md) |
-| **External Provider Dependency** | TradingView scanner and Yahoo Finance v10 are unofficial public web endpoints without commercial SLA guarantees; upstream schema or anti-bot changes can disrupt automatic syncing. | [`tradingview-provider.ts`](src/server/modules/market-data/infra/tradingview-provider.ts), [`yahoo-finance-provider.ts`](src/server/modules/market-data/infra/yahoo-finance-provider.ts) |
+| **Minor Code/Doc Drift** | `CATALOG_AUTO_SYNC_TTL_MS` (`watchlist-catalog-use-cases.ts`) and `hasQualityMetrics()` (`d1-idx-catalog-repository.ts`) are unused legacy exports. Also, [`docs/ADR-001-100k-scaling-architecture.md`](docs/ADR-001-100k-scaling-architecture.md) still cites an earlier Cron (`*/15 1-9 UTC`), earlier cache header (`s-maxage=300, SWR=600`), and the removed Yahoo Finance fallback. | [`wrangler.jsonc`](wrangler.jsonc), [`src/server/index.ts`](src/server/index.ts#L45), [`ADR-001`](docs/ADR-001-100k-scaling-architecture.md) |
+| **Single External Provider Dependency** | TradingView scanner is an unofficial public web endpoint without commercial SLA guarantees; upstream schema or anti-bot changes can disrupt live syncing (mitigated during outages by D1 `idx_stocks` + KV snapshot fallback). | [`tradingview-provider.ts`](src/server/modules/market-data/infra/tradingview-provider.ts), [`get-idx-quote-use-case.ts`](src/server/modules/market-data/application/get-idx-quote-use-case.ts) |
 
 ---
 
@@ -557,7 +549,7 @@ The following limitations and technical debt items were directly verified in the
 | [`docs/business-rules.md`](docs/business-rules.md) | IDX market rules, Core-3 formulas, Value Trap Shield, 4-Track FQS v2 breakpoints & caps, simulator formulas |
 | [`docs/database-design.md`](docs/database-design.md) | Full ER diagram, D1 table schemas, integer scaling conventions, indexes, migrations, KV key schema |
 | [`docs/api-specification.md`](docs/api-specification.md) | Complete `/api/v1` REST contract, query schemas, rate limits, RFC 7807 error catalog |
-| [`docs/integration-guide.md`](docs/integration-guide.md) | TradingView, Yahoo Finance, Sectors.app provider details, Cloudflare bindings, frontend API client |
+| [`docs/integration-guide.md`](docs/integration-guide.md) | TradingView scanner integration, D1 `idx_stocks` fallback, Cloudflare bindings, frontend API client |
 | [`docs/deployment-guide.md`](docs/deployment-guide.md) | Provisioning, secrets, builds, D1 migrations, GitHub Actions CI/CD, smoke tests, rollback |
 | [`docs/operational-runbook.md`](docs/operational-runbook.md) | Health probes, SLOs, JSON logging, Cron schedules, troubleshooting playbooks, k6 load testing, incident response |
 | [`docs/ADR-001-100k-scaling-architecture.md`](docs/ADR-001-100k-scaling-architecture.md) | Architectural Decision Record for graduated scaling toward 100k concurrent users |

@@ -4,7 +4,7 @@ import { BoundedTtlCache } from '@/server/shared/cache/bounded-ttl-cache';
 import { AppError, notFoundError } from '@/server/shared/http/problem';
 import { CircuitBreaker } from '@/server/shared/resilience/circuit-breaker';
 import {
-  mapYahooSectorToIdx,
+  mapMarketSectorToIdx,
   SECTOR_BENCHMARK_MULTIPLES,
   type IdxMarketDataProvider,
 } from '../domain/market-data.types';
@@ -135,7 +135,7 @@ export function parseTradingViewRowToDto(
       : `${ticker} Tbk`
   ).slice(0, 120);
 
-  const sector = mapYahooSectorToIdx(
+  const sector = mapMarketSectorToIdx(
     typeof rawSector === 'string' ? rawSector : null,
     typeof rawIndustry === 'string' ? rawIndustry : null,
   );

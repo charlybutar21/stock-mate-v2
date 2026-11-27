@@ -70,9 +70,6 @@ npx wrangler secret put JWT_SECRET
 
 # Recommended: locks POST /api/v1/watchlist/catalog/sync to Bearer admin token
 npx wrangler secret put CATALOG_SYNC_SECRET
-
-# Optional: activates Sectors.app as primary single-quote provider
-npx wrangler secret put SECTORS_API_KEY
 ```
 
 ### GitHub Actions Repository Secrets (for Automated CD)

@@ -38,6 +38,6 @@ export interface IdxMarketQuoteDto {
     piotroskiFScore?: number | null;
     altmanZScore?: number | null;
   };
-  source: 'tradingview' | 'sectors_app' | 'yahoo_finance';
+  source: 'tradingview' | 'idx_catalog';
   fetchedAt: string;
 }

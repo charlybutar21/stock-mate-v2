@@ -165,7 +165,7 @@ Sumber: [`src/shared/domain/simulator.ts`](../../src/shared/domain/simulator.ts)
 
 ## 7. Benchmark Default 11 Sektor IDX
 
-Saat menarik data otomatis dari TradingView/Yahoo Finance, sistem mengisi `Target PER` dan `Target PBV` awal berdasarkan sektor ([`market-data.types.ts`](../../src/server/modules/market-data/domain/market-data.types.ts)):
+Saat menarik data otomatis dari TradingView, sistem mengisi `Target PER` dan `Target PBV` awal berdasarkan sektor ([`market-data.types.ts`](../../src/server/modules/market-data/domain/market-data.types.ts)):
 
 | Sektor | Target PER | Target PBV | Catatan Khusus |
 | :--- | :---: | :---: | :--- |

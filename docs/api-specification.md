@@ -263,6 +263,6 @@ All endpoints require valid authentication cookies.
 ### `GET /api/v1/market-data/idx/:ticker`
 - **Auth:** Cookie · **Rate Limit:** `60/min` per user
 - **Path Param:** `ticker` — 4-letter IDX ticker (`/^[A-Z]{4}$/`, case-insensitive input normalized uppercase).
-- **Behavior:** Queries `CompositeIdxMarketDataProvider` (Sectors.app if `SECTORS_API_KEY` configured → TradingView → Yahoo Finance fallback).
+- **Behavior:** Queries `GetIdxQuoteUseCase` — fetches live quote from `TradingViewIdxProvider` (`source: 'tradingview'`) and automatically falls back to the D1 `idx_stocks` catalog (`source: 'idx_catalog'`, refreshed every 5m by Cron) if TradingView fails or its circuit breaker is open.
 - **Response (`200`):** `{ "quote": IdxMarketQuoteDto }`
 - **Errors:** `400` (invalid ticker format), `404` (ticker not found), `429` (rate limit), `502` (upstream error), `503` (circuit breaker open).

@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AuthRepository, PasswordHasher } from '@/server/modules/auth/domain/auth.types';
+import type { IdxCatalogRepository } from '@/server/modules/watchlist/domain/watchlist.types';
 import { createAuthMiddleware } from '@/server/shared/http/auth-mw';
 import { zodToValidationError } from '@/server/shared/http/problem';
 import { createRateLimitMiddleware } from '@/server/shared/http/rate-limit-mw';
 import type { SessionRevocationStore } from '@/server/shared/http/session-token';
 import type { AppEnv } from '@/server/shared/types';
+import { GetIdxQuoteUseCase } from '../application/get-idx-quote-use-case';
 import type { IdxMarketDataProvider } from '../domain/market-data.types';
 
 const tickerParamSchema = z.object({
@@ -17,13 +19,11 @@ const tickerParamSchema = z.object({
 });
 
 export function createMarketDataRoutes(
-  getDeps: (
-    db: D1Database,
-    env?: { SECTORS_API_KEY?: string },
-  ) => {
+  getDeps: (db: D1Database) => {
     authRepo: AuthRepository;
     hasher: PasswordHasher;
     revocationStore: SessionRevocationStore;
+    idxCatalogRepo: IdxCatalogRepository;
     marketDataProvider: IdxMarketDataProvider;
   },
 ): Hono<AppEnv> {
@@ -44,8 +44,9 @@ export function createMarketDataRoutes(
       throw zodToValidationError(parsed.error);
     }
 
-    const { marketDataProvider } = getDeps(c.env.DB, c.env);
-    const quote = await marketDataProvider.fetchIdxQuote(parsed.data.ticker);
+    const { marketDataProvider, idxCatalogRepo } = getDeps(c.env.DB);
+    const useCase = new GetIdxQuoteUseCase(marketDataProvider, idxCatalogRepo);
+    const quote = await useCase.execute(parsed.data.ticker);
 
     return c.json({ quote }, 200);
   });

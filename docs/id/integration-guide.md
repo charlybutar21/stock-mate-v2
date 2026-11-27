@@ -5,58 +5,49 @@
 
 ---
 
-## 1. Rantai Provider Data Saham (Fallback Otomatis)
+## 1. Arsitektur Sumber Data & Fallback D1 `idx_stocks`
 
-Stock-Mate v2 membungkus sumber data pasar lewat [`CompositeIdxMarketDataProvider`](../../src/server/modules/market-data/infra/sectors-provider.ts#L267-L317) agar sistem tidak bergantung pada satu layanan saja:
+Stock-Mate v2 menggunakan **TradingView Indonesia Scanner** sebagai **satu-satunya sumber data pasar live** (agar seluruh 33 kolom Core-3 + FQS v2 + harga intraday 100% seragam), dilengkapi **fallback otomatis ke tabel D1 `idx_stocks`** untuk endpoint pencarian 1 ticker (`GET /api/v1/market-data/idx/:ticker`):
 
 ```mermaid
 flowchart LR
-    Req["Permintaan Data Saham"] --> S["1. Sectors.app<br/>(Aktif hanya jika SECTORS_API_KEY diisi)<br/>Khusus 1 ticker · Cache 15m"]
-    S -.->|"Tidak aktif / gagal"| T["2. TradingView Indonesia Scanner<br/>(Utama untuk 1 ticker, batch & ~900 IHSG)<br/>Cache 3m · CircuitBreaker 3x/60s"]
-    T -.->|"Gagal / circuit open"| Y["3. Yahoo Finance v10 (.JK)<br/>(Cadangan Otomatis · Crumb Auth)<br/>Cache 15m · CircuitBreaker 3x/60s"]
+    Req["GET /api/v1/market-data/idx/:ticker<br/>(GetIdxQuoteUseCase)"] --> TV["1. TradingViewIdxProvider<br/>(Scan Live 33 Kolom)<br/>Cache 3m · CircuitBreaker 3x/60s"]
+    TV -.->|"Circuit open / timeout / gagal"| D1["2. Fallback D1 idx_stocks<br/>(Disync Cron tiap 5 menit)<br/>Lengkap 33 kolom · source: idx_catalog"]
+    D1 -.->|"Ticker tidak ada di D1"| Err["Kembalikan Error Upstream Asli<br/>(404 / 502 / 503 RFC 7807)"]
 ```
 
 ---
 
-## 2. TradingView Indonesia Scanner (Sumber Utama)
+## 2. TradingView Indonesia Scanner (Sumber Data Utama)
 
 File: [`src/server/modules/market-data/infra/tradingview-provider.ts`](../../src/server/modules/market-data/infra/tradingview-provider.ts)
 
 - **Endpoint:** `POST https://scanner.tradingview.com/indonesia/scan` (tanpa API key).
 - **Timeout:** `8 detik` (1/batch ticker) dan `15 detik` (scan seluruh IHSG).
+- **Circuit Breaker:** `CircuitBreaker(3, 60_000)` — otomatis jeda 60 detik jika gagal 3x berturut-turut.
+- **Cache Memori:** `BoundedTtlCache` TTL `3 menit`, maks. `500` ticker.
 - **Filter Scan IHSG:** Hanya mengambil `exchange = IDX`, `type = stock`, `subtype = common`, `is_primary = true`, `active_symbol = true`, `market_cap_basic > 0`, `close > 0`, dan ticker persis **4 huruf** (`/^[A-Z]{4}$/` — waran, right, obligasi, dan ETF otomatis dibuang).
-- **33 Kolom Data:** Mengambil harga penutupan, harga pembukaan (`open`), perubahan harian (`change_abs`, `change`), EPS, BVPS, DPS, ROE, DER, pertumbuhan EPS/Revenue/Net Income, Market Cap, volume rata-rata 30 hari, ROA, ROIC, margin, Current Ratio, Net Debt, EBITDA, aset/liabilitas, CFO, FCF, Piotroski F-Score, Altman Z-Score, dan `industry`.
+- **33 Kolom Data:** Harga penutupan, harga pembukaan (`open`), perubahan harian (`change_abs`, `change`), EPS, BVPS, DPS, ROE, DER, pertumbuhan EPS/Revenue/Net Income, Market Cap, volume rata-rata 30 hari, ROA, ROIC, margin, Current Ratio, Net Debt, EBITDA, aset/liabilitas, CFO, FCF, Piotroski F-Score, Altman Z-Score, dan `industry`.
 - **Pengolahan Penting Saat Parsing:**
   - `adtvIdr = average_volume_30d_calc × close` (rata-rata nilai transaksi harian 30 hari).
   - `equityToAssetsPct = ((Total Assets − Total Liabilities) / Total Assets) × 100`.
-  - **Koreksi Sektor Properti:** Karena TradingView menaruh properti di bawah `Finance`, parser mengecek kolom `industry` lebih dulu supaya emiten properti/REIT masuk ke `PROPERTY_REAL_ESTATE` (bukan `FINANCIALS`).
+  - **Koreksi Sektor Properti:** Karena TradingView menaruh properti di bawah `Finance`, parser mengecek kolom `industry` lebih dulu di `mapMarketSectorToIdx()` supaya emiten properti/REIT masuk ke `PROPERTY_REAL_ESTATE` (bukan `FINANCIALS`).
   - **Aturan Perbankan:** Emiten `FINANCIALS` dikosongkan `der` dan `currentRatio`-nya, lalu nilai `debt_to_equity` dipindahkan ke `wholesaleDer`.
 
 ---
 
-## 3. Yahoo Finance v10 (Cadangan Otomatis)
+## 3. Fallback D1 `idx_stocks` (`GetIdxQuoteUseCase`)
 
-File: [`src/server/modules/market-data/infra/yahoo-finance-provider.ts`](../../src/server/modules/market-data/infra/yahoo-finance-provider.ts)
+File: [`src/server/modules/market-data/application/get-idx-quote-use-case.ts`](../../src/server/modules/market-data/application/get-idx-quote-use-case.ts)
 
-- **Cara Kerja Autentikasi Otomatis:**
-  1. Memanggil `https://fc.yahoo.com` untuk mengambil cookie sesi.
-  2. Menukar cookie ke `https://query2.finance.yahoo.com/v1/test/getcrumb` untuk memperoleh `crumb` (disimpan di cache isolate 25 menit; otomatis diulang 1x jika dapat `401`/`403`).
-  3. Memanggil `quoteSummary/{TICKER}.JK` untuk modul `price,summaryDetail,defaultKeyStatistics,financialData,assetProfile`.
-- **Penyesuaian Data:** Membagi `debtToEquity` Yahoo dengan `100` (karena Yahoo memakai format persen, misal `64.97` → `0.65x`), dan melindungi dari bug `trailingEps` positif palsu saat Net Income/ROE sebenarnya negatif.
-
----
-
-## 4. Sectors.app API (Opsional)
-
-File: [`src/server/modules/market-data/infra/sectors-provider.ts`](../../src/server/modules/market-data/infra/sectors-provider.ts)
-
-- Hanya aktif jika secret `SECTORS_API_KEY` dipasang di Cloudflare Worker.
-- Keunggulannya: mengambil rata-rata P/E dan P/B kompetitor (`pe_peer_avg`, `pb_peer_avg`) untuk mengisi `targetPer` dan `targetPbv`.
-- Keterbatasannya: belum mendukung batch/full-universe scan dan belum mengisi 19 metrik FQS lanjutan.
+Saat TradingView gagal atau *circuit breaker*-nya terbuka:
+1. Sistem mencari ticker tersebut langsung di tabel D1 `idx_stocks` (yang disegarkan Cron tiap 5 menit selama jam bursa).
+2. Jika ada, seluruh 33 kolom (harga, open, perubahan harian, Core-3, dan 19 metrik FQS) dikembalikan utuh dengan `source: 'idx_catalog'` dan `fetchedAt` sesuai waktu sinkronisasi terakhir.
+3. Jika ticker memang tidak ada di `idx_stocks`, error upstream asli (`404`/`502`/`503`) tetap diteruskan dalam format RFC 7807.
 
 ---
 
-## 5. Integrasi Platform Cloudflare & Client API
+## 4. Integrasi Platform Cloudflare & Client API
 
 - **Cloudflare Bindings (`wrangler.jsonc`):** `DB` (D1 `stock-mate-db`), `STOCK_MATE_KV` (KV namespace), `caches.default` (Edge Cache).
 - **Client HTTP Wrapper ([`apiClient.ts`](../../src/client/lib/apiClient.ts)):** Semua panggilan dari React otomatis menyertakan `credentials: 'include'` (mengirim cookie `HttpOnly`) dan header `X-Requested-With: StockMate` (bukti same-origin CSRF), serta mengubah response RFC 7807 menjadi `ApiClientError`.

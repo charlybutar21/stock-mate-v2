@@ -15,7 +15,6 @@ const REDACTED_KEYS = new Set([
   'token_hash',
   'apikey',
   'api_key',
-  'sectors_api_key',
   'jwt_secret',
   'catalog_sync_secret',
   'cf-connecting-ip',

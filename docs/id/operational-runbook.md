@@ -67,7 +67,7 @@ curl -X POST https://stock-mate-v2.charlymicolas21.workers.dev/api/v1/watchlist/
 | :--- | :--- | :--- |
 | **`503` pada `/health/ready`** | Gangguan D1, salah `database_id`, atau migrasi belum dijalankan. | Cek status Cloudflare D1, pastikan `wrangler.jsonc` benar, dan jalankan `npm run db:migrate:remote`. |
 | **Katalog kosong (`EMPTY`) atau harga tidak update >15 menit di jam bursa** | Cron gagal tarik data dari TradingView, circuit breaker 60 detik sedang terbuka, atau KV lock 240 detik masih aktif. | Cek `npx wrangler tail` cari `cron_catalog_sync_failed`. Tunggu 60 detik lalu panggil `/api/v1/catalog/snapshot` atau jalankan sync manual. |
-| **`502` / `503` saat klik tombol Auto-Fetch 1 ticker** | TradingView & Yahoo Finance sama-sama gagal 3x berturut-turut sehingga *circuit breaker* terbuka 60 detik. | Tunggu 60 detik (pulih otomatis). Sementara itu, user tetap bisa mengisi data fundamental secara manual di form. |
+| **`502` / `503` saat klik tombol Auto-Fetch 1 ticker** | TradingView gagal 3x berturut-turut (*circuit breaker* terbuka 60 detik) dan ticker tersebut tidak ada di fallback D1 `idx_stocks`. | Tunggu 60 detik (pulih otomatis). Untuk emiten yang sudah ada di `idx_stocks`, sistem otomatis menyajikan data Cron terakhir (`source: 'idx_catalog'`). User tetap bisa input manual. |
 | **`403 Forbidden` saat tes API via Postman / curl** | Request `POST`/`PATCH`/`DELETE` membawa cookie tapi tidak menyertakan header bukti same-origin. | Tambahkan header `-H "X-Requested-With: StockMate"`. |
 | **User terasa sering logout atau banyak hit D1 pada `/auth/me`** | `JWT_SECRET` belum dipasang di produksi (sehingga tiap isolate memakai kunci acak berbeda) atau user login di >5 perangkat. | Pasang secret permanen via `npx wrangler secret put JWT_SECRET` lalu deploy ulang. |
 | **`429 Too Many Requests`** | Melewati jatah rate limit (`15/mnt` auth, `6/mnt` sync-all, `4/mnt` catalog sync, `60/mnt` market-data). | Tunggu sesuai angka detik pada header `Retry-After`. |
@@ -91,4 +91,4 @@ k6 run -e BASE_URL=https://stock-mate-v2.charlymicolas21.workers.dev \
 
 - **Jika `JWT_SECRET` bocor:** Segera ganti lewat `npx wrangler secret put JWT_SECRET`. Semua cookie akses 15 menit lama langsung ditolak dan otomatis diverifikasi ulang lewat D1.
 - **Paksa logout semua user sekaligus:** Kosongkan tabel `sessions` di D1 dan ganti `JWT_SECRET`.
-- **Ganti `CATALOG_SYNC_SECRET` atau `SECTORS_API_KEY`:** Cukup jalankan `npx wrangler secret put <NAMA_SECRET>` (langsung aktif tanpa perlu ubah kode).
+- **Ganti `CATALOG_SYNC_SECRET`:** Cukup jalankan `npx wrangler secret put CATALOG_SYNC_SECRET` (langsung aktif tanpa perlu ubah kode).

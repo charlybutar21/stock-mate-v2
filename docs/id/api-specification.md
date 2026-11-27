@@ -114,4 +114,4 @@ Semua error `4xx` dan `5xx` dikirim dengan `Content-Type: application/problem+js
 
 | Method & Path | Penjelasan |
 | :--- | :--- |
-| `GET /api/v1/market-data/idx/:ticker` | Ambil data terbaru 1 emiten 4 huruf dari rantai provider (Sectors.app opsional → TradingView → Yahoo Finance fallback). |
+| `GET /api/v1/market-data/idx/:ticker` | Ambil data terbaru 1 emiten 4 huruf dari `TradingViewIdxProvider` (`source: 'tradingview'`) dengan fallback otomatis ke tabel D1 `idx_stocks` (`source: 'idx_catalog'`) saat TradingView sedang gangguan/circuit open. |

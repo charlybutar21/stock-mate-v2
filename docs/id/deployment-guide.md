@@ -34,7 +34,6 @@ npx wrangler kv namespace create STOCK_MATE_KV --preview
 # 4. Pasang secret produksi (JANGAN pernah commit ke Git!)
 npx wrangler secret put JWT_SECRET          # String acak minimal 32 byte untuk JWT 15 menit
 npx wrangler secret put CATALOG_SYNC_SECRET # Token rahasia admin untuk sync katalog manual
-npx wrangler secret put SECTORS_API_KEY     # Opsional: API key Sectors.app
 ```
 
 ---

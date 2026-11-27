@@ -13,7 +13,7 @@ Stock-Mate v2 dibangun dengan gaya **Modular Monolith yang Stateless di Edge (Cl
 - **Hexagonal / Clean Architecture:** Di folder `src/server/modules/`, setiap modul (`auth`, `watchlist`, `market-data`) dibagi menjadi 3 lapisan rapi:
   - `domain/` — kontrak interface dan tipe inti (tidak tahu soal SQLite atau HTTP).
   - `application/` — alur bisnis (*Use Case*), misalnya "tambah saham ke watchlist", "sinkronisasi katalog".
-  - `infra/` — implementasi teknis (route HTTP Hono, query Drizzle D1, adapter TradingView/Yahoo).
+  - `infra/` — implementasi teknis (route HTTP Hono, query Drizzle D1, adapter TradingView).
 - **Domain Isomorfik (`src/shared/`):** Rumus finansial dan validasi Zod ditulis sekali lalu dipakai oleh **backend sekaligus frontend**. Jadi hitungan Harga Wajar di server pasti 100% identik dengan simulasi *What-If* di browser.
 
 ---
@@ -83,7 +83,7 @@ Semua 6 halaman utama dan 3 tab sekunder simulator di-*lazy load* (`React.lazy`)
 - **Katalog IHSG (Utamakan Ketersediaan / AP):** Tidak masalah harga terlambat 1–5 menit selama halaman selalu terbuka cepat (<200ms) dan tidak tumbang saat jam buka bursa.
 - **Portofolio & Watchlist Pribadi (Utamakan Konsistensi / CP):** Jumlah lot dan harga beli harus selalu akurat seketika (*strong consistency*), sehingga memakai transaksi batch ACID di D1.
 - **Autentikasi (Hybrid Cepat + Bisa Dicabut):** Verifikasi JWT 15 menit menghilangkan ~95% query DB, sementara logout langsung memblokir token tersebut via daftar blokir KV (`revoked:sid:*`).
-- **Circuit Breaker ([`circuit-breaker.ts`](../../src/server/shared/resilience/circuit-breaker.ts)):** Jika TradingView atau Yahoo Finance gagal 3 kali berturut-turut, pemutus arus terbuka 60 detik agar user tidak menunggu timeout panjang dan langsung diarahkan ke provider cadangan / input manual.
+- **Circuit Breaker ([`circuit-breaker.ts`](../../src/server/shared/resilience/circuit-breaker.ts)):** Jika TradingView gagal 3 kali berturut-turut, pemutus arus terbuka 60 detik agar user tidak menunggu timeout panjang dan langsung dialihkan ke fallback katalog D1 `idx_stocks` (yang disync tiap 5 menit).
 
 ---
 

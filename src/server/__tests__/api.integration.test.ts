@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../index';
+import { AppError } from '../shared/http/problem';
 import { createTestD1 } from './d1-test-helper';
 
 function extractSessionCookie(res: Response): string {
@@ -377,17 +378,26 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(details).not.toMatch(/\bSCAN\b/i);
   });
 
-  it('protects and serves GET /api/v1/market-data/idx/:ticker', async () => {
-    const { d1 } = createTestD1();
+  it('protects and serves GET /api/v1/market-data/idx/:ticker with D1 idx_stocks fallback on TradingView outage', async () => {
+    const { d1, sqlite } = createTestD1();
+    let failUpstream = false;
     const app = createApp({
       marketDataProvider: {
         async fetchIdxQuote(ticker) {
+          if (failUpstream) {
+            throw new AppError({
+              status: 503,
+              type: 'https://stock-mate-v2/errors/upstream-circuit-open',
+              title: 'Market Data Temporarily Paused',
+              detail: 'TradingView upstream circuit breaker is open.',
+            });
+          }
           return {
             ticker,
             companyName: 'PT Bank Central Asia Tbk',
             sector: 'FINANCIALS',
             currentPrice: 5550,
-            periodLabel: 'TTM (Yahoo Finance)',
+            periodLabel: 'TTM (TradingView)',
             fundamentals: {
               eps: 483,
               bvps: 2307,
@@ -398,7 +408,7 @@ describe('Stock-Mate v2 API Integration', () => {
               targetPer: 15,
               targetPbv: 2.5,
             },
-            source: 'yahoo_finance',
+            source: 'tradingview',
             fetchedAt: new Date().toISOString(),
           };
         },
@@ -430,16 +440,93 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(badTicker.status).toBe(400);
     expect(badTicker.headers.get('content-type')).toContain('application/problem+json');
 
-    // Valid ticker -> 200
+    // Valid ticker (live TradingView) -> 200
     const ok = await app.request(
       'http://localhost/api/v1/market-data/idx/bbca',
       { headers: { Cookie: cookie } },
       { DB: d1 },
     );
     expect(ok.status).toBe(200);
-    const body = (await ok.json()) as { quote: { ticker: string; currentPrice: number } };
+    const body = (await ok.json()) as {
+      quote: { ticker: string; currentPrice: number; source: string };
+    };
     expect(body.quote.ticker).toBe('BBCA');
     expect(body.quote.currentPrice).toBe(5550);
+    expect(body.quote.source).toBe('tradingview');
+
+    // Seed D1 idx_stocks catalog row (as synced by 5-min Cron) with full intraday + FQS fields
+    const syncedAt = Date.now() - 120_000;
+    sqlite
+      .prepare(
+        `INSERT INTO idx_stocks (
+          ticker, company_name, sector, current_price, open_price, daily_change, daily_change_bps,
+          period_label, eps, bvps, dps, roe_bps, der_x100, eps_growth_bps,
+          target_per_x100, target_pbv_x100, market_cap_idr, adtv_idr, roa_bps, roic_bps,
+          operating_margin_bps, net_margin_bps, revenue_growth_bps, net_income_growth_bps,
+          current_ratio_x100, net_debt_to_ebitda_x100, equity_to_assets_bps, wholesale_der_x100,
+          cfo_to_ni_x100, fcf_margin_bps, fcf_yield_bps, cfo_positive, fcf_positive,
+          piotroski_f_score, altman_z_x100, source, synced_at
+        ) VALUES (
+          'BBCA', 'PT Bank Central Asia Tbk', 'FINANCIALS', 9850, 9800, 50, 51,
+          'TTM (TradingView)', 445, 2150, 270, 2150, NULL, 1120,
+          1500, 250, 1200000000000000, 850000000000, 340, NULL,
+          NULL, 4800, 1050, 1180,
+          NULL, NULL, 1720, 45,
+          110, NULL, NULL, 1, 1,
+          8, NULL, 'tradingview', ?
+        )`,
+      )
+      .run(syncedAt);
+
+    // TradingView circuit open / failing -> cleanly serves D1 idx_stocks fallback with all 33 fields
+    failUpstream = true;
+    const fallbackRes = await app.request(
+      'http://localhost/api/v1/market-data/idx/BBCA',
+      { headers: { Cookie: cookie } },
+      { DB: d1 },
+    );
+    expect(fallbackRes.status).toBe(200);
+    const fallbackBody = (await fallbackRes.json()) as {
+      quote: {
+        ticker: string;
+        currentPrice: number;
+        openPrice: number | null;
+        dailyChange: number | null;
+        dailyChangePct: number | null;
+        source: string;
+        fetchedAt: string;
+        fundamentals: {
+          eps: number | null;
+          roePct: number | null;
+          equityToAssetsPct: number | null;
+          wholesaleDer: number | null;
+          piotroskiFScore: number | null;
+          cfoPositive: boolean | null;
+        };
+      };
+    };
+    expect(fallbackBody.quote.ticker).toBe('BBCA');
+    expect(fallbackBody.quote.currentPrice).toBe(9850);
+    expect(fallbackBody.quote.openPrice).toBe(9800);
+    expect(fallbackBody.quote.dailyChange).toBe(50);
+    expect(fallbackBody.quote.dailyChangePct).toBe(0.51);
+    expect(fallbackBody.quote.source).toBe('idx_catalog');
+    expect(fallbackBody.quote.fetchedAt).toBe(new Date(syncedAt).toISOString());
+    expect(fallbackBody.quote.fundamentals.eps).toBe(445);
+    expect(fallbackBody.quote.fundamentals.roePct).toBe(21.5);
+    expect(fallbackBody.quote.fundamentals.equityToAssetsPct).toBe(17.2);
+    expect(fallbackBody.quote.fundamentals.wholesaleDer).toBe(0.45);
+    expect(fallbackBody.quote.fundamentals.piotroskiFScore).toBe(8);
+    expect(fallbackBody.quote.fundamentals.cfoPositive).toBe(true);
+
+    // TradingView failing AND ticker absent from D1 idx_stocks -> preserves upstream 503 RFC 7807 error
+    const missingFallbackRes = await app.request(
+      'http://localhost/api/v1/market-data/idx/ZZZZ',
+      { headers: { Cookie: cookie } },
+      { DB: d1 },
+    );
+    expect(missingFallbackRes.status).toBe(503);
+    expect(missingFallbackRes.headers.get('content-type')).toContain('application/problem+json');
   });
 
   it('enforces OWASP security controls: CSP, no-store, CSRF, 413/415 body guards, log-injection, session fixation rotation, and 429 rate limiting', async () => {

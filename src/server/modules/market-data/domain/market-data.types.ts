@@ -24,7 +24,7 @@ export const SECTOR_BENCHMARK_MULTIPLES: Record<
   TRANSPORTATION_LOGISTICS: { targetPer: 12, targetPbv: 1.5 },
 };
 
-export function mapYahooSectorToIdx(rawSector?: string | null, rawIndustry?: string | null): IdxSector {
+export function mapMarketSectorToIdx(rawSector?: string | null, rawIndustry?: string | null): IdxSector {
   const sector = (rawSector ?? '').toLowerCase();
   const industry = (rawIndustry ?? '').toLowerCase();
 

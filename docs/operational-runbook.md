@@ -75,7 +75,7 @@ Every log line is emitted as JSON to `console.info` / `console.warn` / `console.
 npx wrangler tail
 ```
 
-> **PII Safety:** `sanitizeMeta()` recursively redacts 23 sensitive keys (`password`, `email`, `sm_session`, `__host-sm_session`, `sm_at`, `__host-sm_at`, `cookie`, `authorization`, `token`, `api_key`, `sectors_api_key`, `jwt_secret`, `catalog_sync_secret`, `cf-connecting-ip`, `ip`, etc.) to `"[REDACTED]"`. Incoming `x-correlation-id` headers are regex-sanitized (`/^[A-Za-z0-9_-]{1,64}$/`) to prevent log injection.
+> **PII Safety:** `sanitizeMeta()` recursively redacts 22 sensitive keys (`password`, `email`, `sm_session`, `__host-sm_session`, `sm_at`, `__host-sm_at`, `cookie`, `authorization`, `token`, `api_key`, `jwt_secret`, `catalog_sync_secret`, `cf-connecting-ip`, `ip`, etc.) to `"[REDACTED]"`. Incoming `x-correlation-id` headers are regex-sanitized (`/^[A-Za-z0-9_-]{1,64}$/`) to prevent log injection.
 
 ---
 
@@ -144,12 +144,12 @@ npx wrangler kv key list --binding STOCK_MATE_KV
   3. Confirm TradingView scanner accessibility (`POST https://scanner.tradingview.com/indonesia/scan`).
 
 ### Playbook 3: `502` or `503` (`upstream-circuit-open`) on `GET /api/v1/market-data/idx/:ticker`
-- **Symptom:** Auto-fetch button in Add/Edit Stock modal fails.
-- **Root Cause:** Both TradingView and Yahoo Finance failed 3 consecutive requests (triggering 60s circuit breaker cooldown) or Yahoo crumb handshake failed.
+- **Symptom:** Auto-fetch button in Add/Edit Stock modal fails for a ticker not present in D1 `idx_stocks`.
+- **Root Cause:** TradingView failed 3 consecutive requests (triggering 60s circuit breaker cooldown) and the requested ticker does not have a cached fallback row in D1 `idx_stocks`.
 - **Remediation:**
   1. Wait 60 seconds for circuit breaker cooldown to reset automatically.
-  2. Verify if `SECTORS_API_KEY` is expired/quota-exhausted (if configured).
-  3. Users can still add/edit stock fundamentals manually in the UI while upstreams recover.
+  2. For tickers already present in `idx_stocks`, the endpoint automatically serves the latest Cron-synced D1 fallback (`source: 'idx_catalog'`).
+  3. Users can still add/edit stock fundamentals manually in the UI while TradingView recovers.
 
 ### Playbook 4: `403 Forbidden` on Authenticated Mutating Requests
 - **Symptom:** `POST`/`PATCH`/`DELETE` fails with `Missing same-origin verification header` or `Cross-origin state-changing request blocked`.
@@ -195,5 +195,5 @@ Traffic mix tested: **80%** public Edge-cached `GET /api/v1/catalog/snapshot` (+
 
 - **Rotate Compromised `JWT_SECRET`:** Run `npx wrangler secret put JWT_SECRET`. All existing 15m `__Host-sm_at` tokens immediately fail HMAC verification and seamlessly re-validate against authoritative D1 `sessions` on next request.
 - **Force Global Logout (All Users):** Delete rows from `sessions` table in D1 and rotate `JWT_SECRET` so neither refresh sessions nor 15m access tokens remain valid.
-- **Rotate `CATALOG_SYNC_SECRET` or `SECTORS_API_KEY`:** Run `npx wrangler secret put <SECRET_NAME>` (takes effect immediately on Cloudflare Workers without code changes).
+- **Rotate `CATALOG_SYNC_SECRET`:** Run `npx wrangler secret put CATALOG_SYNC_SECRET` (takes effect immediately on Cloudflare Workers without code changes).
 - **Dependency Vulnerabilities:** CI runs `npm audit --omit=dev --audit-level=high` on every PR and push; patch vulnerable production packages promptly via `npm update` / `npm install`.

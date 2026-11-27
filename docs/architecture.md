@@ -53,10 +53,8 @@ flowchart TB
         D1[("Cloudflare D1 (SQLite — stock-mate-db)<br/>users · sessions · watchlist_items<br/>stock_fundamentals · idx_stocks<br/>custom_watchlists · custom_watchlist_stocks")]
     end
 
-    subgraph External["External Market Data Providers"]
+    subgraph External["External Market Data Provider"]
         TV["TradingView Indonesia Scanner<br/>(scanner.tradingview.com/indonesia/scan)"]
-        YF["Yahoo Finance v10 QuoteSummary<br/>(query2.finance.yahoo.com)"]
-        SA["Sectors.app Company Report API<br/>(api.sectors.app — Optional)"]
     end
 
     User -->|"HTML / JS / CSS"| Assets
@@ -64,10 +62,8 @@ flowchart TB
     EdgeCache -.->|"Edge Miss / Revalidate"| Worker
     User -->|"Authenticated /api/v1/*"| Worker
     Worker -->|"Fast-path snapshot, revocations, rate limits"| KV
-    Worker -->|"ACID CRUD & Fallback Reads"| D1
+    Worker -->|"ACID CRUD & Fallback Reads (idx_stocks)"| D1
     Worker -.->|"On-demand quote (Circuit Breaker)"| TV
-    Worker -.->|"Fallback quote (Circuit Breaker)"| YF
-    Worker -.->|"Primary if SECTORS_API_KEY set"| SA
     Cron -->|"Fetch full IHSG universe"| TV
     Cron -->|"Batch upsert & prune"| D1
     Cron -->|"Publish precomputed snapshot"| KV
@@ -95,7 +91,7 @@ flowchart LR
     subgraph Modules["Hexagonal Domain Modules"]
         Auth["auth/<br/>domain → application → infra<br/>(WebCryptoHasher, D1AuthRepository)"]
         Watchlist["watchlist/<br/>domain → application → infra<br/>(D1WatchlistRepo, D1IdxCatalogRepo,<br/>D1CustomWatchlistRepo, CatalogSnapshotStore)"]
-        Market["market-data/<br/>domain → infra<br/>(TradingView, Yahoo, Sectors, Composite)"]
+        Market["market-data/<br/>domain → application → infra<br/>(GetIdxQuoteUseCase, TradingView + D1 Fallback)"]
     end
 
     subgraph Isomorphic["Shared Isomorphic Core (src/shared/)"]
@@ -183,12 +179,9 @@ In [`src/server/index.ts`](../src/server/index.ts#L329-L340), `GET /api/v1/catal
 
 A KV lock (`catalog:sync:lock`, TTL `240s`) ensures at most one background refresh runs across isolates during the lock window.
 
-### Provider-Level Bounded In-Isolate Caches
+### Provider-Level Bounded In-Isolate Cache
 
-Individual market-data adapters maintain memory-bounded `BoundedTtlCache` instances (max 500 entries, expired-first then FIFO eviction) in [`src/server/shared/cache/bounded-ttl-cache.ts`](../src/server/shared/cache/bounded-ttl-cache.ts):
-- `TradingViewIdxProvider`: 3-minute quote TTL (`tvQuoteCache`)
-- `YahooFinanceIdxProvider`: 15-minute quote TTL (`quoteCache`) + 25-minute Yahoo crumb session TTL (`cachedCrumb`)
-- `SectorsIdxProvider`: 15-minute quote TTL (`sectorsQuoteCache`)
+`TradingViewIdxProvider` maintains a memory-bounded `BoundedTtlCache` instance (3-minute quote TTL, max 500 entries, expired-first then FIFO eviction) in [`src/server/shared/cache/bounded-ttl-cache.ts`](../src/server/shared/cache/bounded-ttl-cache.ts).
 
 ---
 
@@ -243,15 +236,15 @@ Located in [`src/shared/domain/`](../src/shared/domain/) with **100% enforced Vi
 | **Shared IHSG Catalog** | **AP** (Availability + Partition Tolerance) | **Eventual Consistency** (5-min intraday Cron + Edge/KV caching) | Retail investors tolerate 1–5 min quote delay in exchange for sub-200ms global latency and zero upstream rate-limit failures. |
 | **Authentication Fast-Path** | **AP** with bounded revocation | **Bounded Eventual Revocation** (15m HS256 JWT + KV denylist + 7d D1 session) | Cuts ~95% of D1 session lookup queries; if KV is momentarily unreachable on read, denylist fails open until 15m JWT expires while D1 remains authoritative on refresh. |
 | **User Portfolio & Custom Watchlists** | **CP** (Strong Consistency) | **ACID Transactions** (`db.batch()` on D1 SQLite) | Lot counts, buy tranches, average buy prices, and custom watchlists require strict read-your-writes integrity. |
-| **Upstream Market Data** | **AP** (Graceful Degradation) | **Best-Effort with Circuit Breaker + Fallback** | TradingView → Yahoo Finance fallback + cached catalog prevents cascading 5xx errors when external scanners throttle or time out. |
+| **Upstream Market Data** | **AP** (Graceful Degradation) | **Best-Effort with Circuit Breaker + D1 Fallback** | TradingView (`CircuitBreaker(3, 60s)`) + automatic D1 `idx_stocks` fallback (`GetIdxQuoteUseCase`) + cached catalog prevents cascading 5xx errors when TradingView throttles or times out. |
 | **Rate Limiting** | **AP** (Best-Effort Distributed) | **Fixed-Window KV Counter** (`get` + `put`) with local Map fallback | Non-atomic KV increment can allow small bursts under concurrent edge hits, trading strict atomicity for low latency and zero Durable Object cost. |
 
 ---
 
 ## 9. Resilience & Fault Tolerance Patterns
 
-- **Circuit Breaker ([`circuit-breaker.ts`](../src/server/shared/resilience/circuit-breaker.ts)):** Protects `TradingViewIdxProvider` and `YahooFinanceIdxProvider` (`failureThreshold = 3`, `cooldownMs = 60,000 ms`). Yahoo's breaker excludes HTTP `404` (unknown ticker) from counting as an upstream failure.
-- **Composite Provider Fallback ([`sectors-provider.ts`](../src/server/modules/market-data/infra/sectors-provider.ts)):** `CompositeIdxMarketDataProvider` cascades `Sectors.app` (if `SECTORS_API_KEY` is configured) → `TradingView` → `Yahoo Finance`.
+- **Circuit Breaker ([`circuit-breaker.ts`](../src/server/shared/resilience/circuit-breaker.ts)):** Protects `TradingViewIdxProvider` (`failureThreshold = 3`, `cooldownMs = 60,000 ms`).
+- **D1 Catalog Quote Fallback ([`get-idx-quote-use-case.ts`](../src/server/modules/market-data/application/get-idx-quote-use-case.ts)):** `GetIdxQuoteUseCase` serves full 33-column intraday + FQS data from D1 `idx_stocks` (`source: 'idx_catalog'`, synced every 5m by Cron) whenever TradingView fails or its circuit breaker is open.
 - **Upstream Timeouts:** All external `fetch()` calls enforce `AbortSignal.timeout()` (`8,000 ms` single/batch quotes; `15,000 ms` full IHSG universe scan).
 - **Single-Flight Coalescing:** Both `CatalogSnapshotStore.inFlightLoad` and `ListCatalogStocksUseCase.inFlightBootstrap` deduplicate concurrent cold-start loads within an isolate.
 - **Graceful Degradation Without KV/Secrets:** When `STOCK_MATE_KV`, `JWT_SECRET`, or `CATALOG_SYNC_SECRET` are absent (local dev / tests), the Worker falls back seamlessly to D1, per-isolate ephemeral HMAC key, and per-isolate memory rate-limit maps.

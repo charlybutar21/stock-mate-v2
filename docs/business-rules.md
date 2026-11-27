@@ -294,7 +294,7 @@ Source: [`src/server/modules/market-data/domain/market-data.types.ts`](../src/se
 | `INFRASTRUCTURE` | `16.0x` | `2.2x` | Communications / utilities; Property/Infra FQS track. |
 | `HEALTHCARE` | `22.0x` | `3.5x` | Non-Financials FQS track. |
 | `TECHNOLOGY` | `20.0x` | `2.5x` | Non-Financials FQS track. |
-| `PROPERTY_REAL_ESTATE` | `12.0x` | `1.0x` | Checked **before** `FINANCIALS` in `mapYahooSectorToIdx` because TradingView nests Real Estate under Finance. |
+| `PROPERTY_REAL_ESTATE` | `12.0x` | `1.0x` | Checked **before** `FINANCIALS` in `mapMarketSectorToIdx` because TradingView nests Real Estate under Finance. |
 | `INDUSTRIALS` | `12.0x` | `1.8x` | Default fallback sector when upstream taxonomy is unrecognized. |
 | `TRANSPORTATION_LOGISTICS` | `12.0x` | `1.5x` | Matches shipping, airlines, logistics, trucking, marine industries. |
 

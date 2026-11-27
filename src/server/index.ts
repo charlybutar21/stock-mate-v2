@@ -32,12 +32,7 @@ import { CatalogSnapshotStore } from './modules/watchlist/infra/catalog-snapshot
 import { SyncIdxCatalogUseCase } from './modules/watchlist/application/watchlist-catalog-use-cases';
 import { createWatchlistRoutes } from './modules/watchlist/infra/watchlist-routes';
 import type { IdxMarketDataProvider } from './modules/market-data/domain/market-data.types';
-import {
-  CompositeIdxMarketDataProvider,
-  SectorsIdxProvider,
-} from './modules/market-data/infra/sectors-provider';
 import { TradingViewIdxProvider } from './modules/market-data/infra/tradingview-provider';
-import { YahooFinanceIdxProvider } from './modules/market-data/infra/yahoo-finance-provider';
 import { createMarketDataRoutes } from './modules/market-data/infra/market-data-routes';
 
 const SAFE_CORRELATION_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
@@ -86,22 +81,11 @@ export function createApp(options?: {
   const revocationStore = new SessionRevocationStore();
   const snapshotStore = new CatalogSnapshotStore();
   const tradingViewProvider = new TradingViewIdxProvider();
-  const yahooProvider = new YahooFinanceIdxProvider();
-  const defaultFreeProvider = new CompositeIdxMarketDataProvider(
-    tradingViewProvider,
-    yahooProvider,
-  );
+  const marketDataProvider: IdxMarketDataProvider =
+    options?.marketDataProvider ?? tradingViewProvider;
 
-  const getDeps = (d1: D1Database, env?: { SECTORS_API_KEY?: string }) => {
+  const getDeps = (d1: D1Database) => {
     const db = drizzle(d1, { schema });
-    const marketDataProvider: IdxMarketDataProvider =
-      options?.marketDataProvider ??
-      (env?.SECTORS_API_KEY
-        ? new CompositeIdxMarketDataProvider(
-            new SectorsIdxProvider(env.SECTORS_API_KEY),
-            defaultFreeProvider,
-          )
-        : defaultFreeProvider);
 
     return {
       authRepo: new D1AuthRepository(db),
@@ -285,7 +269,7 @@ export function createApp(options?: {
       }
     }
 
-    const { idxCatalogRepo, snapshotStore: store } = getDeps(c.env.DB, c.env);
+    const { idxCatalogRepo, snapshotStore: store } = getDeps(c.env.DB);
     const { snapshot, cacheStatus } = await store.getSnapshot({
       kv: c.env.STOCK_MATE_KV,
       loadFromD1: async () => {
@@ -436,12 +420,7 @@ export async function runScheduledCatalogSync(env: AppBindings): Promise<void> {
   const correlationId = `cron_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
   const start = Date.now();
   const db = drizzle(env.DB, { schema });
-  const tradingViewProvider = new TradingViewIdxProvider();
-  const yahooProvider = new YahooFinanceIdxProvider();
-  const freeProvider = new CompositeIdxMarketDataProvider(tradingViewProvider, yahooProvider);
-  const marketDataProvider: IdxMarketDataProvider = env.SECTORS_API_KEY
-    ? new CompositeIdxMarketDataProvider(new SectorsIdxProvider(env.SECTORS_API_KEY), freeProvider)
-    : freeProvider;
+  const marketDataProvider: IdxMarketDataProvider = new TradingViewIdxProvider();
 
   const snapshotStore = new CatalogSnapshotStore();
   const useCase = new SyncIdxCatalogUseCase(
