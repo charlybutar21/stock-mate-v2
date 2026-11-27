@@ -25,6 +25,26 @@ const TV_COLUMNS = [
   'return_on_equity',
   'debt_to_equity',
   'earnings_per_share_diluted_yoy_growth_ttm',
+  // Extended Fundamental Quality Score (FQS) & liquidity columns
+  'market_cap_basic',
+  'average_volume_30d_calc',
+  'return_on_assets',
+  'return_on_invested_capital',
+  'operating_margin',
+  'net_margin',
+  'total_revenue_yoy_growth_ttm',
+  'net_income_yoy_growth_ttm',
+  'current_ratio',
+  'net_debt',
+  'ebitda',
+  'total_assets_fq',
+  'total_liabilities_fq',
+  'cash_f_operating_activities_ttm',
+  'free_cash_flow_ttm',
+  'net_income_ttm',
+  'free_cash_flow_margin_ttm',
+  'piotroski_f_score_ttm',
+  'altman_z_score_ttm',
 ] as const;
 
 interface TradingViewScanResponse {
@@ -60,6 +80,25 @@ export function parseTradingViewRowToDto(
     rawRoe,
     rawDer,
     rawEpsGrowth,
+    rawMarketCap,
+    rawAvgVol30d,
+    rawRoa,
+    rawRoic,
+    rawOpm,
+    rawNpm,
+    rawRevGrowth,
+    rawNiGrowth,
+    rawCurrentRatio,
+    rawNetDebt,
+    rawEbitda,
+    rawTotalAssets,
+    rawTotalLiabilities,
+    rawCfo,
+    rawFcf,
+    rawNetIncome,
+    rawFcfMargin,
+    rawPiotroski,
+    rawAltmanZ,
   ] = row.d;
 
   const tickerFromSymbol = row.s.replace(/^IDX:/i, '').trim().toUpperCase();
@@ -78,6 +117,7 @@ export function parseTradingViewRowToDto(
 
   const sector = mapYahooSectorToIdx(typeof rawSector === 'string' ? rawSector : null);
   const benchmarks = SECTOR_BENCHMARK_MULTIPLES[sector];
+  const isFinancials = sector === 'FINANCIALS';
 
   const epsVal = asFinite(rawEps);
   const bvpsVal = asFinite(rawBvps);
@@ -85,6 +125,53 @@ export function parseTradingViewRowToDto(
   const roeVal = asFinite(rawRoe);
   const derVal = asFinite(rawDer);
   const epsGrowthVal = asFinite(rawEpsGrowth);
+
+  const marketCapVal = asFinite(rawMarketCap);
+  const avgVol30dVal = asFinite(rawAvgVol30d);
+  const roaVal = asFinite(rawRoa);
+  const roicVal = asFinite(rawRoic);
+  const opmVal = asFinite(rawOpm);
+  const npmVal = asFinite(rawNpm);
+  const revGrowthVal = asFinite(rawRevGrowth);
+  const niGrowthVal = asFinite(rawNiGrowth);
+  const currentRatioVal = asFinite(rawCurrentRatio);
+  const netDebtVal = asFinite(rawNetDebt);
+  const ebitdaVal = asFinite(rawEbitda);
+  const totalAssetsVal = asFinite(rawTotalAssets);
+  const totalLiabilitiesVal = asFinite(rawTotalLiabilities);
+  const cfoVal = asFinite(rawCfo);
+  const fcfVal = asFinite(rawFcf);
+  const netIncomeVal = asFinite(rawNetIncome);
+  const fcfMarginVal = asFinite(rawFcfMargin);
+  const piotroskiVal = asFinite(rawPiotroski);
+  const altmanZVal = asFinite(rawAltmanZ);
+
+  let netDebtToEbitda: number | null = null;
+  if (!isFinancials && netDebtVal !== null) {
+    if (netDebtVal <= 0) {
+      netDebtToEbitda =
+        ebitdaVal !== null && ebitdaVal > 0 ? round2(clamp(netDebtVal / ebitdaVal, -50, 0)) : -0.01;
+    } else if (ebitdaVal !== null && ebitdaVal > 0) {
+      netDebtToEbitda = round2(clamp(netDebtVal / ebitdaVal, 0, 50));
+    } else if (ebitdaVal !== null && ebitdaVal <= 0) {
+      netDebtToEbitda = 50;
+    }
+  }
+
+  const equityToAssetsPct =
+    totalAssetsVal !== null && totalAssetsVal > 0 && totalLiabilitiesVal !== null
+      ? round2(clamp(((totalAssetsVal - totalLiabilitiesVal) / totalAssetsVal) * 100, -1000, 100))
+      : null;
+
+  const cfoToNetIncome =
+    cfoVal !== null && netIncomeVal !== null && netIncomeVal > 0
+      ? round2(clamp(cfoVal / netIncomeVal, -50, 50))
+      : null;
+
+  const fcfYieldPct =
+    fcfVal !== null && marketCapVal !== null && marketCapVal > 0
+      ? round2(clamp((fcfVal / marketCapVal) * 100, -1000, 1000))
+      : null;
 
   return {
     ticker,
@@ -98,7 +185,7 @@ export function parseTradingViewRowToDto(
       dps: dpsVal !== null && dpsVal >= 0 ? Math.round(dpsVal) : null,
       roePct: roeVal !== null ? round2(clamp(roeVal, -1000, 1000)) : null,
       der:
-        sector === 'FINANCIALS'
+        isFinancials
           ? null
           : derVal !== null && derVal >= 0
             ? round2(clamp(derVal, 0, 1000))
@@ -107,6 +194,32 @@ export function parseTradingViewRowToDto(
         epsGrowthVal !== null ? round2(clamp(epsGrowthVal, -1000, 1000)) : null,
       targetPer: benchmarks.targetPer,
       targetPbv: benchmarks.targetPbv,
+      marketCapIdr: marketCapVal !== null && marketCapVal > 0 ? Math.round(marketCapVal) : null,
+      adtvIdr:
+        avgVol30dVal !== null && avgVol30dVal >= 0 ? Math.round(avgVol30dVal * closePrice) : null,
+      roaPct: roaVal !== null ? round2(clamp(roaVal, -1000, 1000)) : null,
+      roicPct: roicVal !== null ? round2(clamp(roicVal, -1000, 1000)) : null,
+      operatingMarginPct: opmVal !== null ? round2(clamp(opmVal, -1000, 1000)) : null,
+      netMarginPct: npmVal !== null ? round2(clamp(npmVal, -1000, 1000)) : null,
+      revenueGrowthPct: revGrowthVal !== null ? round2(clamp(revGrowthVal, -1000, 1000)) : null,
+      netIncomeGrowthPct: niGrowthVal !== null ? round2(clamp(niGrowthVal, -1000, 1000)) : null,
+      currentRatio:
+        isFinancials
+          ? null
+          : currentRatioVal !== null && currentRatioVal >= 0
+            ? round2(clamp(currentRatioVal, 0, 1000))
+            : null,
+      netDebtToEbitda,
+      equityToAssetsPct,
+      wholesaleDer:
+        isFinancials && derVal !== null && derVal >= 0 ? round2(clamp(derVal, 0, 1000)) : null,
+      cfoToNetIncome,
+      fcfMarginPct: fcfMarginVal !== null ? round2(clamp(fcfMarginVal, -1000, 1000)) : null,
+      fcfYieldPct,
+      cfoPositive: cfoVal !== null ? cfoVal > 0 : null,
+      fcfPositive: fcfVal !== null ? fcfVal > 0 : null,
+      piotroskiFScore: piotroskiVal !== null ? Math.round(clamp(piotroskiVal, 0, 9)) : null,
+      altmanZScore: altmanZVal !== null ? round2(clamp(altmanZVal, -100, 100)) : null,
     },
     source: 'tradingview',
     fetchedAt: new Date(nowMs).toISOString(),

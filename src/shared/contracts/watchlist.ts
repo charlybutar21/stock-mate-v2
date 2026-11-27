@@ -6,7 +6,10 @@ import {
   IDX_SECTORS,
   MIN_IDX_PRICE,
   round2,
+  type FundamentalQualitySummary,
   type IdxSector,
+  type QarpQuadrant,
+  type QualityGrade,
   type ValuationSummary,
 } from '../domain';
 
@@ -40,6 +43,25 @@ const sharedFundamentalsFields = {
   targetPer: optionalNullableNumber({ positive: true, max: 1000 }),
   targetPbv: optionalNullableNumber({ positive: true, max: 500 }),
   dividendGrowthPct: optionalNullableNumber({ min: 0.0, max: 30.0 }),
+  marketCapIdr: optionalNullableInt({ min: 0 }),
+  adtvIdr: optionalNullableInt({ min: 0 }),
+  roaPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
+  roicPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
+  operatingMarginPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
+  netMarginPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
+  revenueGrowthPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
+  netIncomeGrowthPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
+  currentRatio: optionalNullableNumber({ min: 0, max: 100_000 }),
+  netDebtToEbitda: optionalNullableNumber({ min: -1000, max: 1000 }),
+  equityToAssetsPct: optionalNullableNumber({ min: -100_000, max: 100 }),
+  wholesaleDer: optionalNullableNumber({ min: 0, max: 100_000 }),
+  cfoToNetIncome: optionalNullableNumber({ min: -1000, max: 1000 }),
+  fcfMarginPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
+  fcfYieldPct: optionalNullableNumber({ min: -100_000, max: 100_000 }),
+  cfoPositive: z.boolean().nullable().optional(),
+  fcfPositive: z.boolean().nullable().optional(),
+  piotroskiFScore: optionalNullableInt({ min: 0, max: 9 }),
+  altmanZScore: optionalNullableNumber({ min: -1000, max: 1000 }),
 };
 
 export const fundamentalsInputSchema = z.object({
@@ -141,9 +163,29 @@ export const VALUATION_STATUS_FILTERS = [
 
 export type ValuationStatusFilter = (typeof VALUATION_STATUS_FILTERS)[number];
 
+export const QUALITY_GRADE_FILTERS = ['A', 'B', 'C', 'D'] as const;
+export type QualityGradeFilter = (typeof QUALITY_GRADE_FILTERS)[number];
+
+export const QARP_QUADRANT_FILTERS = [
+  'PRIME_OPPORTUNITY',
+  'QUALITY_FAIR_PRICE',
+  'DEEP_VALUE_TURNAROUND',
+  'VALUE_TRAP_RISK',
+  'OVERVALUED_OR_UNRATED',
+] as const;
+export type QarpQuadrantFilter = (typeof QARP_QUADRANT_FILTERS)[number];
+
 export const CATALOG_SORT_OPTIONS = [
+  'fqs_desc',
+  'fqs_asc',
+  'qarp_desc',
   'mos_desc',
   'mos_asc',
+  'profitability_desc',
+  'growth_desc',
+  'health_desc',
+  'cashflow_desc',
+  'adtv_desc',
   'ticker_asc',
   'ticker_desc',
   'price_asc',
@@ -156,7 +198,10 @@ export type CatalogSortOption = (typeof CATALOG_SORT_OPTIONS)[number];
 export const watchlistQuerySchema = z.object({
   search: z.string().trim().max(60).optional(),
   sector: z.enum(IDX_SECTORS).optional(),
-  sort: z.enum(['mos_desc', 'updated_desc', 'ticker_asc']).optional().default('updated_desc'),
+  sort: z
+    .enum(['mos_desc', 'fqs_desc', 'updated_desc', 'ticker_asc'])
+    .optional()
+    .default('updated_desc'),
 });
 
 const optionalQueryNumber = (min: number, max: number) =>
@@ -168,6 +213,16 @@ const optionalQueryNumber = (min: number, max: number) =>
     },
     z.number().finite().min(min).max(max).optional(),
   );
+
+const optionalQueryBoolean = z.preprocess(
+  (val) => {
+    if (val === undefined || val === null || val === '') return undefined;
+    if (val === true || val === 'true' || val === '1') return true;
+    if (val === false || val === 'false' || val === '0') return false;
+    return val;
+  },
+  z.boolean().optional(),
+);
 
 const optionalQueryInt = (min: number, max: number, fallback: number) =>
   z.preprocess(
@@ -185,6 +240,17 @@ export const catalogQuerySchema = z.object({
   valuationStatus: z.enum(VALUATION_STATUS_FILTERS).optional(),
   minMos: optionalQueryNumber(-1000, 1000),
   maxMos: optionalQueryNumber(-1000, 1000),
+  qualityGrade: z.enum(QUALITY_GRADE_FILTERS).optional(),
+  qarpQuadrant: z.enum(QARP_QUADRANT_FILTERS).optional(),
+  minFqs: optionalQueryNumber(0, 100),
+  maxFqs: optionalQueryNumber(0, 100),
+  minProfitability: optionalQueryNumber(0, 100),
+  minGrowth: optionalQueryNumber(0, 100),
+  minHealth: optionalQueryNumber(0, 100),
+  minCashFlow: optionalQueryNumber(0, 100),
+  minAdtvBillion: optionalQueryNumber(0, 100_000),
+  minPiotroski: optionalQueryNumber(0, 9),
+  excludeHighRiskTrap: optionalQueryBoolean,
   sort: z.enum(CATALOG_SORT_OPTIONS).optional().default('mos_desc'),
   page: optionalQueryInt(1, 500, 1),
   pageSize: optionalQueryInt(10, 100, 50),
@@ -241,6 +307,25 @@ export interface FundamentalsDto {
   projectionYears: number;
   terminalGrowthPct: number;
   dividendGrowthPct: number | null;
+  marketCapIdr: number | null;
+  adtvIdr: number | null;
+  roaPct: number | null;
+  roicPct: number | null;
+  operatingMarginPct: number | null;
+  netMarginPct: number | null;
+  revenueGrowthPct: number | null;
+  netIncomeGrowthPct: number | null;
+  currentRatio: number | null;
+  netDebtToEbitda: number | null;
+  equityToAssetsPct: number | null;
+  wholesaleDer: number | null;
+  cfoToNetIncome: number | null;
+  fcfMarginPct: number | null;
+  fcfYieldPct: number | null;
+  cfoPositive: boolean | null;
+  fcfPositive: boolean | null;
+  piotroskiFScore: number | null;
+  altmanZScore: number | null;
   updatedAt: string;
 }
 
@@ -260,6 +345,7 @@ export interface WatchlistItemDto {
   isStale: boolean;
   fundamentals: FundamentalsDto;
   valuation: ValuationSummary;
+  quality: FundamentalQualitySummary;
 }
 
 export interface MarketStockDto {
@@ -278,6 +364,7 @@ export interface MarketStockDto {
   isStale: boolean;
   fundamentals: FundamentalsDto;
   valuation: ValuationSummary;
+  quality: FundamentalQualitySummary;
   /** IDs of the current user's custom watchlists containing this ticker */
   customWatchlistIds: string[];
 }
@@ -288,8 +375,14 @@ export interface CatalogSummaryDto {
   fairlyValued: number;
   overvalued: number;
   insufficientData: number;
+  qualityScored: number;
+  eliteQuality: number;
+  strongQuality: number;
+  primeOpportunities: number;
   lastSyncedAt: string | null;
 }
+
+export type { QualityGrade, QarpQuadrant };
 
 export interface CatalogPaginationDto {
   page: number;

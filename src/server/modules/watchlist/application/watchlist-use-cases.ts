@@ -7,6 +7,7 @@ import type {
 } from '@/shared/contracts';
 import {
   aggregateHoldingTranches,
+  calculateFundamentalQuality,
   calculateValuation,
   DEFAULT_DISCOUNT_RATE_PCT,
   DEFAULT_PROJECTION_YEARS,
@@ -17,30 +18,86 @@ import { conflictError, notFoundError, validationError } from '@/server/shared/h
 import type { IdxMarketDataProvider } from '@/server/modules/market-data/domain/market-data.types';
 import type {
   FundamentalsRecord,
+  IdxCatalogRepository,
+  QualityMetricColumnsRecord,
   WatchlistItemRecord,
   WatchlistRepository,
 } from '../domain/watchlist.types';
 
 export const MAX_WATCHLIST_ITEMS_PER_USER = 200;
 
-function toBps(pct: number | null | undefined): number | null {
+export function toBps(pct: number | null | undefined): number | null {
   if (pct === null || pct === undefined) return null;
   return Math.round(pct * 100);
 }
 
-function fromBps(bps: number | null): number | null {
+export function fromBps(bps: number | null): number | null {
   if (bps === null) return null;
   return bps / 100;
 }
 
-function toX100(val: number | null | undefined): number | null {
+export function toX100(val: number | null | undefined): number | null {
   if (val === null || val === undefined) return null;
   return Math.round(val * 100);
 }
 
-function fromX100(x100: number | null): number | null {
+export function fromX100(x100: number | null): number | null {
   if (x100 === null) return null;
   return x100 / 100;
+}
+
+export function toBoolInt(val: boolean | null | undefined): number | null {
+  if (val === null || val === undefined) return null;
+  return val ? 1 : 0;
+}
+
+export function fromBoolInt(val: number | null): boolean | null {
+  if (val === null) return null;
+  return val !== 0;
+}
+
+export function extractQualityColumnsFromInput(f?: {
+  marketCapIdr?: number | null;
+  adtvIdr?: number | null;
+  roaPct?: number | null;
+  roicPct?: number | null;
+  operatingMarginPct?: number | null;
+  netMarginPct?: number | null;
+  revenueGrowthPct?: number | null;
+  netIncomeGrowthPct?: number | null;
+  currentRatio?: number | null;
+  netDebtToEbitda?: number | null;
+  equityToAssetsPct?: number | null;
+  wholesaleDer?: number | null;
+  cfoToNetIncome?: number | null;
+  fcfMarginPct?: number | null;
+  fcfYieldPct?: number | null;
+  cfoPositive?: boolean | null;
+  fcfPositive?: boolean | null;
+  piotroskiFScore?: number | null;
+  altmanZScore?: number | null;
+}): QualityMetricColumnsRecord {
+  return {
+    marketCapIdr: f?.marketCapIdr ?? null,
+    adtvIdr: f?.adtvIdr ?? null,
+    roaBps: toBps(f?.roaPct),
+    roicBps: toBps(f?.roicPct),
+    operatingMarginBps: toBps(f?.operatingMarginPct),
+    netMarginBps: toBps(f?.netMarginPct),
+    revenueGrowthBps: toBps(f?.revenueGrowthPct),
+    netIncomeGrowthBps: toBps(f?.netIncomeGrowthPct),
+    currentRatioX100: toX100(f?.currentRatio),
+    netDebtToEbitdaX100: toX100(f?.netDebtToEbitda),
+    equityToAssetsBps: toBps(f?.equityToAssetsPct),
+    wholesaleDerX100: toX100(f?.wholesaleDer),
+    cfoToNiX100: toX100(f?.cfoToNetIncome),
+    fcfMarginBps: toBps(f?.fcfMarginPct),
+    fcfYieldBps: toBps(f?.fcfYieldPct),
+    cfoPositive: toBoolInt(f?.cfoPositive),
+    fcfPositive: toBoolInt(f?.fcfPositive),
+    piotroskiFScore: f?.piotroskiFScore ?? null,
+    altmanZX100: toX100(f?.altmanZScore),
+  };
 }
 
 function parseHoldingTranches(
@@ -72,7 +129,11 @@ function parseHoldingTranches(
   return [];
 }
 
-export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()): WatchlistItemDto {
+export function mapRecordToDto(
+  record: WatchlistItemRecord,
+  nowMs = Date.now(),
+  catalogFallback?: QualityMetricColumnsRecord | null,
+): WatchlistItemDto {
   const f = record.fundamentals;
   const roePct = fromBps(f.roeBps);
   const der = fromX100(f.derX100);
@@ -82,6 +143,36 @@ export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()):
   const discountRatePct = f.discountRateBps / 100;
   const terminalGrowthPct = f.terminalGrowthBps / 100;
   const dividendGrowthPct = fromBps(f.dividendGrowthBps);
+
+  const marketCapIdr = f.marketCapIdr ?? catalogFallback?.marketCapIdr ?? null;
+  const adtvIdr = f.adtvIdr ?? catalogFallback?.adtvIdr ?? null;
+  const roaPct = fromBps(f.roaBps ?? catalogFallback?.roaBps ?? null);
+  const roicPct = fromBps(f.roicBps ?? catalogFallback?.roicBps ?? null);
+  const operatingMarginPct = fromBps(
+    f.operatingMarginBps ?? catalogFallback?.operatingMarginBps ?? null,
+  );
+  const netMarginPct = fromBps(f.netMarginBps ?? catalogFallback?.netMarginBps ?? null);
+  const revenueGrowthPct = fromBps(
+    f.revenueGrowthBps ?? catalogFallback?.revenueGrowthBps ?? null,
+  );
+  const netIncomeGrowthPct = fromBps(
+    f.netIncomeGrowthBps ?? catalogFallback?.netIncomeGrowthBps ?? null,
+  );
+  const currentRatio = fromX100(f.currentRatioX100 ?? catalogFallback?.currentRatioX100 ?? null);
+  const netDebtToEbitda = fromX100(
+    f.netDebtToEbitdaX100 ?? catalogFallback?.netDebtToEbitdaX100 ?? null,
+  );
+  const equityToAssetsPct = fromBps(
+    f.equityToAssetsBps ?? catalogFallback?.equityToAssetsBps ?? null,
+  );
+  const wholesaleDer = fromX100(f.wholesaleDerX100 ?? catalogFallback?.wholesaleDerX100 ?? null);
+  const cfoToNetIncome = fromX100(f.cfoToNiX100 ?? catalogFallback?.cfoToNiX100 ?? null);
+  const fcfMarginPct = fromBps(f.fcfMarginBps ?? catalogFallback?.fcfMarginBps ?? null);
+  const fcfYieldPct = fromBps(f.fcfYieldBps ?? catalogFallback?.fcfYieldBps ?? null);
+  const cfoPositive = fromBoolInt(f.cfoPositive ?? catalogFallback?.cfoPositive ?? null);
+  const fcfPositive = fromBoolInt(f.fcfPositive ?? catalogFallback?.fcfPositive ?? null);
+  const piotroskiFScore = f.piotroskiFScore ?? catalogFallback?.piotroskiFScore ?? null;
+  const altmanZScore = fromX100(f.altmanZX100 ?? catalogFallback?.altmanZX100 ?? null);
 
   const valuation = calculateValuation({
     sector: record.sector,
@@ -98,6 +189,37 @@ export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()):
     projectionYears: f.projectionYears,
     terminalGrowthPct,
     dividendGrowthPct,
+  });
+
+  const quality = calculateFundamentalQuality({
+    sector: record.sector,
+    currentPrice: record.currentPrice,
+    eps: f.eps,
+    dps: f.dps,
+    roePct,
+    roaPct,
+    roicPct,
+    operatingMarginPct,
+    netMarginPct,
+    revenueGrowthPct,
+    epsGrowthPct,
+    netIncomeGrowthPct,
+    der,
+    wholesaleDer,
+    currentRatio,
+    netDebtToEbitda,
+    equityToAssetsPct,
+    cfoToNetIncome,
+    fcfMarginPct,
+    fcfYieldPct,
+    cfoPositive,
+    fcfPositive,
+    piotroskiFScore,
+    altmanZScore,
+    marketCapIdr,
+    adtvIdr,
+    mosPct: valuation.mosPct,
+    valueTrapRiskLevel: valuation.valueTrapShield.riskLevel,
   });
 
   const storedAvgBuyPrice =
@@ -139,19 +261,49 @@ export function mapRecordToDto(record: WatchlistItemRecord, nowMs = Date.now()):
       projectionYears: f.projectionYears,
       terminalGrowthPct,
       dividendGrowthPct,
+      marketCapIdr,
+      adtvIdr,
+      roaPct,
+      roicPct,
+      operatingMarginPct,
+      netMarginPct,
+      revenueGrowthPct,
+      netIncomeGrowthPct,
+      currentRatio,
+      netDebtToEbitda,
+      equityToAssetsPct,
+      wholesaleDer,
+      cfoToNetIncome,
+      fcfMarginPct,
+      fcfYieldPct,
+      cfoPositive,
+      fcfPositive,
+      piotroskiFScore,
+      altmanZScore,
       updatedAt: new Date(f.updatedAt).toISOString(),
     },
     valuation,
+    quality,
   };
 }
 
 export class ListWatchlistUseCase {
-  constructor(private readonly repo: WatchlistRepository) {}
+  constructor(
+    private readonly repo: WatchlistRepository,
+    private readonly catalogRepo?: IdxCatalogRepository,
+  ) {}
 
   async execute(userId: string, query: WatchlistQuery): Promise<WatchlistItemDto[]> {
     const records = await this.repo.listByUser(userId, query.sector);
+    const catalogMap = new Map<string, QualityMetricColumnsRecord>();
+    if (this.catalogRepo && records.length > 0) {
+      const catRows = await this.catalogRepo.findByTickers(records.map((r) => r.ticker));
+      for (const row of catRows) {
+        catalogMap.set(row.ticker, row);
+      }
+    }
     const now = Date.now();
-    let items = records.map((r) => mapRecordToDto(r, now));
+    let items = records.map((r) => mapRecordToDto(r, now, catalogMap.get(r.ticker)));
 
     if (query.search) {
       const needle = query.search.toLowerCase();
@@ -169,6 +321,13 @@ export class ListWatchlistUseCase {
         if (mosB !== mosA) return mosB - mosA;
         return a.ticker.localeCompare(b.ticker);
       });
+    } else if (query.sort === 'fqs_desc') {
+      items.sort((a, b) => {
+        const fqsA = a.quality.score ?? Number.NEGATIVE_INFINITY;
+        const fqsB = b.quality.score ?? Number.NEGATIVE_INFINITY;
+        if (fqsB !== fqsA) return fqsB - fqsA;
+        return a.ticker.localeCompare(b.ticker);
+      });
     } else if (query.sort === 'ticker_asc') {
       items.sort((a, b) => a.ticker.localeCompare(b.ticker));
     }
@@ -178,14 +337,20 @@ export class ListWatchlistUseCase {
 }
 
 export class GetWatchlistItemUseCase {
-  constructor(private readonly repo: WatchlistRepository) {}
+  constructor(
+    private readonly repo: WatchlistRepository,
+    private readonly catalogRepo?: IdxCatalogRepository,
+  ) {}
 
   async execute(userId: string, id: string): Promise<WatchlistItemDto> {
     const record = await this.repo.findByIdForUser(id, userId);
     if (!record) {
       throw notFoundError('Watchlist item not found.');
     }
-    return mapRecordToDto(record);
+    const catalogFallback = this.catalogRepo
+      ? await this.catalogRepo.findByTicker(record.ticker)
+      : null;
+    return mapRecordToDto(record, Date.now(), catalogFallback);
   }
 }
 
@@ -253,6 +418,7 @@ export class CreateWatchlistItemUseCase {
         projectionYears: f?.projectionYears ?? DEFAULT_PROJECTION_YEARS,
         terminalGrowthBps: Math.round((f?.terminalGrowthPct ?? DEFAULT_TERMINAL_GROWTH_PCT) * 100),
         dividendGrowthBps: toBps(f?.dividendGrowthPct),
+        ...extractQualityColumnsFromInput(f),
         updatedAt: now,
       },
     };
@@ -349,6 +515,41 @@ export class UpdateWatchlistItemUseCase {
       if (f.dividendGrowthPct !== undefined) {
         fundamentalsPatch.dividendGrowthBps = toBps(f.dividendGrowthPct);
       }
+      if (f.marketCapIdr !== undefined) fundamentalsPatch.marketCapIdr = f.marketCapIdr;
+      if (f.adtvIdr !== undefined) fundamentalsPatch.adtvIdr = f.adtvIdr;
+      if (f.roaPct !== undefined) fundamentalsPatch.roaBps = toBps(f.roaPct);
+      if (f.roicPct !== undefined) fundamentalsPatch.roicBps = toBps(f.roicPct);
+      if (f.operatingMarginPct !== undefined) {
+        fundamentalsPatch.operatingMarginBps = toBps(f.operatingMarginPct);
+      }
+      if (f.netMarginPct !== undefined) fundamentalsPatch.netMarginBps = toBps(f.netMarginPct);
+      if (f.revenueGrowthPct !== undefined) {
+        fundamentalsPatch.revenueGrowthBps = toBps(f.revenueGrowthPct);
+      }
+      if (f.netIncomeGrowthPct !== undefined) {
+        fundamentalsPatch.netIncomeGrowthBps = toBps(f.netIncomeGrowthPct);
+      }
+      if (f.currentRatio !== undefined) {
+        fundamentalsPatch.currentRatioX100 = toX100(f.currentRatio);
+      }
+      if (f.netDebtToEbitda !== undefined) {
+        fundamentalsPatch.netDebtToEbitdaX100 = toX100(f.netDebtToEbitda);
+      }
+      if (f.equityToAssetsPct !== undefined) {
+        fundamentalsPatch.equityToAssetsBps = toBps(f.equityToAssetsPct);
+      }
+      if (f.wholesaleDer !== undefined) {
+        fundamentalsPatch.wholesaleDerX100 = toX100(f.wholesaleDer);
+      }
+      if (f.cfoToNetIncome !== undefined) {
+        fundamentalsPatch.cfoToNiX100 = toX100(f.cfoToNetIncome);
+      }
+      if (f.fcfMarginPct !== undefined) fundamentalsPatch.fcfMarginBps = toBps(f.fcfMarginPct);
+      if (f.fcfYieldPct !== undefined) fundamentalsPatch.fcfYieldBps = toBps(f.fcfYieldPct);
+      if (f.cfoPositive !== undefined) fundamentalsPatch.cfoPositive = toBoolInt(f.cfoPositive);
+      if (f.fcfPositive !== undefined) fundamentalsPatch.fcfPositive = toBoolInt(f.fcfPositive);
+      if (f.piotroskiFScore !== undefined) fundamentalsPatch.piotroskiFScore = f.piotroskiFScore;
+      if (f.altmanZScore !== undefined) fundamentalsPatch.altmanZX100 = toX100(f.altmanZScore);
     }
 
     await this.repo.update(id, userId, itemPatch, fundamentalsPatch);
@@ -410,6 +611,7 @@ export class SyncAllWatchlistUseCase {
           roeBps: toBps(quote.fundamentals.roePct),
           derX100: toX100(quote.fundamentals.der),
           epsGrowthBps: toBps(quote.fundamentals.epsGrowthPct),
+          ...extractQualityColumnsFromInput(quote.fundamentals),
           updatedAt: now,
         },
       );

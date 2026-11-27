@@ -1,4 +1,4 @@
-import { Calculator, LogOut, Moon, Star, Sun, TrendingUp } from 'lucide-react';
+import { Calculator, LogOut, Moon, Radar, Star, Sun, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useI18n } from '@/client/i18n/useI18n';
@@ -75,6 +75,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const navItems = [
     { to: '/watchlist', label: t.nav.watchlist, icon: Star },
+    { to: '/radar', label: t.nav.radar, icon: Radar },
     { to: '/simulator', label: t.nav.simulator, icon: Calculator },
   ];
 

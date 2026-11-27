@@ -68,6 +68,7 @@ import { CustomWatchlistModal } from './CustomWatchlistModal';
 import { CustomWatchlistQuickAdd } from './CustomWatchlistQuickAdd';
 import { PortfolioRiskXrayCard } from './PortfolioRiskXrayCard';
 import { StockFormModal } from './StockFormModal';
+import { QualityScoreBadge } from '@/client/features/radar/QualityScoreBadge';
 import {
   useCustomWatchlists,
   useCustomWatchlistStocks,
@@ -126,6 +127,7 @@ function mapWatchlistItemToMarket(
     isStale: item.isStale,
     fundamentals: item.fundamentals,
     valuation: item.valuation,
+    quality: item.quality,
     customWatchlistIds,
   };
 }
@@ -166,15 +168,16 @@ function MarketStockTable({
 
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full min-w-[920px] table-fixed border-collapse text-left text-sm">
+      <table className="w-full min-w-[960px] table-fixed border-collapse text-left text-sm">
         <colgroup>
-          <col className="w-[21%]" />
+          <col className="w-[19%]" />
+          <col className="w-[13%]" />
+          <col className="w-[10%]" />
+          <col className="w-[10%]" />
+          <col className="w-[14%]" />
+          <col className="w-[9%]" />
           <col className="w-[14%]" />
           <col className="w-[11%]" />
-          <col className="w-[11%]" />
-          <col className="w-[15%]" />
-          <col className="w-[16%]" />
-          <col className="w-[12%]" />
         </colgroup>
         <thead>
           <tr className="border-b border-border bg-subtle/70 text-xs font-semibold text-muted">
@@ -192,6 +195,9 @@ function MarketStockTable({
                 label={t.watchlist.colMos}
                 definition={t.glossary.marginOfSafety}
               />
+            </th>
+            <th className="px-2 py-3 text-center">
+              <TermTooltip label={t.watchlist.colQuality} definition={t.glossary.fqs} />
             </th>
             <th className="px-3 py-3 text-right">
               <TermTooltip
@@ -345,6 +351,15 @@ function MarketStockTable({
                       </span>
                     )}
                   </div>
+                </td>
+
+                {/* Fundamental Quality Score (FQS) */}
+                <td className="px-2 py-3.5 text-center align-middle">
+                  <QualityScoreBadge
+                    quality={item.quality}
+                    compact
+                    onClick={() => onOpenDetail(item)}
+                  />
                 </td>
 
                 {/* Owned Position OR Target Buy + Quick Add Lots */}
@@ -1330,6 +1345,8 @@ export function WatchlistPage() {
               aria-label="Sort stocks"
             >
               <option value="mos_desc">{t.watchlist.sortMosDesc}</option>
+              <option value="fqs_desc">{t.radar.sortFqsDesc}</option>
+              <option value="qarp_desc">{t.radar.sortQarpDesc}</option>
               <option value="mos_asc">{t.watchlist.sortMosAsc}</option>
               <option value="ticker_asc">{t.watchlist.sortTickerAsc}</option>
               <option value="ticker_desc">{t.watchlist.sortTickerDesc}</option>

@@ -1,4 +1,4 @@
-import { desc, eq, inArray, lt } from 'drizzle-orm';
+import { desc, eq, inArray, isNotNull, lt } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import type { IdxSector } from '@/shared/domain';
 import * as schema from '@/server/shared/db/schema';
@@ -21,8 +21,65 @@ function mapRow(row: typeof schema.idxStocks.$inferSelect): IdxStockRecord {
     epsGrowthBps: row.epsGrowthBps,
     targetPerX100: row.targetPerX100,
     targetPbvX100: row.targetPbvX100,
+    marketCapIdr: row.marketCapIdr,
+    adtvIdr: row.adtvIdr,
+    roaBps: row.roaBps,
+    roicBps: row.roicBps,
+    operatingMarginBps: row.operatingMarginBps,
+    netMarginBps: row.netMarginBps,
+    revenueGrowthBps: row.revenueGrowthBps,
+    netIncomeGrowthBps: row.netIncomeGrowthBps,
+    currentRatioX100: row.currentRatioX100,
+    netDebtToEbitdaX100: row.netDebtToEbitdaX100,
+    equityToAssetsBps: row.equityToAssetsBps,
+    wholesaleDerX100: row.wholesaleDerX100,
+    cfoToNiX100: row.cfoToNiX100,
+    fcfMarginBps: row.fcfMarginBps,
+    fcfYieldBps: row.fcfYieldBps,
+    cfoPositive: row.cfoPositive,
+    fcfPositive: row.fcfPositive,
+    piotroskiFScore: row.piotroskiFScore,
+    altmanZX100: row.altmanZX100,
     source: row.source,
     syncedAt: row.syncedAt,
+  };
+}
+
+function buildUpsertSet(stock: IdxStockRecord) {
+  return {
+    companyName: stock.companyName,
+    sector: stock.sector,
+    currentPrice: stock.currentPrice,
+    periodLabel: stock.periodLabel,
+    eps: stock.eps,
+    bvps: stock.bvps,
+    dps: stock.dps,
+    roeBps: stock.roeBps,
+    derX100: stock.derX100,
+    epsGrowthBps: stock.epsGrowthBps,
+    targetPerX100: stock.targetPerX100,
+    targetPbvX100: stock.targetPbvX100,
+    marketCapIdr: stock.marketCapIdr,
+    adtvIdr: stock.adtvIdr,
+    roaBps: stock.roaBps,
+    roicBps: stock.roicBps,
+    operatingMarginBps: stock.operatingMarginBps,
+    netMarginBps: stock.netMarginBps,
+    revenueGrowthBps: stock.revenueGrowthBps,
+    netIncomeGrowthBps: stock.netIncomeGrowthBps,
+    currentRatioX100: stock.currentRatioX100,
+    netDebtToEbitdaX100: stock.netDebtToEbitdaX100,
+    equityToAssetsBps: stock.equityToAssetsBps,
+    wholesaleDerX100: stock.wholesaleDerX100,
+    cfoToNiX100: stock.cfoToNiX100,
+    fcfMarginBps: stock.fcfMarginBps,
+    fcfYieldBps: stock.fcfYieldBps,
+    cfoPositive: stock.cfoPositive,
+    fcfPositive: stock.fcfPositive,
+    piotroskiFScore: stock.piotroskiFScore,
+    altmanZX100: stock.altmanZX100,
+    source: stock.source,
+    syncedAt: stock.syncedAt,
   };
 }
 
@@ -68,28 +125,22 @@ export class D1IdxCatalogRepository implements IdxCatalogRepository {
     return rows[0]?.syncedAt ?? null;
   }
 
+  async hasQualityMetrics(): Promise<boolean> {
+    const rows = await this.db
+      .select({ ticker: schema.idxStocks.ticker })
+      .from(schema.idxStocks)
+      .where(isNotNull(schema.idxStocks.marketCapIdr))
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async upsertOne(stock: IdxStockRecord): Promise<void> {
     await this.db
       .insert(schema.idxStocks)
       .values(stock)
       .onConflictDoUpdate({
         target: schema.idxStocks.ticker,
-        set: {
-          companyName: stock.companyName,
-          sector: stock.sector,
-          currentPrice: stock.currentPrice,
-          periodLabel: stock.periodLabel,
-          eps: stock.eps,
-          bvps: stock.bvps,
-          dps: stock.dps,
-          roeBps: stock.roeBps,
-          derX100: stock.derX100,
-          epsGrowthBps: stock.epsGrowthBps,
-          targetPerX100: stock.targetPerX100,
-          targetPbvX100: stock.targetPbvX100,
-          source: stock.source,
-          syncedAt: stock.syncedAt,
-        },
+        set: buildUpsertSet(stock),
       });
   }
 
@@ -104,22 +155,7 @@ export class D1IdxCatalogRepository implements IdxCatalogRepository {
           .values(stock)
           .onConflictDoUpdate({
             target: schema.idxStocks.ticker,
-            set: {
-              companyName: stock.companyName,
-              sector: stock.sector,
-              currentPrice: stock.currentPrice,
-              periodLabel: stock.periodLabel,
-              eps: stock.eps,
-              bvps: stock.bvps,
-              dps: stock.dps,
-              roeBps: stock.roeBps,
-              derX100: stock.derX100,
-              epsGrowthBps: stock.epsGrowthBps,
-              targetPerX100: stock.targetPerX100,
-              targetPbvX100: stock.targetPbvX100,
-              source: stock.source,
-              syncedAt: stock.syncedAt,
-            },
+            set: buildUpsertSet(stock),
           }),
       );
       await this.db.batch(statements as [typeof statements[0], ...typeof statements]);

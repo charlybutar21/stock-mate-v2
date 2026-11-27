@@ -47,6 +47,7 @@ import {
 import { StockFormModal } from './StockFormModal';
 import { statusTone } from './WatchlistPage';
 import { useFetchIdxQuote, useUpdateWatchlistItem, useWatchlistItem } from './useWatchlist';
+import { QualityBreakdownCard } from '@/client/features/radar/QualityBreakdownCard';
 
 function roeTone(flag: RoeQualityFlag): BadgeTone {
   if (flag === 'STRONG') return 'positive';
@@ -130,6 +131,25 @@ export function StockDetailPage() {
             roePct: quote.fundamentals.roePct,
             der: quote.fundamentals.der,
             epsGrowthPct: quote.fundamentals.epsGrowthPct,
+            marketCapIdr: quote.fundamentals.marketCapIdr ?? null,
+            adtvIdr: quote.fundamentals.adtvIdr ?? null,
+            roaPct: quote.fundamentals.roaPct ?? null,
+            roicPct: quote.fundamentals.roicPct ?? null,
+            operatingMarginPct: quote.fundamentals.operatingMarginPct ?? null,
+            netMarginPct: quote.fundamentals.netMarginPct ?? null,
+            revenueGrowthPct: quote.fundamentals.revenueGrowthPct ?? null,
+            netIncomeGrowthPct: quote.fundamentals.netIncomeGrowthPct ?? null,
+            currentRatio: quote.fundamentals.currentRatio ?? null,
+            netDebtToEbitda: quote.fundamentals.netDebtToEbitda ?? null,
+            equityToAssetsPct: quote.fundamentals.equityToAssetsPct ?? null,
+            wholesaleDer: quote.fundamentals.wholesaleDer ?? null,
+            cfoToNetIncome: quote.fundamentals.cfoToNetIncome ?? null,
+            fcfMarginPct: quote.fundamentals.fcfMarginPct ?? null,
+            fcfYieldPct: quote.fundamentals.fcfYieldPct ?? null,
+            cfoPositive: quote.fundamentals.cfoPositive ?? null,
+            fcfPositive: quote.fundamentals.fcfPositive ?? null,
+            piotroskiFScore: quote.fundamentals.piotroskiFScore ?? null,
+            altmanZScore: quote.fundamentals.altmanZScore ?? null,
           },
         },
       });
@@ -467,6 +487,21 @@ export function StockDetailPage() {
             </div>
           </Card>
         </div>
+      </section>
+
+      {/* GROUP 1B: Fundamental Quality Score (FQS) Breakdown */}
+      <section className="space-y-4 animate-fade-up" aria-label={t.radar.sectionQualityTitle}>
+        <SectionHeader
+          title={t.radar.sectionQualityTitle}
+          subtitle={t.radar.sectionQualitySub}
+          role="calculated"
+          roleLabel={t.common.calculatedTag}
+        />
+        <QualityBreakdownCard
+          quality={item.quality}
+          fundamentals={item.fundamentals}
+          dividendYieldPct={liveValuation.ratios.dividendYieldPct}
+        />
       </section>
 
       {/* GROUP 2: My Holding Position (Clearly Marked Editable Card) */}

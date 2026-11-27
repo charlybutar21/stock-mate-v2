@@ -7,6 +7,7 @@ import { Skeleton } from './components/ui/primitives';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { useMe } from './features/auth/useAuth';
+import { RadarPage } from './features/radar/RadarPage';
 import { SimulatorPage } from './features/simulator/SimulatorPage';
 import { StockDetailPage } from './features/watchlist/StockDetailPage';
 import { WatchlistPage } from './features/watchlist/WatchlistPage';
@@ -87,6 +88,14 @@ export function App() {
                       element={
                         <RequireAuth>
                           <StockDetailPage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/radar"
+                      element={
+                        <RequireAuth>
+                          <RadarPage />
                         </RequireAuth>
                       }
                     />

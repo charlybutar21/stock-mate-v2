@@ -1,6 +1,28 @@
 import type { IdxSector } from '@/shared/domain';
 
-export interface FundamentalsRecord {
+export interface QualityMetricColumnsRecord {
+  marketCapIdr: number | null;
+  adtvIdr: number | null;
+  roaBps: number | null;
+  roicBps: number | null;
+  operatingMarginBps: number | null;
+  netMarginBps: number | null;
+  revenueGrowthBps: number | null;
+  netIncomeGrowthBps: number | null;
+  currentRatioX100: number | null;
+  netDebtToEbitdaX100: number | null;
+  equityToAssetsBps: number | null;
+  wholesaleDerX100: number | null;
+  cfoToNiX100: number | null;
+  fcfMarginBps: number | null;
+  fcfYieldBps: number | null;
+  cfoPositive: number | null;
+  fcfPositive: number | null;
+  piotroskiFScore: number | null;
+  altmanZX100: number | null;
+}
+
+export interface FundamentalsRecord extends QualityMetricColumnsRecord {
   id: string;
   watchlistItemId: string;
   periodLabel: string | null;
@@ -65,7 +87,7 @@ export interface WatchlistRepository {
   softDelete(id: string, userId: string, deletedAtMs: number): Promise<boolean>;
 }
 
-export interface IdxStockRecord {
+export interface IdxStockRecord extends QualityMetricColumnsRecord {
   ticker: string;
   companyName: string;
   sector: IdxSector;
@@ -88,6 +110,7 @@ export interface IdxCatalogRepository {
   findByTicker(ticker: string): Promise<IdxStockRecord | null>;
   findByTickers(tickers: string[]): Promise<IdxStockRecord[]>;
   getLatestSyncedAt(): Promise<number | null>;
+  hasQualityMetrics(): Promise<boolean>;
   upsertMany(stocks: IdxStockRecord[], pruneBeforeMs?: number): Promise<void>;
   upsertOne(stock: IdxStockRecord): Promise<void>;
 }

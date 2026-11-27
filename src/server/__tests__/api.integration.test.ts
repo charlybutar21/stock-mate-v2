@@ -1100,4 +1100,196 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(groupPlanStr).toContain('idx_custom_watchlists_user_active');
     expect(groupPlanStr).not.toMatch(/\bSCAN\b/i);
   });
+
+  it('computes Fundamental Quality Score (FQS) and filters Radar screener by pillars, grade, ADTV, and trap shield', async () => {
+    const { d1 } = createTestD1();
+    const nowIso = new Date().toISOString();
+
+    const universe = [
+      // Elite Quality + Undervalued + Liquid -> Grade A, PRIME_OPPORTUNITY
+      {
+        ticker: 'ICBP',
+        companyName: 'PT Indofood CBP Sukses Makmur Tbk',
+        sector: 'CONSUMER_NON_CYCLICALS' as const,
+        currentPrice: 7050,
+        periodLabel: 'TTM (TradingView)',
+        fundamentals: {
+          eps: 710,
+          bvps: 4745,
+          dps: 265,
+          roePct: 18.0,
+          der: 0.45,
+          epsGrowthPct: 24.0,
+          targetPer: 18,
+          targetPbv: 3.5,
+          marketCapIdr: 83_000_000_000_000,
+          adtvIdr: 65_000_000_000,
+          roaPct: 7.5,
+          roicPct: 14.0,
+          operatingMarginPct: 20.0,
+          netMarginPct: 14.0,
+          revenueGrowthPct: 14.0,
+          netIncomeGrowthPct: 24.0,
+          currentRatio: 2.5,
+          netDebtToEbitda: 0.5,
+          equityToAssetsPct: 54.0,
+          wholesaleDer: null,
+          cfoToNetIncome: 1.25,
+          fcfMarginPct: 13.0,
+          fcfYieldPct: 9.0,
+          cfoPositive: true,
+          fcfPositive: true,
+          piotroskiFScore: 8,
+          altmanZScore: 3.2,
+        },
+        source: 'tradingview' as const,
+        fetchedAt: nowIso,
+      },
+      // Elite Banking stock (FINANCIALS dual-track)
+      {
+        ticker: 'BBCA',
+        companyName: 'PT Bank Central Asia Tbk',
+        sector: 'FINANCIALS' as const,
+        currentPrice: 5900,
+        periodLabel: 'TTM (TradingView)',
+        fundamentals: {
+          eps: 483,
+          bvps: 2307,
+          dps: 336,
+          roePct: 21.2,
+          der: null,
+          epsGrowthPct: 10.0,
+          targetPer: 15,
+          targetPbv: 2.5,
+          marketCapIdr: 727_000_000_000_000,
+          adtvIdr: 1_500_000_000_000,
+          roaPct: 3.73,
+          roicPct: 21.1,
+          operatingMarginPct: 63.5,
+          netMarginPct: 51.4,
+          revenueGrowthPct: 8.0,
+          netIncomeGrowthPct: 10.0,
+          currentRatio: null,
+          netDebtToEbitda: null,
+          equityToAssetsPct: 17.3,
+          wholesaleDer: 0.02,
+          cfoToNetIncome: 1.08,
+          fcfMarginPct: 46.6,
+          fcfYieldPct: 8.3,
+          cfoPositive: true,
+          fcfPositive: true,
+          piotroskiFScore: null,
+          altmanZScore: null,
+        },
+        source: 'tradingview' as const,
+        fetchedAt: nowIso,
+      },
+      // Loss-making High-Risk Value Trap (illiquid) -> capped <= 50
+      {
+        ticker: 'TRAP',
+        companyName: 'PT Jebakan Nilai Tbk',
+        sector: 'INDUSTRIALS' as const,
+        currentPrice: 100,
+        periodLabel: 'TTM (TradingView)',
+        fundamentals: {
+          eps: -15,
+          bvps: 300,
+          dps: 0,
+          roePct: -12.0,
+          der: 2.8,
+          epsGrowthPct: -45.0,
+          targetPer: 12,
+          targetPbv: 1.8,
+          marketCapIdr: 200_000_000_000,
+          adtvIdr: 50_000_000,
+          roaPct: -6.0,
+          roicPct: -8.0,
+          operatingMarginPct: -5.0,
+          netMarginPct: -10.0,
+          revenueGrowthPct: -15.0,
+          netIncomeGrowthPct: -45.0,
+          currentRatio: 0.6,
+          netDebtToEbitda: 5.5,
+          equityToAssetsPct: 20.0,
+          wholesaleDer: null,
+          cfoToNetIncome: null,
+          fcfMarginPct: -8.0,
+          fcfYieldPct: -12.0,
+          cfoPositive: false,
+          fcfPositive: false,
+          piotroskiFScore: 2,
+          altmanZScore: 0.9,
+        },
+        source: 'tradingview' as const,
+        fetchedAt: nowIso,
+      },
+    ];
+
+    const app = createApp({
+      marketDataProvider: {
+        async fetchIdxQuote(ticker) {
+          const found = universe.find((s) => s.ticker === ticker.toUpperCase());
+          if (!found) throw new Error(`Unknown ticker ${ticker}`);
+          return found;
+        },
+        async fetchAllIdxStocks() {
+          return universe;
+        },
+      },
+    });
+
+    const regRes = await app.request(
+      'http://localhost/api/v1/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'radar@example.com',
+          name: 'Radar Investor',
+          password: 'Password123',
+        }),
+      },
+      { DB: d1 },
+    );
+    expect(regRes.status).toBe(201);
+    const cookie = extractSessionCookie(regRes);
+
+    // Default Radar query: all stocks sorted by highest FQS (fqs_desc)
+    const defaultRes = await app.request(
+      'http://localhost/api/v1/watchlist/catalog?sort=fqs_desc',
+      { headers: { Cookie: cookie } },
+      { DB: d1 },
+    );
+    expect(defaultRes.status).toBe(200);
+    const defaultBody = (await defaultRes.json()) as {
+      items: Array<{ ticker: string; quality: { score: number | null; grade: string; qarpQuadrant: string } }>;
+      summary: { totalStocks: number; eliteQuality: number; primeOpportunities: number };
+    };
+    expect(defaultBody.summary.totalStocks).toBe(3);
+    expect(defaultBody.summary.eliteQuality).toBe(2);
+    expect(defaultBody.summary.primeOpportunities).toBe(1);
+    expect(defaultBody.items.map((i) => i.ticker)[2]).toBe('TRAP');
+    expect(defaultBody.items[0]!.quality.grade).toBe('A');
+    expect(defaultBody.items[2]!.quality.grade).toBe('D');
+
+    // Radar Prime Value Quality preset filters: minMos=20, minFqs=70, minProfitability=65, minAdtvBillion=1, excludeHighRiskTrap=true
+    const primeRes = await app.request(
+      'http://localhost/api/v1/watchlist/catalog?minMos=20&minFqs=70&minProfitability=65&minHealth=60&minAdtvBillion=1&excludeHighRiskTrap=true&sort=qarp_desc',
+      { headers: { Cookie: cookie } },
+      { DB: d1 },
+    );
+    expect(primeRes.status).toBe(200);
+    const primeBody = (await primeRes.json()) as { items: Array<{ ticker: string }> };
+    expect(primeBody.items.map((i) => i.ticker)).toEqual(['ICBP']);
+
+    // Piotroski filter returns only ICBP (score 8)
+    const piotroskiRes = await app.request(
+      'http://localhost/api/v1/watchlist/catalog?minPiotroski=7',
+      { headers: { Cookie: cookie } },
+      { DB: d1 },
+    );
+    expect(piotroskiRes.status).toBe(200);
+    const piotroskiBody = (await piotroskiRes.json()) as { items: Array<{ ticker: string }> };
+    expect(piotroskiBody.items.map((i) => i.ticker)).toEqual(['ICBP']);
+  });
 });

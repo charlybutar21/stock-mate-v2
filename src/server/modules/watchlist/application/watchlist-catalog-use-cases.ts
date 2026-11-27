@@ -13,7 +13,9 @@ import type {
   WatchlistItemDto,
 } from '@/shared/contracts';
 import {
+  calculateFundamentalQuality,
   calculateValuation,
+  computeQarpRankScore,
   DEFAULT_DISCOUNT_RATE_PCT,
   DEFAULT_PROJECTION_YEARS,
   DEFAULT_TERMINAL_GROWTH_PCT,
@@ -26,34 +28,25 @@ import type {
   CustomWatchlistRepository,
   IdxCatalogRepository,
   IdxStockRecord,
+  QualityMetricColumnsRecord,
   WatchlistItemRecord,
   WatchlistRepository,
 } from '../domain/watchlist.types';
-import { mapRecordToDto, MAX_WATCHLIST_ITEMS_PER_USER } from './watchlist-use-cases';
+import {
+  extractQualityColumnsFromInput,
+  fromBoolInt,
+  fromBps,
+  fromX100,
+  mapRecordToDto,
+  MAX_WATCHLIST_ITEMS_PER_USER,
+  toBps,
+  toX100,
+} from './watchlist-use-cases';
 
 export const MAX_CUSTOM_WATCHLISTS_PER_USER = 30;
 export const MAX_TICKERS_PER_CUSTOM_WATCHLIST = 100;
 export const CATALOG_AUTO_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-
-function toBps(pct: number | null | undefined): number | null {
-  if (pct === null || pct === undefined) return null;
-  return Math.round(pct * 100);
-}
-
-function fromBps(bps: number | null): number | null {
-  if (bps === null) return null;
-  return bps / 100;
-}
-
-function toX100(val: number | null | undefined): number | null {
-  if (val === null || val === undefined) return null;
-  return Math.round(val * 100);
-}
-
-function fromX100(x100: number | null): number | null {
-  if (x100 === null) return null;
-  return x100 / 100;
-}
+const ONE_BILLION_IDR = 1_000_000_000;
 
 export function quoteToIdxStockRecord(quote: IdxMarketQuoteDto, syncedAt: number): IdxStockRecord {
   return {
@@ -70,6 +63,7 @@ export function quoteToIdxStockRecord(quote: IdxMarketQuoteDto, syncedAt: number
     epsGrowthBps: toBps(quote.fundamentals.epsGrowthPct),
     targetPerX100: toX100(quote.fundamentals.targetPer),
     targetPbvX100: toX100(quote.fundamentals.targetPbv),
+    ...extractQualityColumnsFromInput(quote.fundamentals),
     source: quote.source,
     syncedAt,
   };
@@ -85,6 +79,22 @@ export function mapIdxStockToMarketDto(
   const epsGrowthPct = fromBps(stock.epsGrowthBps);
   const targetPer = fromX100(stock.targetPerX100);
   const targetPbv = fromX100(stock.targetPbvX100);
+  const roaPct = fromBps(stock.roaBps);
+  const roicPct = fromBps(stock.roicBps);
+  const operatingMarginPct = fromBps(stock.operatingMarginBps);
+  const netMarginPct = fromBps(stock.netMarginBps);
+  const revenueGrowthPct = fromBps(stock.revenueGrowthBps);
+  const netIncomeGrowthPct = fromBps(stock.netIncomeGrowthBps);
+  const currentRatio = fromX100(stock.currentRatioX100);
+  const netDebtToEbitda = fromX100(stock.netDebtToEbitdaX100);
+  const equityToAssetsPct = fromBps(stock.equityToAssetsBps);
+  const wholesaleDer = fromX100(stock.wholesaleDerX100);
+  const cfoToNetIncome = fromX100(stock.cfoToNiX100);
+  const fcfMarginPct = fromBps(stock.fcfMarginBps);
+  const fcfYieldPct = fromBps(stock.fcfYieldBps);
+  const cfoPositive = fromBoolInt(stock.cfoPositive);
+  const fcfPositive = fromBoolInt(stock.fcfPositive);
+  const altmanZScore = fromX100(stock.altmanZX100);
 
   const valuation = calculateValuation({
     sector: stock.sector,
@@ -101,6 +111,37 @@ export function mapIdxStockToMarketDto(
     projectionYears: DEFAULT_PROJECTION_YEARS,
     terminalGrowthPct: DEFAULT_TERMINAL_GROWTH_PCT,
     dividendGrowthPct: null,
+  });
+
+  const quality = calculateFundamentalQuality({
+    sector: stock.sector,
+    currentPrice: stock.currentPrice,
+    eps: stock.eps,
+    dps: stock.dps,
+    roePct,
+    roaPct,
+    roicPct,
+    operatingMarginPct,
+    netMarginPct,
+    revenueGrowthPct,
+    epsGrowthPct,
+    netIncomeGrowthPct,
+    der,
+    wholesaleDer,
+    currentRatio,
+    netDebtToEbitda,
+    equityToAssetsPct,
+    cfoToNetIncome,
+    fcfMarginPct,
+    fcfYieldPct,
+    cfoPositive,
+    fcfPositive,
+    piotroskiFScore: stock.piotroskiFScore,
+    altmanZScore,
+    marketCapIdr: stock.marketCapIdr,
+    adtvIdr: stock.adtvIdr,
+    mosPct: valuation.mosPct,
+    valueTrapRiskLevel: valuation.valueTrapShield.riskLevel,
   });
 
   const iso = new Date(stock.syncedAt).toISOString();
@@ -132,9 +173,29 @@ export function mapIdxStockToMarketDto(
       projectionYears: DEFAULT_PROJECTION_YEARS,
       terminalGrowthPct: DEFAULT_TERMINAL_GROWTH_PCT,
       dividendGrowthPct: null,
+      marketCapIdr: stock.marketCapIdr,
+      adtvIdr: stock.adtvIdr,
+      roaPct,
+      roicPct,
+      operatingMarginPct,
+      netMarginPct,
+      revenueGrowthPct,
+      netIncomeGrowthPct,
+      currentRatio,
+      netDebtToEbitda,
+      equityToAssetsPct,
+      wholesaleDer,
+      cfoToNetIncome,
+      fcfMarginPct,
+      fcfYieldPct,
+      cfoPositive,
+      fcfPositive,
+      piotroskiFScore: stock.piotroskiFScore,
+      altmanZScore,
       updatedAt: iso,
     },
     valuation,
+    quality,
     customWatchlistIds,
   };
 }
@@ -143,8 +204,9 @@ export function mapWatchlistRecordToMarketDto(
   record: WatchlistItemRecord,
   customWatchlistIds: string[],
   nowMs = Date.now(),
+  catalogFallback?: QualityMetricColumnsRecord | null,
 ): MarketStockDto {
-  const dto = mapRecordToDto(record, nowMs);
+  const dto = mapRecordToDto(record, nowMs, catalogFallback);
   return {
     watchlistItemId: dto.id,
     ticker: dto.ticker,
@@ -160,6 +222,7 @@ export function mapWatchlistRecordToMarketDto(
     isStale: dto.isStale,
     fundamentals: dto.fundamentals,
     valuation: dto.valuation,
+    quality: dto.quality,
     customWatchlistIds,
   };
 }
@@ -188,9 +251,30 @@ function mapGroupRecordToDto(record: CustomWatchlistRecord): CustomWatchlistGrou
   };
 }
 
+export type MarketStockFilterQuery = Pick<
+  CatalogQuery,
+  | 'search'
+  | 'sector'
+  | 'valuationStatus'
+  | 'minMos'
+  | 'maxMos'
+  | 'qualityGrade'
+  | 'qarpQuadrant'
+  | 'minFqs'
+  | 'maxFqs'
+  | 'minProfitability'
+  | 'minGrowth'
+  | 'minHealth'
+  | 'minCashFlow'
+  | 'minAdtvBillion'
+  | 'minPiotroski'
+  | 'excludeHighRiskTrap'
+  | 'sort'
+>;
+
 export function filterAndSortMarketStocks(
   allItems: MarketStockDto[],
-  query: Pick<CatalogQuery, 'search' | 'sector' | 'valuationStatus' | 'minMos' | 'maxMos' | 'sort'>,
+  query: MarketStockFilterQuery,
 ): MarketStockDto[] {
   let items = allItems;
 
@@ -221,10 +305,140 @@ export function filterAndSortMarketStocks(
     items = items.filter((item) => item.valuation.mosPct !== null && item.valuation.mosPct <= max);
   }
 
+  if (query.qualityGrade) {
+    items = items.filter((item) => item.quality.grade === query.qualityGrade);
+  }
+
+  if (query.qarpQuadrant) {
+    items = items.filter((item) => item.quality.qarpQuadrant === query.qarpQuadrant);
+  }
+
+  if (query.minFqs !== undefined) {
+    const min = query.minFqs;
+    items = items.filter((item) => item.quality.score !== null && item.quality.score >= min);
+  }
+
+  if (query.maxFqs !== undefined) {
+    const max = query.maxFqs;
+    items = items.filter((item) => item.quality.score !== null && item.quality.score <= max);
+  }
+
+  if (query.minProfitability !== undefined) {
+    const min = query.minProfitability;
+    items = items.filter(
+      (item) =>
+        item.quality.pillars.profitability.score !== null &&
+        item.quality.pillars.profitability.score >= min,
+    );
+  }
+
+  if (query.minGrowth !== undefined) {
+    const min = query.minGrowth;
+    items = items.filter(
+      (item) =>
+        item.quality.pillars.growth.score !== null && item.quality.pillars.growth.score >= min,
+    );
+  }
+
+  if (query.minHealth !== undefined) {
+    const min = query.minHealth;
+    items = items.filter(
+      (item) =>
+        item.quality.pillars.financialHealth.score !== null &&
+        item.quality.pillars.financialHealth.score >= min,
+    );
+  }
+
+  if (query.minCashFlow !== undefined) {
+    const min = query.minCashFlow;
+    items = items.filter(
+      (item) =>
+        item.quality.pillars.cashFlow.score !== null && item.quality.pillars.cashFlow.score >= min,
+    );
+  }
+
+  if (query.minAdtvBillion !== undefined) {
+    const minIdr = query.minAdtvBillion * ONE_BILLION_IDR;
+    items = items.filter(
+      (item) => item.fundamentals.adtvIdr !== null && item.fundamentals.adtvIdr >= minIdr,
+    );
+  }
+
+  if (query.minPiotroski !== undefined) {
+    const min = query.minPiotroski;
+    items = items.filter(
+      (item) =>
+        item.fundamentals.piotroskiFScore !== null && item.fundamentals.piotroskiFScore >= min,
+    );
+  }
+
+  if (query.excludeHighRiskTrap) {
+    items = items.filter((item) => item.valuation.valueTrapShield.riskLevel !== 'HIGH_RISK');
+  }
+
   const sort: CatalogSortOption = query.sort ?? 'mos_desc';
   const sorted = [...items];
 
   sorted.sort((a, b) => {
+    if (sort === 'fqs_desc') {
+      const fqsA = a.quality.score ?? Number.NEGATIVE_INFINITY;
+      const fqsB = b.quality.score ?? Number.NEGATIVE_INFINITY;
+      if (fqsB !== fqsA) return fqsB - fqsA;
+      const mosA = a.valuation.mosPct ?? Number.NEGATIVE_INFINITY;
+      const mosB = b.valuation.mosPct ?? Number.NEGATIVE_INFINITY;
+      if (mosB !== mosA) return mosB - mosA;
+      return a.ticker.localeCompare(b.ticker);
+    }
+    if (sort === 'fqs_asc') {
+      const fqsA = a.quality.score ?? Number.POSITIVE_INFINITY;
+      const fqsB = b.quality.score ?? Number.POSITIVE_INFINITY;
+      if (fqsA !== fqsB) return fqsA - fqsB;
+      return a.ticker.localeCompare(b.ticker);
+    }
+    if (sort === 'qarp_desc') {
+      const rankA = computeQarpRankScore({
+        fqs: a.quality.score,
+        mosPct: a.valuation.mosPct,
+        valueTrapRiskLevel: a.valuation.valueTrapShield.riskLevel,
+      });
+      const rankB = computeQarpRankScore({
+        fqs: b.quality.score,
+        mosPct: b.valuation.mosPct,
+        valueTrapRiskLevel: b.valuation.valueTrapShield.riskLevel,
+      });
+      if (rankB !== rankA) return rankB - rankA;
+      return a.ticker.localeCompare(b.ticker);
+    }
+    if (sort === 'profitability_desc') {
+      const pA = a.quality.pillars.profitability.score ?? Number.NEGATIVE_INFINITY;
+      const pB = b.quality.pillars.profitability.score ?? Number.NEGATIVE_INFINITY;
+      if (pB !== pA) return pB - pA;
+      return a.ticker.localeCompare(b.ticker);
+    }
+    if (sort === 'growth_desc') {
+      const gA = a.quality.pillars.growth.score ?? Number.NEGATIVE_INFINITY;
+      const gB = b.quality.pillars.growth.score ?? Number.NEGATIVE_INFINITY;
+      if (gB !== gA) return gB - gA;
+      return a.ticker.localeCompare(b.ticker);
+    }
+    if (sort === 'health_desc') {
+      const hA = a.quality.pillars.financialHealth.score ?? Number.NEGATIVE_INFINITY;
+      const hB = b.quality.pillars.financialHealth.score ?? Number.NEGATIVE_INFINITY;
+      if (hB !== hA) return hB - hA;
+      return a.ticker.localeCompare(b.ticker);
+    }
+    if (sort === 'cashflow_desc') {
+      const cA = a.quality.pillars.cashFlow.score ?? Number.NEGATIVE_INFINITY;
+      const cB = b.quality.pillars.cashFlow.score ?? Number.NEGATIVE_INFINITY;
+      if (cB !== cA) return cB - cA;
+      return a.ticker.localeCompare(b.ticker);
+    }
+    if (sort === 'adtv_desc') {
+      const aA = a.fundamentals.adtvIdr ?? Number.NEGATIVE_INFINITY;
+      const aB = b.fundamentals.adtvIdr ?? Number.NEGATIVE_INFINITY;
+      if (aB !== aA) return aB - aA;
+      return a.ticker.localeCompare(b.ticker);
+    }
     if (sort === 'mos_desc') {
       const mosA = a.valuation.mosPct ?? Number.NEGATIVE_INFINITY;
       const mosB = b.valuation.mosPct ?? Number.NEGATIVE_INFINITY;
@@ -303,6 +517,7 @@ export class SyncIdxCatalogUseCase {
             roeBps: toBps(quote.fundamentals.roePct),
             derX100: toX100(quote.fundamentals.der),
             epsGrowthBps: toBps(quote.fundamentals.epsGrowthPct),
+            ...extractQualityColumnsFromInput(quote.fundamentals),
             updatedAt: now,
           },
         );
@@ -328,10 +543,14 @@ export class ListCatalogStocksUseCase {
 
   async execute(userId: string, query: CatalogQuery): Promise<CatalogResponseDto> {
     const now = Date.now();
-    let latestSyncedAt = await this.catalogRepo.getLatestSyncedAt();
+    const [initialLatestSyncedAt, hasQuality] = await Promise.all([
+      this.catalogRepo.getLatestSyncedAt(),
+      this.catalogRepo.hasQualityMetrics(),
+    ]);
+    let latestSyncedAt = initialLatestSyncedAt;
 
     const needsAutoSync =
-      latestSyncedAt === null || now - latestSyncedAt > CATALOG_AUTO_SYNC_TTL_MS;
+      latestSyncedAt === null || now - latestSyncedAt > CATALOG_AUTO_SYNC_TTL_MS || !hasQuality;
 
     if (needsAutoSync && this.marketDataProvider.fetchAllIdxStocks) {
       try {
@@ -359,7 +578,7 @@ export class ListCatalogStocksUseCase {
     const userItemByTicker = new Map(userItems.map((item) => [item.ticker, item]));
 
     // Build unified All Stocks list from synced IHSG constituents, overlaying user's personal
-    // position, thesis, and custom valuation benchmarks when present.
+    // position, thesis, and custom valuation benchmarks while backfilling quality metrics from catalog.
     const merged: MarketStockDto[] = [];
     const seenTickers = new Set<string>();
 
@@ -368,13 +587,12 @@ export class ListCatalogStocksUseCase {
       const userRecord = userItemByTicker.get(stock.ticker);
       const customIds = membershipMap.get(stock.ticker) ?? [];
       if (userRecord) {
-        merged.push(mapWatchlistRecordToMarketDto(userRecord, customIds, now));
+        merged.push(mapWatchlistRecordToMarketDto(userRecord, customIds, now, stock));
       } else {
         merged.push(mapIdxStockToMarketDto(stock, customIds, now));
       }
     }
 
-    // If catalog hasn't been synced yet (e.g. offline/test mode), still surface user's tracked stocks
     if (catalogStocks.length === 0) {
       for (const userRecord of userItems) {
         if (seenTickers.has(userRecord.ticker)) continue;
@@ -390,6 +608,10 @@ export class ListCatalogStocksUseCase {
       fairlyValued: 0,
       overvalued: 0,
       insufficientData: 0,
+      qualityScored: 0,
+      eliteQuality: 0,
+      strongQuality: 0,
+      primeOpportunities: 0,
       lastSyncedAt: latestSyncedAt !== null ? new Date(latestSyncedAt).toISOString() : null,
     };
 
@@ -398,6 +620,15 @@ export class ListCatalogStocksUseCase {
       else if (item.valuation.valuationStatus === 'FAIRLY_VALUED') summary.fairlyValued += 1;
       else if (item.valuation.valuationStatus === 'OVERVALUED') summary.overvalued += 1;
       else summary.insufficientData += 1;
+
+      if (item.quality.score !== null) {
+        summary.qualityScored += 1;
+        if (item.quality.grade === 'A') summary.eliteQuality += 1;
+        else if (item.quality.grade === 'B') summary.strongQuality += 1;
+      }
+      if (item.quality.qarpQuadrant === 'PRIME_OPPORTUNITY') {
+        summary.primeOpportunities += 1;
+      }
     }
 
     const filtered = filterAndSortMarketStocks(merged, query);
@@ -431,9 +662,12 @@ export class EnsureWatchlistItemUseCase {
     const cleanTicker = ticker.trim().toUpperCase();
     const existing = await this.watchlistRepo.findActiveByUserAndTicker(userId, cleanTicker);
     if (existing) {
-      const full = await this.watchlistRepo.findByIdForUser(existing.id, userId);
+      const [full, cat] = await Promise.all([
+        this.watchlistRepo.findByIdForUser(existing.id, userId),
+        this.catalogRepo.findByTicker(cleanTicker),
+      ]);
       if (full) {
-        return { item: mapRecordToDto(full), created: false };
+        return { item: mapRecordToDto(full, Date.now(), cat), created: false };
       }
     }
 
@@ -486,6 +720,25 @@ export class EnsureWatchlistItemUseCase {
         projectionYears: DEFAULT_PROJECTION_YEARS,
         terminalGrowthBps: Math.round(DEFAULT_TERMINAL_GROWTH_PCT * 100),
         dividendGrowthBps: null,
+        marketCapIdr: stock.marketCapIdr,
+        adtvIdr: stock.adtvIdr,
+        roaBps: stock.roaBps,
+        roicBps: stock.roicBps,
+        operatingMarginBps: stock.operatingMarginBps,
+        netMarginBps: stock.netMarginBps,
+        revenueGrowthBps: stock.revenueGrowthBps,
+        netIncomeGrowthBps: stock.netIncomeGrowthBps,
+        currentRatioX100: stock.currentRatioX100,
+        netDebtToEbitdaX100: stock.netDebtToEbitdaX100,
+        equityToAssetsBps: stock.equityToAssetsBps,
+        wholesaleDerX100: stock.wholesaleDerX100,
+        cfoToNiX100: stock.cfoToNiX100,
+        fcfMarginBps: stock.fcfMarginBps,
+        fcfYieldBps: stock.fcfYieldBps,
+        cfoPositive: stock.cfoPositive,
+        fcfPositive: stock.fcfPositive,
+        piotroskiFScore: stock.piotroskiFScore,
+        altmanZX100: stock.altmanZX100,
         updatedAt: now,
       },
     };
@@ -498,7 +751,7 @@ export class EnsureWatchlistItemUseCase {
         const raced = await this.watchlistRepo.findActiveByUserAndTicker(userId, cleanTicker);
         if (raced) {
           const full = await this.watchlistRepo.findByIdForUser(raced.id, userId);
-          if (full) return { item: mapRecordToDto(full), created: false };
+          if (full) return { item: mapRecordToDto(full, now, stock), created: false };
         }
       }
       throw err;
@@ -549,8 +802,6 @@ export class CreateCustomWatchlistUseCase {
       );
     }
 
-    // Ensure every requested ticker has data either in idx_stocks or user's watchlist_items,
-    // fetching live quotes for any unknown ticker.
     if (uniqueTickers.length > 0) {
       const [foundInCatalog, userItems] = await Promise.all([
         this.catalogRepo.findByTickers(uniqueTickers),
@@ -673,7 +924,7 @@ export class ListCustomWatchlistStocksUseCase {
   async execute(
     userId: string,
     groupId: string,
-    query: Pick<CatalogQuery, 'search' | 'sector' | 'valuationStatus' | 'minMos' | 'maxMos' | 'sort'>,
+    query: MarketStockFilterQuery,
   ): Promise<{ group: CustomWatchlistGroupDto; items: MarketStockDto[] }> {
     const group = await this.customWatchlistRepo.findByIdForUser(groupId, userId);
     if (!group) {
@@ -699,11 +950,11 @@ export class ListCustomWatchlistStocksUseCase {
     for (const ticker of group.tickers) {
       const customIds = membershipMap.get(ticker) ?? [group.id];
       const userRecord = userItemByTicker.get(ticker);
+      const catRecord = catalogByTicker.get(ticker);
       if (userRecord) {
-        resolved.push(mapWatchlistRecordToMarketDto(userRecord, customIds, now));
+        resolved.push(mapWatchlistRecordToMarketDto(userRecord, customIds, now, catRecord));
         continue;
       }
-      const catRecord = catalogByTicker.get(ticker);
       if (catRecord) {
         resolved.push(mapIdxStockToMarketDto(catRecord, customIds, now));
       }
@@ -766,7 +1017,7 @@ export class AddStockToCustomWatchlistUseCase {
     if (existingUserLink) {
       const full = await this.watchlistRepo.findByIdForUser(existingUserLink.id, userId);
       if (full) {
-        return mapWatchlistRecordToMarketDto(full, customIds, now);
+        return mapWatchlistRecordToMarketDto(full, customIds, now, catalogStock);
       }
     }
 

@@ -31,6 +31,7 @@ interface YahooQuoteSummaryResponse {
         longName?: string;
         shortName?: string;
         regularMarketPrice?: YahooRawField;
+        marketCap?: YahooRawField;
       };
       assetProfile?: {
         sector?: string;
@@ -38,6 +39,7 @@ interface YahooQuoteSummaryResponse {
       };
       summaryDetail?: {
         dividendRate?: YahooRawField;
+        averageVolume?: YahooRawField;
       };
       defaultKeyStatistics?: {
         trailingEps?: YahooRawField;
@@ -48,8 +50,19 @@ interface YahooQuoteSummaryResponse {
       };
       financialData?: {
         returnOnEquity?: YahooRawField;
+        returnOnAssets?: YahooRawField;
         debtToEquity?: YahooRawField;
+        currentRatio?: YahooRawField;
+        operatingMargins?: YahooRawField;
+        profitMargins?: YahooRawField;
+        revenueGrowth?: YahooRawField;
         earningsGrowth?: YahooRawField;
+        operatingCashflow?: YahooRawField;
+        freeCashflow?: YahooRawField;
+        totalRevenue?: YahooRawField;
+        totalDebt?: YahooRawField;
+        totalCash?: YahooRawField;
+        ebitda?: YahooRawField;
       };
     }> | null;
     error?: { code?: string; description?: string } | null;
@@ -235,6 +248,93 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
     const epsGrowthPct =
       rawGrowth !== undefined && Number.isFinite(rawGrowth) ? round2(rawGrowth * 100) : null;
 
+    const rawMarketCap = item.price?.marketCap?.raw;
+    const marketCapIdr =
+      rawMarketCap !== undefined && Number.isFinite(rawMarketCap) && rawMarketCap > 0
+        ? Math.round(rawMarketCap)
+        : null;
+    const rawAvgVol = item.summaryDetail?.averageVolume?.raw;
+    const adtvIdr =
+      rawAvgVol !== undefined && Number.isFinite(rawAvgVol) && rawAvgVol >= 0
+        ? Math.round(rawAvgVol * currentPrice)
+        : null;
+    const rawRoa = item.financialData?.returnOnAssets?.raw;
+    const roaPct = rawRoa !== undefined && Number.isFinite(rawRoa) ? round2(rawRoa * 100) : null;
+    const rawOpm = item.financialData?.operatingMargins?.raw;
+    const operatingMarginPct =
+      rawOpm !== undefined && Number.isFinite(rawOpm) ? round2(rawOpm * 100) : null;
+    const rawNpm = item.financialData?.profitMargins?.raw;
+    const netMarginPct =
+      rawNpm !== undefined && Number.isFinite(rawNpm) ? round2(rawNpm * 100) : null;
+    const rawRevGrowth = item.financialData?.revenueGrowth?.raw;
+    const revenueGrowthPct =
+      rawRevGrowth !== undefined && Number.isFinite(rawRevGrowth)
+        ? round2(rawRevGrowth * 100)
+        : null;
+    const rawCurrRatio = item.financialData?.currentRatio?.raw;
+    const currentRatio =
+      sector === 'FINANCIALS'
+        ? null
+        : rawCurrRatio !== undefined && Number.isFinite(rawCurrRatio) && rawCurrRatio >= 0
+          ? round2(rawCurrRatio)
+          : null;
+    const wholesaleDer =
+      sector === 'FINANCIALS' &&
+      rawDerPct !== undefined &&
+      Number.isFinite(rawDerPct) &&
+      rawDerPct >= 0
+        ? round2(rawDerPct / 100)
+        : null;
+    const rawCfo = item.financialData?.operatingCashflow?.raw;
+    const rawFcf = item.financialData?.freeCashflow?.raw;
+    const rawRev = item.financialData?.totalRevenue?.raw;
+    const cfoToNetIncome =
+      rawCfo !== undefined &&
+      netIncome !== undefined &&
+      Number.isFinite(rawCfo) &&
+      Number.isFinite(netIncome) &&
+      netIncome > 0
+        ? round2(rawCfo / netIncome)
+        : null;
+    const fcfMarginPct =
+      rawFcf !== undefined &&
+      rawRev !== undefined &&
+      Number.isFinite(rawFcf) &&
+      Number.isFinite(rawRev) &&
+      rawRev > 0
+        ? round2((rawFcf / rawRev) * 100)
+        : null;
+    const fcfYieldPct =
+      rawFcf !== undefined &&
+      marketCapIdr !== null &&
+      Number.isFinite(rawFcf) &&
+      marketCapIdr > 0
+        ? round2((rawFcf / marketCapIdr) * 100)
+        : null;
+    const rawDebt = item.financialData?.totalDebt?.raw;
+    const rawCash = item.financialData?.totalCash?.raw;
+    const rawEbitda = item.financialData?.ebitda?.raw;
+    let netDebtToEbitda: number | null = null;
+    if (
+      sector !== 'FINANCIALS' &&
+      rawDebt !== undefined &&
+      rawCash !== undefined &&
+      Number.isFinite(rawDebt) &&
+      Number.isFinite(rawCash)
+    ) {
+      const netDebt = rawDebt - rawCash;
+      if (netDebt <= 0) {
+        netDebtToEbitda =
+          rawEbitda !== undefined && Number.isFinite(rawEbitda) && rawEbitda > 0
+            ? round2(Math.max(-50, netDebt / rawEbitda))
+            : -0.01;
+      } else if (rawEbitda !== undefined && Number.isFinite(rawEbitda) && rawEbitda > 0) {
+        netDebtToEbitda = round2(Math.min(50, netDebt / rawEbitda));
+      } else if (rawEbitda !== undefined && Number.isFinite(rawEbitda) && rawEbitda <= 0) {
+        netDebtToEbitda = 50;
+      }
+    }
+
     const dto: IdxMarketQuoteDto = {
       ticker: cleanTicker,
       companyName,
@@ -250,6 +350,25 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
         epsGrowthPct,
         targetPer: benchmarks.targetPer,
         targetPbv: benchmarks.targetPbv,
+        marketCapIdr,
+        adtvIdr,
+        roaPct,
+        roicPct: null,
+        operatingMarginPct,
+        netMarginPct,
+        revenueGrowthPct,
+        netIncomeGrowthPct: null,
+        currentRatio,
+        netDebtToEbitda,
+        equityToAssetsPct: null,
+        wholesaleDer,
+        cfoToNetIncome,
+        fcfMarginPct,
+        fcfYieldPct,
+        cfoPositive: rawCfo !== undefined && Number.isFinite(rawCfo) ? rawCfo > 0 : null,
+        fcfPositive: rawFcf !== undefined && Number.isFinite(rawFcf) ? rawFcf > 0 : null,
+        piotroskiFScore: null,
+        altmanZScore: null,
       },
       source: 'yahoo_finance',
       fetchedAt: new Date(now).toISOString(),

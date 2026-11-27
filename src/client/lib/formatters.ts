@@ -36,6 +36,20 @@ export function formatMultiple(value: number | null | undefined): string {
   return `${value.toFixed(2)}x`;
 }
 
+export function formatCompactIdr(value: number | null | undefined, lang: 'en' | 'id' = 'en'): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '-';
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  const unitT = 'T';
+  const unitB = lang === 'id' ? 'M' : 'B';
+  const unitM = lang === 'id' ? 'Jt' : 'M';
+
+  if (abs >= 1e12) return `${sign}Rp\u00A0${(abs / 1e12).toFixed(1)}${unitT}`;
+  if (abs >= 1e9) return `${sign}Rp\u00A0${(abs / 1e9).toFixed(abs >= 100e9 ? 0 : 1)}${unitB}`;
+  if (abs >= 1e6) return `${sign}Rp\u00A0${(abs / 1e6).toFixed(0)}${unitM}`;
+  return formatIdr(Math.round(value));
+}
+
 export function formatShortDate(iso: string, lang: 'en' | 'id'): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;

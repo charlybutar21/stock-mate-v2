@@ -104,8 +104,8 @@ export function createWatchlistRoutes(
     }
 
     const user = c.get('user')!;
-    const { watchlistRepo } = getDeps(c.env.DB);
-    const useCase = new ListWatchlistUseCase(watchlistRepo);
+    const { watchlistRepo, idxCatalogRepo } = getDeps(c.env.DB);
+    const useCase = new ListWatchlistUseCase(watchlistRepo, idxCatalogRepo);
     const items = await useCase.execute(user.id, parsed.data);
 
     return c.json({ items }, 200);
@@ -153,6 +153,17 @@ export function createWatchlistRoutes(
       valuationStatus: c.req.query('valuationStatus') || undefined,
       minMos: c.req.query('minMos'),
       maxMos: c.req.query('maxMos'),
+      qualityGrade: c.req.query('qualityGrade') || undefined,
+      qarpQuadrant: c.req.query('qarpQuadrant') || undefined,
+      minFqs: c.req.query('minFqs'),
+      maxFqs: c.req.query('maxFqs'),
+      minProfitability: c.req.query('minProfitability'),
+      minGrowth: c.req.query('minGrowth'),
+      minHealth: c.req.query('minHealth'),
+      minCashFlow: c.req.query('minCashFlow'),
+      minAdtvBillion: c.req.query('minAdtvBillion'),
+      minPiotroski: c.req.query('minPiotroski'),
+      excludeHighRiskTrap: c.req.query('excludeHighRiskTrap'),
       sort: c.req.query('sort') || undefined,
       page: c.req.query('page'),
       pageSize: c.req.query('pageSize'),
@@ -301,8 +312,8 @@ export function createWatchlistRoutes(
   router.get('/:id', async (c) => {
     const user = c.get('user')!;
     const id = assertValidItemId(c.req.param('id'));
-    const { watchlistRepo } = getDeps(c.env.DB);
-    const useCase = new GetWatchlistItemUseCase(watchlistRepo);
+    const { watchlistRepo, idxCatalogRepo } = getDeps(c.env.DB);
+    const useCase = new GetWatchlistItemUseCase(watchlistRepo, idxCatalogRepo);
     const item = await useCase.execute(user.id, id);
 
     return c.json({ item }, 200);

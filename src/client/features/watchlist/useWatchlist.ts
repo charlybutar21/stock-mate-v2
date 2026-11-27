@@ -23,6 +23,23 @@ function buildCatalogQueryString(query?: Partial<CatalogQuery>): string {
   if (query?.valuationStatus) params.set('valuationStatus', query.valuationStatus);
   if (query?.minMos !== undefined) params.set('minMos', String(query.minMos));
   if (query?.maxMos !== undefined) params.set('maxMos', String(query.maxMos));
+  if (query?.qualityGrade) params.set('qualityGrade', query.qualityGrade);
+  if (query?.qarpQuadrant) params.set('qarpQuadrant', query.qarpQuadrant);
+  if (query?.minFqs !== undefined) params.set('minFqs', String(query.minFqs));
+  if (query?.maxFqs !== undefined) params.set('maxFqs', String(query.maxFqs));
+  if (query?.minProfitability !== undefined) {
+    params.set('minProfitability', String(query.minProfitability));
+  }
+  if (query?.minGrowth !== undefined) params.set('minGrowth', String(query.minGrowth));
+  if (query?.minHealth !== undefined) params.set('minHealth', String(query.minHealth));
+  if (query?.minCashFlow !== undefined) params.set('minCashFlow', String(query.minCashFlow));
+  if (query?.minAdtvBillion !== undefined) {
+    params.set('minAdtvBillion', String(query.minAdtvBillion));
+  }
+  if (query?.minPiotroski !== undefined) params.set('minPiotroski', String(query.minPiotroski));
+  if (query?.excludeHighRiskTrap !== undefined) {
+    params.set('excludeHighRiskTrap', String(query.excludeHighRiskTrap));
+  }
   if (query?.sort) params.set('sort', query.sort);
   if (query?.page !== undefined) params.set('page', String(query.page));
   if (query?.pageSize !== undefined) params.set('pageSize', String(query.pageSize));
