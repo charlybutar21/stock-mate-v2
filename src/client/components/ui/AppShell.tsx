@@ -1,6 +1,6 @@
 import { Calculator, Info, LogOut, Moon, Radar, Star, Sun, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useI18n } from '@/client/i18n/useI18n';
 import { useLogout, useMe } from '@/client/features/auth/useAuth';
 import { useTheme } from '@/client/lib/useTheme';
@@ -72,8 +72,17 @@ export function LanguageSwitcher() {
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const location = useLocation();
+  const navigate = useNavigate();
   const { data: user } = useMe();
   const logout = useLogout();
+
+  const handleLogout = () => {
+    logout.mutate(undefined, {
+      onSettled: () => {
+        navigate('/login', { replace: true });
+      },
+    });
+  };
 
   const navItems = [
     { to: '/watchlist', label: t.nav.watchlist, icon: Star },
@@ -143,7 +152,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => logout.mutate()}
+              onClick={handleLogout}
               disabled={logout.isPending}
               aria-label={t.nav.logout}
               className="h-9 px-2.5 sm:h-8"

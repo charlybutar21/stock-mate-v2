@@ -60,9 +60,12 @@ export function useLogout() {
       apiRequest<void>('/api/v1/auth/logout', {
         method: 'POST',
       }),
-    onSuccess: () => {
-      queryClient.clear();
+    onSettled: async () => {
+      await queryClient.cancelQueries();
       queryClient.setQueryData(AUTH_QUERY_KEY, null);
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== 'auth',
+      });
     },
   });
 }

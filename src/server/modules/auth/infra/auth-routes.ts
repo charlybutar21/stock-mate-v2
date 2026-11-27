@@ -89,15 +89,19 @@ export function createAuthRoutes(
     return c.json({ user }, 200);
   });
 
-  router.post('/logout', requireAuth, async (c) => {
-    const tokenHash = c.get('sessionTokenHash');
-    const sessionId = c.get('sessionId');
-    const { authRepo, revocationStore } = getDeps(c.env.DB);
-
-    if (sessionId) {
-      await revocationStore.revoke(sessionId, c.env.STOCK_MATE_KV);
+  router.post('/logout', async (c) => {
+    const { authRepo, hasher, revocationStore } = getDeps(c.env.DB);
+    const rawAccessCookie = getAccessCookieToken(c);
+    if (rawAccessCookie) {
+      const claims = await verifyAccessToken(rawAccessCookie, c.env.JWT_SECRET);
+      if (claims) {
+        await revocationStore.revoke(claims.sid, c.env.STOCK_MATE_KV);
+      }
     }
-    if (tokenHash) {
+
+    const rawSessionCookie = getSessionCookieToken(c);
+    if (isValidSessionTokenFormat(rawSessionCookie)) {
+      const tokenHash = await hasher.hashToken(rawSessionCookie);
       const useCase = new LogoutUseCase(authRepo);
       await useCase.execute(tokenHash);
     }
