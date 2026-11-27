@@ -163,7 +163,7 @@ export const VALUATION_STATUS_FILTERS = [
 
 export type ValuationStatusFilter = (typeof VALUATION_STATUS_FILTERS)[number];
 
-export const QUALITY_GRADE_FILTERS = ['A', 'B', 'C', 'D'] as const;
+export const QUALITY_GRADE_FILTERS = ['S', 'A', 'B', 'C', 'D', 'E'] as const;
 export type QualityGradeFilter = (typeof QUALITY_GRADE_FILTERS)[number];
 
 export const QARP_QUADRANT_FILTERS = [

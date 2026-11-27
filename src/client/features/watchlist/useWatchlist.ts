@@ -172,6 +172,8 @@ export function useCustomWatchlistStocks(
       | 'minFqs'
       | 'minMos'
       | 'maxMos'
+      | 'minAdtvBillion'
+      | 'excludeHighRiskTrap'
       | 'sort'
     >
   >,

@@ -1,16 +1,24 @@
 import { round2, type IdxSector } from './idx-rules';
 import type { ValueTrapRiskLevel } from './valuation';
 
-export type QualityTrack = 'NON_FINANCIALS' | 'FINANCIALS';
+export type QualityTrack =
+  | 'FINANCIALS'
+  | 'CYCLICALS'
+  | 'PROPERTY_INFRA'
+  | 'NON_FINANCIALS';
 
-export type QualityGrade = 'A' | 'B' | 'C' | 'D' | 'INSUFFICIENT_DATA';
+export type QualityGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'E' | 'INSUFFICIENT_DATA';
 
 export type QualityPillarKey = 'profitability' | 'growth' | 'financialHealth' | 'cashFlow';
 
 export type QualityCapReasonCode =
   | 'LOSS_MAKING_OR_WEAK_PROFITABILITY'
   | 'WEAK_FINANCIAL_HEALTH'
-  | 'WEAK_CASH_FLOW_QUALITY';
+  | 'FINANCIAL_DISTRESS_ALTMAN_Z'
+  | 'WEAK_CASH_FLOW_QUALITY'
+  | 'HIGH_RISK_VALUE_TRAP'
+  | 'INCOMPLETE_PILLAR_COVERAGE'
+  | 'LOW_ROE_OR_REVENUE_CONTRACTION';
 
 export type QarpQuadrant =
   | 'PRIME_OPPORTUNITY'
@@ -75,25 +83,45 @@ interface WeightedMetric {
   weight: number;
 }
 
-export const MISSING_PILLAR_FALLBACK_SCORE = 40;
+export const MISSING_PILLAR_FALLBACK_SCORE = 35;
 export const MIN_PILLARS_FOR_SCORE = 2;
 
-const NON_FIN_WEIGHTS: Record<QualityPillarKey, number> = {
-  profitability: 30,
-  growth: 25,
-  financialHealth: 25,
-  cashFlow: 20,
+const TRACK_WEIGHTS: Record<QualityTrack, Record<QualityPillarKey, number>> = {
+  FINANCIALS: {
+    profitability: 35,
+    growth: 20,
+    financialHealth: 30,
+    cashFlow: 15,
+  },
+  CYCLICALS: {
+    profitability: 25,
+    growth: 15,
+    financialHealth: 35,
+    cashFlow: 25,
+  },
+  PROPERTY_INFRA: {
+    profitability: 25,
+    growth: 20,
+    financialHealth: 30,
+    cashFlow: 25,
+  },
+  NON_FINANCIALS: {
+    profitability: 30,
+    growth: 25,
+    financialHealth: 25,
+    cashFlow: 20,
+  },
 };
 
-const FIN_WEIGHTS: Record<QualityPillarKey, number> = {
-  profitability: 35,
-  growth: 25,
-  financialHealth: 25,
-  cashFlow: 15,
-};
+export function resolveQualityTrack(sector: IdxSector): QualityTrack {
+  if (sector === 'FINANCIALS') return 'FINANCIALS';
+  if (sector === 'ENERGY' || sector === 'BASIC_MATERIALS') return 'CYCLICALS';
+  if (sector === 'PROPERTY_REAL_ESTATE' || sector === 'INFRASTRUCTURE') return 'PROPERTY_INFRA';
+  return 'NON_FINANCIALS';
+}
 
 /**
- * Piecewise linear interpolation across sorted ascending breakpoints (higher metric = higher score).
+ * Piecewise linear interpolation across sorted ascending breakpoints.
  * Eliminates cliff effects between thresholds while remaining fully transparent.
  */
 export function interpolateAscending(
@@ -116,9 +144,6 @@ export function interpolateAscending(
   return round2(y0 + ratio * (y1 - y0));
 }
 
-/**
- * Piecewise linear interpolation across sorted ascending breakpoints (lower metric = higher score).
- */
 export function interpolateDescending(
   value: number | null | undefined,
   points: readonly Breakpoint[],
@@ -161,12 +186,18 @@ function scoreOperatingLeverage(
   return 0;
 }
 
-function evaluateGrade(score: number | null): QualityGrade {
+/**
+ * Strict 6-tier institutional grading scale:
+ * S (>=88) Elite · A (76-87) Very Strong · B (64-75) Good · C (50-63) Average · D (35-49) Weak · E (<35) Critical
+ */
+export function evaluateGrade(score: number | null): QualityGrade {
   if (score === null) return 'INSUFFICIENT_DATA';
-  if (score >= 80) return 'A';
-  if (score >= 65) return 'B';
+  if (score >= 88) return 'S';
+  if (score >= 76) return 'A';
+  if (score >= 64) return 'B';
   if (score >= 50) return 'C';
-  return 'D';
+  if (score >= 35) return 'D';
+  return 'E';
 }
 
 function evaluateQarpQuadrant(params: {
@@ -177,10 +208,10 @@ function evaluateQarpQuadrant(params: {
   const { score, mosPct, valueTrapRiskLevel } = params;
   if (score === null || mosPct === null) return 'OVERVALUED_OR_UNRATED';
 
-  if (mosPct >= 20 && score >= 70 && valueTrapRiskLevel !== 'HIGH_RISK') {
+  if (mosPct >= 20 && score >= 76 && valueTrapRiskLevel !== 'HIGH_RISK') {
     return 'PRIME_OPPORTUNITY';
   }
-  if (mosPct >= 0 && mosPct < 20 && score >= 75) {
+  if (mosPct >= 0 && mosPct < 20 && score >= 76) {
     return 'QUALITY_FAIR_PRICE';
   }
   if (mosPct >= 20 && score < 50) {
@@ -193,17 +224,19 @@ function evaluateQarpQuadrant(params: {
 }
 
 /**
- * Dual-Track Institutional Fundamental Quality Score (FQS 0-100):
- * - Separates Financials/Banking from Non-Financials so deposit liabilities do not distort Health/CF.
- * - Uses piecewise linear scoring across 4 pillars: Profitability, Growth, Financial Health, Cash Flow Quality.
- * - Applies Weak-Link Caps & conservative missing-pillar fallback to prevent loss-making/IPO false positives.
+ * 4-Track Institutional Fundamental Quality Score (FQS v2, 0-100, S/A/B/C/D/E):
+ * - Separates Financials/Banking, Cyclical Commodities, Property/Infrastructure, and General Non-Financials.
+ * - Eliminates ROA double-counting and overly generous binary cash-flow scoring in Financials.
+ * - Enforces 7 strict institutional Weak-Link caps (loss-making, distress Altman Z < 1.8, weak health,
+ *   weak cash flow, HIGH_RISK value trap, incomplete pillars, and low bank ROE / shrinking revenue).
  */
 export function calculateFundamentalQuality(
   input: FundamentalQualityInput,
 ): FundamentalQualitySummary {
-  const isFinancials = input.sector === 'FINANCIALS';
-  const track: QualityTrack = isFinancials ? 'FINANCIALS' : 'NON_FINANCIALS';
-  const weights = isFinancials ? FIN_WEIGHTS : NON_FIN_WEIGHTS;
+  const track = resolveQualityTrack(input.sector);
+  const isFinancials = track === 'FINANCIALS';
+  const isPropertyInfra = track === 'PROPERTY_INFRA';
+  const weights = TRACK_WEIGHTS[track];
 
   const eps = input.eps ?? null;
   const dps = input.dps ?? null;
@@ -224,6 +257,7 @@ export function calculateFundamentalQuality(
   const fcfYieldPct = input.fcfYieldPct ?? null;
   const cfoPositive = input.cfoPositive ?? null;
   const fcfPositive = input.fcfPositive ?? null;
+  const altmanZScore = input.altmanZScore ?? null;
 
   // 1. Profitability Pillar
   const profitability = isFinancials
@@ -232,29 +266,29 @@ export function calculateFundamentalQuality(
           {
             score: interpolateAscending(roePct, [
               [0, 0],
-              [10, 45],
-              [15, 80],
-              [20, 100],
+              [10, 40],
+              [16, 80],
+              [22, 100],
             ]),
-            weight: 40,
+            weight: 45,
           },
           {
             score: interpolateAscending(roaPct, [
               [0, 0],
-              [1.0, 45],
-              [1.8, 80],
-              [2.8, 100],
+              [1.0, 40],
+              [2.0, 80],
+              [3.2, 100],
             ]),
             weight: 35,
           },
           {
             score: interpolateAscending(npmPct, [
               [0, 0],
-              [12, 45],
-              [22, 80],
-              [35, 100],
+              [12, 40],
+              [24, 80],
+              [38, 100],
             ]),
-            weight: 25,
+            weight: 20,
           },
         ],
         weights.profitability,
@@ -264,36 +298,36 @@ export function calculateFundamentalQuality(
           {
             score: interpolateAscending(roePct, [
               [0, 0],
-              [8, 40],
-              [15, 80],
-              [22, 100],
+              [8, 35],
+              [15, 78],
+              [24, 100],
             ]),
             weight: 30,
           },
           {
             score: interpolateAscending(roicPct, [
               [0, 0],
-              [6, 40],
-              [12, 80],
-              [18, 100],
+              [6, 35],
+              [13, 78],
+              [20, 100],
             ]),
             weight: 30,
           },
           {
             score: interpolateAscending(opmPct, [
               [0, 0],
-              [8, 45],
-              [15, 80],
-              [25, 100],
+              [8, 40],
+              [16, 78],
+              [26, 100],
             ]),
             weight: 20,
           },
           {
             score: interpolateAscending(npmPct, [
               [0, 0],
-              [5, 45],
-              [12, 80],
-              [20, 100],
+              [5, 40],
+              [13, 78],
+              [22, 100],
             ]),
             weight: 20,
           },
@@ -301,26 +335,26 @@ export function calculateFundamentalQuality(
         weights.profitability,
       );
 
-  // 2. Growth Pillar (all sectors)
+  // 2. Growth Pillar
   const growth = aggregatePillar(
     [
       {
         score: interpolateAscending(revGrowth, [
           [-10, 0],
-          [0, 25],
-          [8, 65],
-          [15, 85],
-          [25, 100],
+          [0, 22],
+          [8, 62],
+          [16, 85],
+          [28, 100],
         ]),
         weight: 40,
       },
       {
         score: interpolateAscending(bottomLineGrowth, [
           [-15, 0],
-          [0, 25],
-          [10, 65],
-          [20, 88],
-          [30, 100],
+          [0, 22],
+          [10, 62],
+          [22, 86],
+          [35, 100],
         ]),
         weight: 45,
       },
@@ -332,76 +366,103 @@ export function calculateFundamentalQuality(
     weights.growth,
   );
 
-  // 3. Financial Health Pillar
+  // 3. Financial Health Pillar (Track-Calibrated, Zero ROA Double-Counting)
   const financialHealth = isFinancials
     ? aggregatePillar(
         [
           {
             score: interpolateAscending(equityToAssetsPct, [
               [5, 0],
-              [7, 30],
-              [9, 60],
-              [12, 85],
-              [16, 100],
+              [8, 35],
+              [11, 68],
+              [14, 88],
+              [18, 100],
             ]),
-            weight: 45,
+            weight: 55,
           },
           {
             score: interpolateDescending(wholesaleDer, [
-              [0.4, 100],
-              [1.0, 80],
-              [2.0, 50],
-              [4.0, 0],
+              [0.3, 100],
+              [0.9, 80],
+              [1.8, 48],
+              [3.5, 0],
             ]),
-            weight: 35,
-          },
-          {
-            score: interpolateAscending(roaPct, [
-              [0.2, 0],
-              [0.8, 40],
-              [1.5, 75],
-              [2.2, 100],
-            ]),
-            weight: 20,
+            weight: 45,
           },
         ],
         weights.financialHealth,
       )
-    : aggregatePillar(
-        [
-          {
-            score: interpolateDescending(der, [
-              [0.3, 100],
-              [0.7, 80],
-              [1.2, 50],
-              [2.0, 20],
-              [3.0, 0],
-            ]),
-            weight: 35,
-          },
-          {
-            score: interpolateDescending(netDebtToEbitda, [
-              [0, 100],
-              [1.0, 85],
-              [2.0, 60],
-              [3.5, 25],
-              [5.0, 0],
-            ]),
-            weight: 35,
-          },
-          {
-            score: interpolateAscending(currentRatio, [
-              [0.7, 0],
-              [1.0, 30],
-              [1.2, 55],
-              [1.5, 80],
-              [2.0, 100],
-            ]),
-            weight: 30,
-          },
-        ],
-        weights.financialHealth,
-      );
+    : isPropertyInfra
+      ? aggregatePillar(
+          [
+            {
+              score: interpolateDescending(der, [
+                [0.4, 100],
+                [1.0, 75],
+                [1.8, 45],
+                [2.8, 15],
+                [4.0, 0],
+              ]),
+              weight: 35,
+            },
+            {
+              score: interpolateDescending(netDebtToEbitda, [
+                [0, 100],
+                [1.8, 78],
+                [3.2, 48],
+                [5.0, 15],
+                [7.0, 0],
+              ]),
+              weight: 35,
+            },
+            {
+              score: interpolateAscending(currentRatio, [
+                [0.7, 0],
+                [1.0, 30],
+                [1.3, 60],
+                [1.8, 85],
+                [2.4, 100],
+              ]),
+              weight: 30,
+            },
+          ],
+          weights.financialHealth,
+        )
+      : aggregatePillar(
+          [
+            {
+              score: interpolateDescending(der, [
+                [0.25, 100],
+                [0.65, 78],
+                [1.1, 48],
+                [1.8, 18],
+                [2.8, 0],
+              ]),
+              weight: 35,
+            },
+            {
+              score: interpolateDescending(netDebtToEbitda, [
+                [0, 100],
+                [1.0, 82],
+                [2.0, 55],
+                [3.2, 22],
+                [4.5, 0],
+              ]),
+              weight: 35,
+            },
+            {
+              score: interpolateAscending(currentRatio, [
+                [0.7, 0],
+                [1.0, 30],
+                [1.3, 58],
+                [1.6, 82],
+                [2.2, 100],
+              ]),
+              weight: 30,
+            },
+          ],
+          weights.financialHealth,
+        );
 
   // 4. Cash Flow Quality Pillar
   const divYieldPct =
@@ -414,10 +475,10 @@ export function calculateFundamentalQuality(
   if (cfoToNetIncome !== null) {
     ccrScore = interpolateAscending(cfoToNetIncome, [
       [0, 0],
-      [0.4, 25],
-      [0.7, 58],
-      [0.9, 82],
-      [1.1, 100],
+      [0.45, 25],
+      [0.75, 58],
+      [0.95, 82],
+      [1.15, 100],
     ]);
   } else if (isLossMaking && cfoPositive !== null) {
     ccrScore = cfoPositive ? 25 : 0;
@@ -429,22 +490,29 @@ export function calculateFundamentalQuality(
     ? aggregatePillar(
         [
           {
-            score: cfoPositive === null ? null : cfoPositive ? 100 : 25,
+            score:
+              ccrScore !== null
+                ? ccrScore
+                : cfoPositive === null
+                  ? null
+                  : cfoPositive
+                    ? 65
+                    : 15,
             weight: 40,
           },
           {
-            score: fcfPositive === null ? null : fcfPositive ? 100 : 25,
-            weight: 30,
+            score: fcfPositive === null ? null : fcfPositive ? 80 : 20,
+            weight: 20,
           },
           {
             score: interpolateAscending(divYieldPct, [
               [0, 0],
-              [0.5, 25],
-              [2.0, 55],
-              [3.5, 80],
-              [5.0, 100],
+              [1.0, 30],
+              [2.5, 60],
+              [4.0, 84],
+              [6.0, 100],
             ]),
-            weight: 30,
+            weight: 40,
           },
         ],
         weights.cashFlow,
@@ -458,20 +526,20 @@ export function calculateFundamentalQuality(
           {
             score: interpolateAscending(fcfMarginPct, [
               [0, 0],
-              [1, 30],
-              [5, 60],
-              [10, 82],
-              [15, 100],
+              [1.5, 30],
+              [6, 62],
+              [11, 84],
+              [16, 100],
             ]),
             weight: 30,
           },
           {
             score: interpolateAscending(fcfYieldPct, [
               [0, 0],
-              [1, 30],
-              [3, 60],
-              [5, 82],
-              [8, 100],
+              [1.5, 30],
+              [3.5, 60],
+              [6, 84],
+              [9, 100],
             ]),
             weight: 30,
           },
@@ -494,7 +562,6 @@ export function calculateFundamentalQuality(
   const appliedCaps: QualityCapReasonCode[] = [];
 
   if (availablePillars >= MIN_PILLARS_FOR_SCORE) {
-    // Missing pillars use a conservative fallback so IPO/partial-data stocks cannot artificially score 95+
     const totalWeighted =
       (profitability.score ?? MISSING_PILLAR_FALLBACK_SCORE) * profitability.weightPct +
       (growth.score ?? MISSING_PILLAR_FALLBACK_SCORE) * growth.weightPct +
@@ -504,24 +571,34 @@ export function calculateFundamentalQuality(
     rawCompositeScore = Math.round(totalWeighted / 100);
     let capped = rawCompositeScore;
 
-    // Weak-Link Institutional Guardrails
-    if (isLossMaking || (profitability.score !== null && profitability.score < 25)) {
-      if (capped > 50) {
-        capped = 50;
-        appliedCaps.push('LOSS_MAKING_OR_WEAK_PROFITABILITY');
+    const applyCap = (limit: number, reason: QualityCapReasonCode) => {
+      if (capped > limit) {
+        capped = limit;
+        appliedCaps.push(reason);
       }
+    };
+
+    // 7 Strict Institutional Guardrails (Weak-Link Caps)
+    if (isLossMaking || (profitability.score !== null && profitability.score < 25)) {
+      applyCap(45, 'LOSS_MAKING_OR_WEAK_PROFITABILITY');
     }
     if (financialHealth.score !== null && financialHealth.score < 30) {
-      if (capped > 55) {
-        capped = 55;
-        appliedCaps.push('WEAK_FINANCIAL_HEALTH');
-      }
+      applyCap(50, 'WEAK_FINANCIAL_HEALTH');
+    }
+    if (!isFinancials && altmanZScore !== null && altmanZScore < 1.8) {
+      applyCap(55, 'FINANCIAL_DISTRESS_ALTMAN_Z');
     }
     if (!isFinancials && cashFlow.score !== null && cashFlow.score < 25) {
-      if (capped > 60) {
-        capped = 60;
-        appliedCaps.push('WEAK_CASH_FLOW_QUALITY');
-      }
+      applyCap(58, 'WEAK_CASH_FLOW_QUALITY');
+    }
+    if (input.valueTrapRiskLevel === 'HIGH_RISK') {
+      applyCap(68, 'HIGH_RISK_VALUE_TRAP');
+    }
+    if (availablePillars < 4) {
+      applyCap(74, 'INCOMPLETE_PILLAR_COVERAGE');
+    }
+    if ((isFinancials && roePct !== null && roePct < 10) || (revGrowth !== null && revGrowth < -5)) {
+      applyCap(74, 'LOW_ROE_OR_REVENUE_CONTRACTION');
     }
 
     score = capped;

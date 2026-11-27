@@ -202,8 +202,8 @@ describe('TradingViewIdxProvider parser', () => {
     expect(parsed.success).toBe(true);
   });
 
-  it('parses intraday openPrice, dailyChange, and dailyChangePct from extended 32-column row', () => {
-    const row = [
+  it('parses intraday openPrice, dailyChange, dailyChangePct & Real Estate industry override from 33-column row', () => {
+    const bbcaRow = [
       'BBCA',
       'PT Bank Central Asia Tbk',
       9150,
@@ -218,12 +218,35 @@ describe('TradingViewIdxProvider parser', () => {
       9000, // open
       150, // change_abs
       1.6667, // change %
+      'Major Banks', // industry
     ];
-    const dto = parseTradingViewRowToDto({ s: 'IDX:BBCA', d: row });
-    expect(dto).not.toBeNull();
-    expect(dto!.currentPrice).toBe(9150);
-    expect(dto!.openPrice).toBe(9000);
-    expect(dto!.dailyChange).toBe(150);
-    expect(dto!.dailyChangePct).toBe(1.67);
+    const bbca = parseTradingViewRowToDto({ s: 'IDX:BBCA', d: bbcaRow });
+    expect(bbca).not.toBeNull();
+    expect(bbca!.sector).toBe('FINANCIALS');
+    expect(bbca!.currentPrice).toBe(9150);
+    expect(bbca!.openPrice).toBe(9000);
+    expect(bbca!.dailyChange).toBe(150);
+    expect(bbca!.dailyChangePct).toBe(1.67);
+
+    const dmasRow = [
+      'DMAS',
+      'PT Puradelta Lestari Tbk',
+      170,
+      'Finance',
+      37,
+      150,
+      15,
+      25,
+      0.05,
+      18,
+      ...Array(19).fill(null),
+      168,
+      2,
+      1.19,
+      'Real Estate Development',
+    ];
+    const dmas = parseTradingViewRowToDto({ s: 'IDX:DMAS', d: dmasRow });
+    expect(dmas!.sector).toBe('PROPERTY_REAL_ESTATE');
+    expect(dmas!.fundamentals.der).toBe(0.05);
   });
 });

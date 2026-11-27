@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateFundamentalQuality,
   computeQarpRankScore,
+  evaluateGrade,
   interpolateAscending,
   interpolateDescending,
+  resolveQualityTrack,
 } from '../quality-score';
 
-describe('quality-score interpolation helpers', () => {
-  it('handles null, undefined, NaN, out-of-bounds, and mid-segment values', () => {
+describe('quality-score helpers', () => {
+  it('handles null, undefined, NaN, out-of-bounds, and mid-segment interpolation', () => {
     const pts = [
       [0, 0],
       [10, 50],
@@ -32,56 +34,81 @@ describe('quality-score interpolation helpers', () => {
     expect(interpolateDescending(0.8, invPts)).toBe(75);
     expect(interpolateDescending(3.0, invPts)).toBe(0);
   });
+
+  it('maps 6-tier strict institutional grades (S, A, B, C, D, E) and 4 accounting tracks', () => {
+    expect(evaluateGrade(null)).toBe('INSUFFICIENT_DATA');
+    expect(evaluateGrade(92)).toBe('S');
+    expect(evaluateGrade(88)).toBe('S');
+    expect(evaluateGrade(87)).toBe('A');
+    expect(evaluateGrade(76)).toBe('A');
+    expect(evaluateGrade(75)).toBe('B');
+    expect(evaluateGrade(64)).toBe('B');
+    expect(evaluateGrade(63)).toBe('C');
+    expect(evaluateGrade(50)).toBe('C');
+    expect(evaluateGrade(49)).toBe('D');
+    expect(evaluateGrade(35)).toBe('D');
+    expect(evaluateGrade(34)).toBe('E');
+    expect(evaluateGrade(0)).toBe('E');
+
+    expect(resolveQualityTrack('FINANCIALS')).toBe('FINANCIALS');
+    expect(resolveQualityTrack('ENERGY')).toBe('CYCLICALS');
+    expect(resolveQualityTrack('BASIC_MATERIALS')).toBe('CYCLICALS');
+    expect(resolveQualityTrack('PROPERTY_REAL_ESTATE')).toBe('PROPERTY_INFRA');
+    expect(resolveQualityTrack('INFRASTRUCTURE')).toBe('PROPERTY_INFRA');
+    expect(resolveQualityTrack('CONSUMER_NON_CYCLICALS')).toBe('NON_FINANCIALS');
+  });
 });
 
-describe('calculateFundamentalQuality', () => {
-  it('scores an elite Non-Financial compounder (ICBP-like) as Grade A Prime Opportunity', () => {
+describe('calculateFundamentalQuality (FQS v2 — 4-Track & S-E Grading)', () => {
+  it('scores an elite Non-Financial compounder as Grade S Prime Opportunity', () => {
     const res = calculateFundamentalQuality({
       sector: 'CONSUMER_NON_CYCLICALS',
       currentPrice: 7050,
       eps: 710,
       dps: 265,
-      roePct: 18,
-      roicPct: 14,
-      operatingMarginPct: 20,
-      netMarginPct: 14,
-      revenueGrowthPct: 14,
-      epsGrowthPct: 24,
-      der: 0.45,
-      currentRatio: 2.2,
-      netDebtToEbitda: 0.4,
+      roePct: 24,
+      roicPct: 19,
+      operatingMarginPct: 25,
+      netMarginPct: 20,
+      revenueGrowthPct: 20,
+      epsGrowthPct: 28,
+      der: 0.2,
+      currentRatio: 2.3,
+      netDebtToEbitda: -0.5,
       cfoToNetIncome: 1.25,
-      fcfMarginPct: 14,
+      fcfMarginPct: 15,
       fcfYieldPct: 9,
+      altmanZScore: 5.5,
       mosPct: 35,
       valueTrapRiskLevel: 'CLEAR',
     });
 
     expect(res.track).toBe('NON_FINANCIALS');
     expect(res.availablePillars).toBe(4);
-    expect(res.grade).toBe('A');
-    expect(res.score).toBeGreaterThanOrEqual(80);
+    expect(res.grade).toBe('S');
+    expect(res.score).toBeGreaterThanOrEqual(88);
     expect(res.appliedCaps).toEqual([]);
     expect(res.qarpQuadrant).toBe('PRIME_OPPORTUNITY');
     expect(res.pillars.profitability.weightPct).toBe(30);
     expect(res.pillars.cashFlow.weightPct).toBe(20);
   });
 
-  it('scores an elite Banking stock (BBCA-like) using FINANCIALS dual-track without punishing deposit liabilities', () => {
+  it('scores an elite Banking stock (BBCA-like) cleanly without ROA double-counting', () => {
     const res = calculateFundamentalQuality({
       sector: 'FINANCIALS',
       currentPrice: 5900,
       eps: 483,
       dps: 336,
-      roePct: 21.2,
+      roePct: 22.5,
       roaPct: 3.73,
       netMarginPct: 51.4,
-      revenueGrowthPct: 8,
-      epsGrowthPct: 11,
+      revenueGrowthPct: 12,
+      epsGrowthPct: 18,
       der: null,
       wholesaleDer: 0.02,
-      currentRatio: 0.15, // ignored for financials
-      equityToAssetsPct: 17.3,
+      currentRatio: 0.15,
+      equityToAssetsPct: 18.2,
+      cfoToNetIncome: 1.15,
       cfoPositive: true,
       fcfPositive: true,
       mosPct: 12,
@@ -89,16 +116,87 @@ describe('calculateFundamentalQuality', () => {
     });
 
     expect(res.track).toBe('FINANCIALS');
-    expect(res.grade).toBe('A');
-    expect(res.score).toBeGreaterThanOrEqual(85);
+    expect(res.grade).toBe('S');
+    expect(res.pillars.financialHealth.totalMetrics).toBe(2); // Equity/Assets + Wholesale DER (no ROA duplicate)
     expect(res.pillars.financialHealth.score).toBe(100);
     expect(res.pillars.profitability.score).toBe(100);
-    expect(res.pillars.cashFlow.score).toBe(100);
     expect(res.qarpQuadrant).toBe('QUALITY_FAIR_PRICE');
   });
 
-  it('handles negative CFO/FCF for Financials gracefully without zeroing out cash flow pillar', () => {
-    const res = calculateFundamentalQuality({
+  it('scores Property/Infra and Cyclicals tracks with tailored weights and leverage scales', () => {
+    const prop = calculateFundamentalQuality({
+      sector: 'PROPERTY_REAL_ESTATE',
+      currentPrice: 1200,
+      eps: 120,
+      roePct: 15,
+      roicPct: 12,
+      operatingMarginPct: 22,
+      netMarginPct: 16,
+      revenueGrowthPct: 12,
+      epsGrowthPct: 15,
+      der: 0.9,
+      netDebtToEbitda: 1.5,
+      currentRatio: 1.9,
+      cfoToNetIncome: 1.0,
+      fcfMarginPct: 10,
+      fcfYieldPct: 5,
+      altmanZScore: 3.2,
+      mosPct: 25,
+      valueTrapRiskLevel: 'CLEAR',
+    });
+    expect(prop.track).toBe('PROPERTY_INFRA');
+    expect(prop.pillars.financialHealth.weightPct).toBe(30);
+    expect(prop.grade).toBe('A');
+
+    const cyclical = calculateFundamentalQuality({
+      sector: 'ENERGY',
+      currentPrice: 2000,
+      eps: 300,
+      roePct: 22,
+      roicPct: 18,
+      operatingMarginPct: 24,
+      netMarginPct: 18,
+      revenueGrowthPct: 30,
+      epsGrowthPct: 40,
+      der: 0.3,
+      netDebtToEbitda: 0.2,
+      currentRatio: 2.0,
+      cfoToNetIncome: 1.1,
+      fcfMarginPct: 14,
+      fcfYieldPct: 8,
+      altmanZScore: 4.0,
+      mosPct: 30,
+      valueTrapRiskLevel: 'WATCH',
+    });
+    expect(cyclical.track).toBe('CYCLICALS');
+    expect(cyclical.pillars.growth.weightPct).toBe(15);
+    expect(cyclical.pillars.financialHealth.weightPct).toBe(35);
+    expect(cyclical.grade).toBe('S');
+  });
+
+  it('handles Financials cash-flow fallback without free 100 and caps low-ROE banks (<10%)', () => {
+    const lowRoeBank = calculateFundamentalQuality({
+      sector: 'FINANCIALS',
+      currentPrice: 3000,
+      eps: 200,
+      dps: 180,
+      roePct: 8.5,
+      roaPct: 1.8,
+      netMarginPct: 28,
+      revenueGrowthPct: 18,
+      epsGrowthPct: 22,
+      wholesaleDer: 0.2,
+      equityToAssetsPct: 17,
+      cfoPositive: true,
+      fcfPositive: true,
+      mosPct: 25,
+      valueTrapRiskLevel: 'CLEAR',
+    });
+    expect(lowRoeBank.score).toBeLessThanOrEqual(74);
+    expect(lowRoeBank.grade).toBe('B');
+    expect(lowRoeBank.appliedCaps).toContain('LOW_ROE_OR_REVENUE_CONTRACTION');
+
+    const negCfBank = calculateFundamentalQuality({
       sector: 'FINANCIALS',
       currentPrice: 3000,
       eps: 200,
@@ -107,7 +205,7 @@ describe('calculateFundamentalQuality', () => {
       roaPct: 1.6,
       netMarginPct: 20,
       revenueGrowthPct: 10,
-      epsGrowthPct: 6, // rev > 0 and eps > 0, but eps < rev => opLev = 65
+      epsGrowthPct: 6, // rev > 0 and eps > 0, eps < rev => opLev = 65
       wholesaleDer: 1.2,
       equityToAssetsPct: 11,
       cfoPositive: false,
@@ -115,13 +213,13 @@ describe('calculateFundamentalQuality', () => {
       mosPct: 25,
       valueTrapRiskLevel: 'HIGH_RISK',
     });
-
-    expect(res.pillars.cashFlow.score).toBe(18); // (25*40 + 25*30 + 0*30)/100 = 17.5 -> 18
-    expect(res.qarpQuadrant).toBe('DEEP_VALUE_TURNAROUND');
+    expect(negCfBank.pillars.cashFlow.score).toBe(10); // (15*40 + 20*20 + 0*40)/100 = 10
+    expect(negCfBank.qarpQuadrant).toBe('DEEP_VALUE_TURNAROUND');
   });
 
-  it('applies Weak-Link Cap when profitability is weak or company is loss-making (GOTO-like)', () => {
-    const res = calculateFundamentalQuality({
+  it('enforces all 7 institutional Weak-Link caps (loss-making, Altman Z distress, weak health, weak CF, HIGH_RISK trap, incomplete pillars, revenue contraction)', () => {
+    // 1. Loss-making -> cap 45 (Grade D)
+    const lossMaking = calculateFundamentalQuality({
       sector: 'TECHNOLOGY',
       currentPrice: 80,
       eps: -5,
@@ -130,7 +228,7 @@ describe('calculateFundamentalQuality', () => {
       operatingMarginPct: -2,
       netMarginPct: -3,
       revenueGrowthPct: 24,
-      netIncomeGrowthPct: 30, // tests fallback from epsGrowthPct to netIncomeGrowthPct
+      netIncomeGrowthPct: 30,
       der: 0.1,
       currentRatio: 3.0,
       netDebtToEbitda: -2.0,
@@ -138,17 +236,13 @@ describe('calculateFundamentalQuality', () => {
       fcfMarginPct: 12,
       fcfYieldPct: 6,
       mosPct: 40,
-      valueTrapRiskLevel: 'HIGH_RISK',
+      valueTrapRiskLevel: 'CLEAR',
     });
+    expect(lossMaking.score).toBe(45);
+    expect(lossMaking.grade).toBe('D');
+    expect(lossMaking.appliedCaps).toContain('LOSS_MAKING_OR_WEAK_PROFITABILITY');
 
-    expect(res.rawCompositeScore).toBeGreaterThan(50);
-    expect(res.score).toBe(50);
-    expect(res.grade).toBe('C');
-    expect(res.appliedCaps).toContain('LOSS_MAKING_OR_WEAK_PROFITABILITY');
-  });
-
-  it('applies loss-making CFO negative rule, weak financial health cap, and weak cash flow cap', () => {
-    // Weak financial health cap (score > 55 capped to 55)
+    // 2. Weak financial health -> cap 50 (Grade C)
     const highDebt = calculateFundamentalQuality({
       sector: 'INFRASTRUCTURE',
       currentPrice: 1000,
@@ -159,21 +253,46 @@ describe('calculateFundamentalQuality', () => {
       netMarginPct: 20,
       revenueGrowthPct: 20,
       epsGrowthPct: 25,
-      der: 3.5,
+      der: 4.5,
       currentRatio: 0.6,
-      netDebtToEbitda: 5.5,
+      netDebtToEbitda: 7.5,
       cfoToNetIncome: 1.2,
       fcfMarginPct: 16,
       fcfYieldPct: 9,
+      altmanZScore: 2.5,
       mosPct: -10,
-      valueTrapRiskLevel: 'HIGH_RISK',
+      valueTrapRiskLevel: 'CLEAR',
     });
-    expect(highDebt.pillars.financialHealth.score).toBe(0);
-    expect(highDebt.score).toBe(55);
+    expect(highDebt.score).toBe(50);
     expect(highDebt.appliedCaps).toEqual(['WEAK_FINANCIAL_HEALTH']);
     expect(highDebt.qarpQuadrant).toBe('OVERVALUED_OR_UNRATED');
 
-    // Weak cash flow quality cap (score > 60 capped to 60)
+    // 3. Altman Z distress (< 1.8) -> cap 55 (Grade C)
+    const distress = calculateFundamentalQuality({
+      sector: 'ENERGY',
+      currentPrice: 1000,
+      eps: 150,
+      roePct: 22,
+      roicPct: 18,
+      operatingMarginPct: 24,
+      netMarginPct: 18,
+      revenueGrowthPct: 20,
+      epsGrowthPct: 25,
+      der: 0.6,
+      currentRatio: 1.8,
+      netDebtToEbitda: 1.0,
+      cfoToNetIncome: 1.2,
+      fcfMarginPct: 15,
+      fcfYieldPct: 8,
+      altmanZScore: 1.1,
+      mosPct: 30,
+      valueTrapRiskLevel: 'CLEAR',
+    });
+    expect(distress.score).toBe(55);
+    expect(distress.grade).toBe('C');
+    expect(distress.appliedCaps).toEqual(['FINANCIAL_DISTRESS_ALTMAN_Z']);
+
+    // 4. Weak cash flow -> cap 58 (Grade C)
     const weakCf = calculateFundamentalQuality({
       sector: 'INDUSTRIALS',
       currentPrice: 1000,
@@ -190,15 +309,65 @@ describe('calculateFundamentalQuality', () => {
       cfoToNetIncome: -0.5,
       fcfMarginPct: -5,
       fcfYieldPct: -3,
+      altmanZScore: 4.0,
       mosPct: 30,
       valueTrapRiskLevel: 'CLEAR',
     });
-    expect(weakCf.pillars.cashFlow.score).toBe(0);
-    expect(weakCf.score).toBe(60);
+    expect(weakCf.score).toBe(58);
     expect(weakCf.appliedCaps).toEqual(['WEAK_CASH_FLOW_QUALITY']);
     expect(weakCf.grade).toBe('C');
 
-    // Loss-making with negative CFO and weak score (< 50, so caps do not fire needlessly)
+    // 5. HIGH_RISK Value Trap -> cap 68 (Grade B)
+    const trapStock = calculateFundamentalQuality({
+      sector: 'CONSUMER_CYCLICALS',
+      currentPrice: 1000,
+      eps: 150,
+      roePct: 22,
+      roicPct: 18,
+      operatingMarginPct: 25,
+      netMarginPct: 20,
+      revenueGrowthPct: 15,
+      epsGrowthPct: 20,
+      der: 0.2,
+      currentRatio: 2.5,
+      netDebtToEbitda: -0.5,
+      cfoToNetIncome: 1.2,
+      fcfMarginPct: 15,
+      fcfYieldPct: 8,
+      altmanZScore: 4.0,
+      mosPct: 35,
+      valueTrapRiskLevel: 'HIGH_RISK',
+    });
+    expect(trapStock.score).toBe(68);
+    expect(trapStock.grade).toBe('B');
+    expect(trapStock.appliedCaps).toEqual(['HIGH_RISK_VALUE_TRAP']);
+
+    // 6. Revenue contraction < -5% -> cap 74 (Grade B)
+    const shrinkingRev = calculateFundamentalQuality({
+      sector: 'INDUSTRIALS',
+      currentPrice: 1000,
+      eps: 150,
+      roePct: 24,
+      roicPct: 20,
+      operatingMarginPct: 26,
+      netMarginPct: 22,
+      revenueGrowthPct: -12,
+      epsGrowthPct: 5,
+      der: 0.1,
+      currentRatio: 2.5,
+      netDebtToEbitda: -1,
+      cfoToNetIncome: 1.3,
+      fcfMarginPct: 16,
+      fcfYieldPct: 9,
+      altmanZScore: 4.5,
+      mosPct: 30,
+      valueTrapRiskLevel: 'CLEAR',
+    });
+    expect(shrinkingRev.score).toBe(74);
+    expect(shrinkingRev.grade).toBe('B');
+    expect(shrinkingRev.appliedCaps).toContain('LOW_ROE_OR_REVENUE_CONTRACTION');
+
+    // 7. Deep loss -> Grade E (0), no needless cap fired
     const deepLoss = calculateFundamentalQuality({
       sector: 'ENERGY',
       currentPrice: 50,
@@ -219,32 +388,33 @@ describe('calculateFundamentalQuality', () => {
       valueTrapRiskLevel: 'HIGH_RISK',
     });
     expect(deepLoss.score).toBe(0);
-    expect(deepLoss.grade).toBe('D');
+    expect(deepLoss.grade).toBe('E');
     expect(deepLoss.appliedCaps).toEqual([]);
     expect(deepLoss.qarpQuadrant).toBe('VALUE_TRAP_RISK');
   });
 
-  it('uses conservative fallback for missing pillars and returns INSUFFICIENT_DATA when < 2 pillars exist', () => {
-    // Only 2 pillars available (profitability + health; growth & cashFlow null)
-    const partial = calculateFundamentalQuality({
-      sector: 'BASIC_MATERIALS',
+  it('caps incomplete pillar coverage (< 4 pillars) at 74 and returns INSUFFICIENT_DATA when < 2 pillars', () => {
+    const partial3 = calculateFundamentalQuality({
+      sector: 'CONSUMER_NON_CYCLICALS',
       currentPrice: 1200,
-      roePct: 22,
-      roicPct: 18,
-      operatingMarginPct: 25,
-      netMarginPct: 20,
-      der: 0.2,
+      roePct: 24,
+      roicPct: 20,
+      operatingMarginPct: 26,
+      netMarginPct: 22,
+      der: 0.1,
       currentRatio: 2.5,
       netDebtToEbitda: -0.5,
+      cfoToNetIncome: 1.3,
+      fcfMarginPct: 16,
+      fcfYieldPct: 9,
       mosPct: null,
     });
-    expect(partial.availablePillars).toBe(2);
-    // 100*0.30 + 40*0.25 + 100*0.25 + 40*0.20 = 30 + 10 + 25 + 8 = 73
-    expect(partial.score).toBe(73);
-    expect(partial.grade).toBe('B');
-    expect(partial.qarpQuadrant).toBe('OVERVALUED_OR_UNRATED');
+    expect(partial3.availablePillars).toBe(3);
+    expect(partial3.score).toBe(74);
+    expect(partial3.grade).toBe('B');
+    expect(partial3.appliedCaps).toContain('INCOMPLETE_PILLAR_COVERAGE');
+    expect(partial3.qarpQuadrant).toBe('OVERVALUED_OR_UNRATED');
 
-    // Only 1 pillar (health + growth partial test where only revGrowth > 0, epsGrowth <= 0)
     const revOnly = calculateFundamentalQuality({
       sector: 'CONSUMER_CYCLICALS',
       currentPrice: 500,
@@ -254,9 +424,7 @@ describe('calculateFundamentalQuality', () => {
     expect(revOnly.availablePillars).toBe(1);
     expect(revOnly.score).toBeNull();
     expect(revOnly.grade).toBe('INSUFFICIENT_DATA');
-    expect(revOnly.qarpQuadrant).toBe('OVERVALUED_OR_UNRATED');
 
-    // Growth + CashFlow only (profitability & financialHealth null)
     const twoOtherPillars = calculateFundamentalQuality({
       sector: 'FINANCIALS',
       currentPrice: 500,

@@ -28,6 +28,16 @@ export function mapYahooSectorToIdx(rawSector?: string | null, rawIndustry?: str
   const sector = (rawSector ?? '').toLowerCase();
   const industry = (rawIndustry ?? '').toLowerCase();
 
+  // Check Real Estate / Property industry BEFORE Finance (TradingView groups Real Estate under Finance)
+  if (
+    sector.includes('property') ||
+    sector.includes('real estate') ||
+    industry.includes('real estate') ||
+    industry.includes('property') ||
+    industry.includes('reit')
+  ) {
+    return 'PROPERTY_REAL_ESTATE';
+  }
   if (sector.includes('financ') || sector === 'finance') return 'FINANCIALS';
   if (
     sector.includes('consumer non-cyclical') ||

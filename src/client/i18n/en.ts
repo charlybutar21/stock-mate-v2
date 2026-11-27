@@ -337,9 +337,11 @@ export const en = {
     toastSyncFailed: 'Unable to refresh market data right now. Please retry shortly.',
     valuationFilterLabel: 'Valuation',
     valuationAll: 'All',
-    qualityFilterLabel: 'Quality (FQS)',
+    qualityFilterLabel: 'Quality Grade',
     qualityAll: 'All',
-    moreNumericFilters: 'Discount & Score Range',
+    liquidToggle: 'Liquid (≥Rp 1B/day)',
+    safeTrapToggle: 'No Value Trap',
+    moreNumericFilters: 'Discount Range (MoS)',
     minFqsPlaceholder: 'Min FQS',
     mosFilterLabel: 'Margin of Safety',
     mosPresetAny: 'Any MoS',
@@ -622,11 +624,11 @@ export const en = {
       'Discover quality IHSG businesses trading at a discount — filter by Quality Score and Fair Value in one click.',
     kpiTotal: 'Active IHSG Stocks',
     kpiPrime: 'Quality on Sale',
-    kpiPrimeHint: 'Discount ≥ 20% · Quality ≥ 70 · Low Trap Risk',
-    kpiElite: 'Elite Quality (Grade A)',
-    kpiEliteHint: 'Quality Score 80–100',
-    kpiStrong: 'Strong Quality (Grade B)',
-    kpiStrongHint: 'Quality Score 65–79',
+    kpiPrimeHint: 'Discount ≥ 20% · Score ≥ 76 (S/A) · Low Trap Risk',
+    kpiElite: 'Grade S (Elite)',
+    kpiEliteHint: 'Score 88–100 · All Guardrails Passed',
+    kpiStrong: 'Grade A (Very Strong)',
+    kpiStrongHint: 'Score 76–87',
     presetsLabel: 'Quick Presets',
     presetAll: 'All Stocks (Top Quality)',
     presetPrime: 'Quality on Sale',
@@ -669,10 +671,12 @@ export const en = {
     emptyTitle: 'No stocks match your Radar filters',
     emptyBody: 'Try relaxing your minimum quality score, discount, or liquidity filter.',
     gradeLabels: {
-      A: 'Elite Quality',
-      B: 'Strong Quality',
+      S: 'Tier-S Elite',
+      A: 'Very Strong',
+      B: 'Good / Solid',
       C: 'Average / Watch',
-      D: 'Weak / Speculative',
+      D: 'Weak / High Risk',
+      E: 'Avoid / Distressed',
       INSUFFICIENT_DATA: 'Incomplete Data',
     },
     quadrantLabels: {
@@ -685,6 +689,8 @@ export const en = {
     trackLabels: {
       NON_FINANCIALS: 'Non-Financials Model',
       FINANCIALS: 'Banking & Financials Model',
+      CYCLICALS: 'Cyclicals & Commodities Model',
+      PROPERTY_INFRA: 'Property & Infrastructure Model',
     },
     pillarNames: {
       profitability: 'Profitability',
@@ -698,15 +704,23 @@ export const en = {
       financialHealth: 'Health',
       cashFlow: 'Cash',
     },
-    capNoticeTitle: 'Risk Safety Cap Applied',
+    capNoticeTitle: 'Institutional Risk Cap Applied',
     capFromTo: 'Capped from',
     capReasons: {
       LOSS_MAKING_OR_WEAK_PROFITABILITY:
-        'Score capped at 50 because the company is loss-making or Profitability is below 25.',
+        'Score capped at 45 because the company is loss-making or Profitability is below 25.',
       WEAK_FINANCIAL_HEALTH:
-        'Score capped at 55 because Financial Health is below 30 (elevated leverage or liquidity risk).',
+        'Score capped at 50 because Financial Health is below 30 (elevated leverage or liquidity risk).',
+      FINANCIAL_DISTRESS_ALTMAN_Z:
+        'Score capped at 55 because Altman Z-Score is below 1.80 (financial distress zone).',
       WEAK_CASH_FLOW_QUALITY:
-        'Score capped at 60 because Cash Flow Quality is below 25 (weak cash conversion or negative free cash flow).',
+        'Score capped at 58 because Cash Flow Quality is below 25 (weak cash conversion or negative free cash flow).',
+      HIGH_RISK_VALUE_TRAP:
+        'Score capped at 68 because Value Trap Shield flagged HIGH_RISK.',
+      INCOMPLETE_PILLAR_COVERAGE:
+        'Score capped at 74 because fewer than 4 quality pillars have complete financial data (cannot qualify for Grade S/A).',
+      LOW_ROE_OR_REVENUE_CONTRACTION:
+        'Score capped at 74 because Bank/Financial ROE is below 10% or YoY revenue contracted by more than 5%.',
     },
     coverageLabel: 'Data Coverage',
     pillarsUnit: 'pillars',

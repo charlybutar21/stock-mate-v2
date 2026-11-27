@@ -324,11 +324,13 @@ export function createApp(options?: {
       );
     }
 
-    // Stale-while-revalidate backup: if snapshot is >5m old or missing intraday openPrice,
-    // trigger a single KV-locked background refresh without blocking the user response.
+    // Stale-while-revalidate backup: if snapshot is >5m old, missing intraday openPrice,
+    // or missing reclassified PROPERTY_REAL_ESTATE stocks, trigger a single KV-locked background refresh.
     const needsBgRefresh =
       Date.now() - snapshot.syncedAtMs >= CATALOG_SWR_MAX_AGE_MS ||
-      (snapshot.items.length > 0 && snapshot.items[0]!.openPrice === null);
+      (snapshot.items.length > 0 && snapshot.items[0]!.openPrice === null) ||
+      (snapshot.items.length >= 200 &&
+        !snapshot.items.some((item) => item.sector === 'PROPERTY_REAL_ESTATE'));
     if (needsBgRefresh) {
       try {
         c.executionCtx.waitUntil(triggerGuardedBackgroundSync(c.env));

@@ -1,4 +1,4 @@
-import { Filter, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Droplets, Filter, RotateCcw, Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import type {
   CatalogPaginationDto,
   CatalogSortOption,
@@ -53,12 +53,14 @@ interface RadarFilterPanelProps {
   onResetAll: () => void;
 }
 
-const GRADE_PILLS: Array<{ value: QualityGradeFilter | ''; label: string }> = [
-  { value: '', label: '' },
-  { value: 'A', label: 'A (80+)' },
-  { value: 'B', label: 'B (65–79)' },
-  { value: 'C', label: 'C (50–64)' },
-  { value: 'D', label: 'D (<50)' },
+const GRADE_PILLS: Array<{ value: QualityGradeFilter | ''; label: string; hint: string }> = [
+  { value: '', label: '', hint: '' },
+  { value: 'S', label: 'S', hint: '≥ 88' },
+  { value: 'A', label: 'A', hint: '76–87' },
+  { value: 'B', label: 'B', hint: '64–75' },
+  { value: 'C', label: 'C', hint: '50–63' },
+  { value: 'D', label: 'D', hint: '35–49' },
+  { value: 'E', label: 'E', hint: '< 35' },
 ];
 
 export function RadarFilterPanel({
@@ -76,6 +78,7 @@ export function RadarFilterPanel({
   onResetAll,
 }: RadarFilterPanelProps) {
   const { t } = useI18n();
+  const isLiquidQuickOn = Number(filters.minAdtvBillion) >= 1;
 
   return (
     <Card className="space-y-4 p-4">
@@ -178,32 +181,36 @@ export function RadarFilterPanel({
         </div>
       </div>
 
-      {/* Row 3: Two Dedicated Non-Colliding Quick Filter Blocks (Quality Score FQS | Valuation & Discount) */}
+      {/* Row 3: Single Control per Dimension (Quality Grade S-E | Valuation Status) */}
       <div className="grid grid-cols-1 gap-3.5 border-t border-border/75 pt-3.5 lg:grid-cols-2 lg:gap-5">
-        {/* Quality Score (FQS) Quick Filter */}
         <div className="space-y-1.5">
           <span className="block text-[11px] font-semibold tracking-wide text-muted uppercase">
             {t.watchlist.qualityFilterLabel}
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
             {GRADE_PILLS.map((opt) => {
-              const active = filters.qualityGrade === opt.value;
+              const active = filters.qualityGrade === opt.value && !filters.minFqs;
               const label = opt.value === '' ? t.watchlist.qualityAll : opt.label;
+              const title = opt.value
+                ? `Grade ${opt.value} (${opt.hint}) · ${t.radar.gradeLabels[opt.value]}`
+                : t.watchlist.qualityAll;
               return (
                 <button
                   key={opt.value || 'all'}
                   type="button"
+                  title={title}
                   aria-pressed={active}
-                  onClick={() => onPatchFilters({ qualityGrade: opt.value })}
+                  onClick={() => onPatchFilters({ qualityGrade: opt.value, minFqs: '' })}
                   className={cn(
-                    'inline-flex h-8 sm:h-7 items-center rounded-md border px-2.5 text-xs font-semibold transition-colors cursor-pointer',
-                    active && opt.value === 'A'
-                      ? 'border-positive-600/50 bg-positive-50 text-positive-700'
+                    'inline-flex h-8 sm:h-7 min-w-[34px] items-center justify-center rounded-md border px-2.5 font-mono text-xs font-bold transition-colors cursor-pointer',
+                    opt.value === '' && 'font-sans font-semibold',
+                    active && (opt.value === 'S' || opt.value === 'A')
+                      ? 'border-positive-600/55 bg-positive-50 text-positive-700'
                       : active && opt.value === 'B'
                         ? 'border-brand-600/50 bg-brand-50 text-brand-700'
                         : active && opt.value === 'C'
                           ? 'border-warning-600/50 bg-warning-50 text-warning-700'
-                          : active && opt.value === 'D'
+                          : active && (opt.value === 'D' || opt.value === 'E')
                             ? 'border-negative-600/50 bg-negative-50 text-negative-700'
                             : active
                               ? 'border-brand-600/50 bg-brand-50 text-brand-700'
@@ -214,24 +221,12 @@ export function RadarFilterPanel({
                 </button>
               );
             })}
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              value={filters.minFqs}
-              onChange={(e) => onPatchFilters({ minFqs: e.target.value })}
-              placeholder={t.radar.filterMinFqs}
-              title={t.radar.filterMinFqs}
-              aria-label={t.radar.filterMinFqs}
-              className="h-8 sm:h-7 w-24 px-2 font-mono text-xs tabular-nums"
-            />
           </div>
         </div>
 
-        {/* Valuation Status & Min Discount Quick Filter */}
         <div className="space-y-1.5">
           <span className="block text-[11px] font-semibold tracking-wide text-muted uppercase">
-            {t.watchlist.valuationFilterLabel} &amp; {t.watchlist.mosFilterLabel}
+            {t.watchlist.valuationFilterLabel}
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
             {(
@@ -266,29 +261,51 @@ export function RadarFilterPanel({
                 </button>
               );
             })}
-            <Input
-              type="number"
-              min={-100}
-              max={100}
-              value={filters.minMos}
-              onChange={(e) => onPatchFilters({ minMos: e.target.value })}
-              placeholder={t.radar.filterMinMos}
-              title={t.radar.filterMinMos}
-              aria-label={t.radar.filterMinMos}
-              className="h-8 sm:h-7 w-28 px-2 font-mono text-xs tabular-nums"
-            />
           </div>
         </div>
       </div>
 
-      {/* Row 4: Advanced Pillar Filters Toggle + Summary Count */}
+      {/* Row 4: Quick Safety Toggles + Advanced Drawer Toggle + Result Count */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/80 pt-3">
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={isLiquidQuickOn}
+            onClick={() => onPatchFilters({ minAdtvBillion: isLiquidQuickOn ? '' : '1' })}
+            className={cn(
+              'inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors cursor-pointer',
+              isLiquidQuickOn
+                ? 'border-brand-600/50 bg-brand-50 text-brand-700'
+                : 'border-border bg-display text-muted hover:text-ink',
+            )}
+          >
+            <Droplets className="h-3.5 w-3.5" aria-hidden="true" />
+            {t.watchlist.liquidToggle}
+          </button>
+
+          <button
+            type="button"
+            aria-pressed={filters.excludeHighRiskTrap}
+            onClick={() =>
+              onPatchFilters({ excludeHighRiskTrap: !filters.excludeHighRiskTrap })
+            }
+            className={cn(
+              'inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors cursor-pointer',
+              filters.excludeHighRiskTrap
+                ? 'border-positive-600/50 bg-positive-50 text-positive-700'
+                : 'border-border bg-display text-muted hover:text-ink',
+            )}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            {t.watchlist.safeTrapToggle}
+          </button>
+
           <Button
             variant={advancedOpen || activeAdvancedCount > 0 ? 'outlineBrand' : 'secondary'}
             size="sm"
             onClick={onToggleAdvanced}
             aria-expanded={advancedOpen}
+            className="h-8 text-xs"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
             {t.radar.advancedFilters}
@@ -314,7 +331,7 @@ export function RadarFilterPanel({
           )}
 
           {hasAnyFilter && (
-            <Button variant="ghost" size="sm" onClick={onResetAll}>
+            <Button variant="ghost" size="sm" onClick={onResetAll} className="h-8 text-xs">
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
               {t.watchlist.resetFilters}
             </Button>
@@ -336,9 +353,78 @@ export function RadarFilterPanel({
         </div>
       </div>
 
-      {/* Collapsible Pillar & Institutional Filters */}
+      {/* Collapsible Advanced Power-User Filters (Custom FQS, Min MoS, 4 Pillars, ADTV, Piotroski) */}
       {advancedOpen && (
         <div className="grid grid-cols-1 gap-3 rounded-xl border border-border bg-subtle/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1">
+            <label htmlFor="radar-min-fqs" className="text-xs font-medium text-ink">
+              {t.radar.filterMinFqs} (0–100)
+            </label>
+            <Input
+              id="radar-min-fqs"
+              type="number"
+              min={0}
+              max={100}
+              value={filters.minFqs}
+              onChange={(e) => onPatchFilters({ minFqs: e.target.value, qualityGrade: '' })}
+              placeholder="e.g. 76"
+              className="font-mono tabular-nums"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="radar-min-mos" className="text-xs font-medium text-ink">
+              {t.radar.filterMinMos}
+            </label>
+            <Input
+              id="radar-min-mos"
+              type="number"
+              min={-100}
+              max={100}
+              value={filters.minMos}
+              onChange={(e) => onPatchFilters({ minMos: e.target.value })}
+              placeholder="e.g. 20"
+              className="font-mono tabular-nums"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="radar-adtv" className="text-xs font-medium text-ink">
+              <TermTooltip label={t.radar.filterAdtvLabel} definition={t.glossary.adtv} />
+            </label>
+            <Select
+              id="radar-adtv"
+              value={filters.minAdtvBillion}
+              onChange={(e) => onPatchFilters({ minAdtvBillion: e.target.value })}
+            >
+              <option value="">{t.radar.adtvAny}</option>
+              <option value="0.5">{t.radar.adtv500m}</option>
+              <option value="1">{t.radar.adtv1b}</option>
+              <option value="5">{t.radar.adtv5b}</option>
+              <option value="10">{t.radar.adtv10b}</option>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="radar-piotroski" className="text-xs font-medium text-ink">
+              <TermTooltip
+                label={t.radar.filterPiotroskiLabel}
+                definition={t.glossary.piotroski}
+              />
+            </label>
+            <Select
+              id="radar-piotroski"
+              value={filters.minPiotroski}
+              onChange={(e) => onPatchFilters({ minPiotroski: e.target.value })}
+            >
+              <option value="">{t.radar.piotroskiAny}</option>
+              <option value="5">≥ 5 / 9</option>
+              <option value="6">≥ 6 / 9</option>
+              <option value="7">≥ 7 / 9 (Strong)</option>
+              <option value="8">≥ 8 / 9 (Elite)</option>
+            </Select>
+          </div>
+
           <div className="space-y-1">
             <label htmlFor="radar-min-prof" className="text-xs font-medium text-ink">
               {t.radar.pillarNames.profitability} (Min 0–100)
@@ -401,55 +487,6 @@ export function RadarFilterPanel({
               placeholder="e.g. 60"
               className="font-mono tabular-nums"
             />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="radar-adtv" className="text-xs font-medium text-ink">
-              <TermTooltip label={t.radar.filterAdtvLabel} definition={t.glossary.adtv} />
-            </label>
-            <Select
-              id="radar-adtv"
-              value={filters.minAdtvBillion}
-              onChange={(e) => onPatchFilters({ minAdtvBillion: e.target.value })}
-            >
-              <option value="">{t.radar.adtvAny}</option>
-              <option value="0.5">{t.radar.adtv500m}</option>
-              <option value="1">{t.radar.adtv1b}</option>
-              <option value="5">{t.radar.adtv5b}</option>
-              <option value="10">{t.radar.adtv10b}</option>
-            </Select>
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="radar-piotroski" className="text-xs font-medium text-ink">
-              <TermTooltip
-                label={t.radar.filterPiotroskiLabel}
-                definition={t.glossary.piotroski}
-              />
-            </label>
-            <Select
-              id="radar-piotroski"
-              value={filters.minPiotroski}
-              onChange={(e) => onPatchFilters({ minPiotroski: e.target.value })}
-            >
-              <option value="">{t.radar.piotroskiAny}</option>
-              <option value="5">≥ 5 / 9</option>
-              <option value="6">≥ 6 / 9</option>
-              <option value="7">≥ 7 / 9 (Strong)</option>
-              <option value="8">≥ 8 / 9 (Elite)</option>
-            </Select>
-          </div>
-
-          <div className="flex items-end pb-1 sm:col-span-2">
-            <label className="flex items-center gap-2 text-xs font-medium text-ink cursor-pointer">
-              <input
-                type="checkbox"
-                checked={filters.excludeHighRiskTrap}
-                onChange={(e) => onPatchFilters({ excludeHighRiskTrap: e.target.checked })}
-                className="h-4 w-4 rounded border-border accent-brand-600 cursor-pointer"
-              />
-              <span>{t.radar.excludeHighRiskTrap}</span>
-            </label>
           </div>
         </div>
       )}

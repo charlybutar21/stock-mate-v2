@@ -115,11 +115,6 @@ export function QualityBreakdownCard({
             tooltip: t.glossary.wholesaleDer,
             value: formatMultiple(fundamentals.wholesaleDer),
           },
-          {
-            label: t.radar.metrics.roa,
-            tooltip: t.glossary.roa,
-            value: formatPercent(fundamentals.roaPct),
-          },
         ]
       : [
           {
@@ -210,10 +205,13 @@ export function QualityBreakdownCard({
           <div
             className={cn(
               'flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl border-2 font-mono',
-              quality.grade === 'A' && 'border-positive-600/45 bg-positive-50 text-positive-700',
+              quality.grade === 'S' &&
+                'border-positive-600 bg-positive-50 text-positive-700 ring-2 ring-positive-600/20',
+              quality.grade === 'A' && 'border-positive-600/45 bg-positive-50/80 text-positive-700',
               quality.grade === 'B' && 'border-brand-600/45 bg-brand-50 text-brand-700',
               quality.grade === 'C' && 'border-warning-600/45 bg-warning-50 text-warning-700',
-              quality.grade === 'D' && 'border-negative-600/45 bg-negative-50 text-negative-700',
+              quality.grade === 'D' && 'border-negative-600/40 bg-negative-50/75 text-negative-700',
+              quality.grade === 'E' && 'border-negative-600 bg-negative-50 text-negative-700',
               quality.grade === 'INSUFFICIENT_DATA' && 'border-border bg-panel text-muted',
             )}
           >

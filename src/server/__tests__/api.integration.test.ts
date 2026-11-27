@@ -1294,8 +1294,8 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(defaultBody.summary.eliteQuality).toBe(2);
     expect(defaultBody.summary.primeOpportunities).toBe(1);
     expect(defaultBody.items.map((i) => i.ticker)[2]).toBe('TRAP');
-    expect(defaultBody.items[0]!.quality.grade).toBe('A');
-    expect(defaultBody.items[2]!.quality.grade).toBe('D');
+    expect(defaultBody.items[0]!.quality.grade).toBe('S');
+    expect(defaultBody.items[2]!.quality.grade).toBe('E');
 
     // Radar Prime Value Quality preset filters: minMos=20, minFqs=70, minProfitability=65, minAdtvBillion=1, excludeHighRiskTrap=true
     const primeRes = await app.request(

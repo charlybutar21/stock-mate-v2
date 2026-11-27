@@ -62,7 +62,7 @@ const PRESET_FILTERS: Record<Exclude<RadarPresetId, 'custom'>, Partial<RadarFilt
   prime: {
     ...DEFAULT_RADAR_FILTERS,
     minMos: '20',
-    minFqs: '70',
+    minFqs: '76',
     minProfitability: '65',
     minHealth: '60',
     minAdtvBillion: '1',
@@ -71,7 +71,7 @@ const PRESET_FILTERS: Record<Exclude<RadarPresetId, 'custom'>, Partial<RadarFilt
   },
   compounders: {
     ...DEFAULT_RADAR_FILTERS,
-    minFqs: '80',
+    minFqs: '82',
     minProfitability: '75',
     minGrowth: '65',
     minCashFlow: '70',
@@ -164,13 +164,14 @@ export function RadarPage() {
   };
 
   const activeAdvancedCount = [
+    filters.minFqs,
+    filters.minMos,
     filters.minProfitability,
     filters.minGrowth,
     filters.minHealth,
     filters.minCashFlow,
     filters.minAdtvBillion,
     filters.minPiotroski,
-    filters.excludeHighRiskTrap ? '1' : '',
   ].filter(Boolean).length;
 
   const hasAnyFilter =
@@ -181,8 +182,7 @@ export function RadarPage() {
         filters.valuationStatus ||
         filters.qualityGrade ||
         filters.qarpQuadrant ||
-        filters.minMos ||
-        filters.minFqs ||
+        filters.excludeHighRiskTrap ||
         activeAdvancedCount > 0,
     );
 
@@ -316,15 +316,15 @@ export function RadarPage() {
             setPreset('custom');
             setFilters({
               ...DEFAULT_RADAR_FILTERS,
-              qualityGrade: 'A',
+              qualityGrade: 'S',
               sort: 'fqs_desc',
             });
             setPage(1);
           }}
-          aria-pressed={filters.qualityGrade === 'A'}
+          aria-pressed={filters.qualityGrade === 'S'}
           className={cn(
             'rounded-xl border p-4 text-left transition-all cursor-pointer',
-            filters.qualityGrade === 'A'
+            filters.qualityGrade === 'S'
               ? 'border-positive-600/50 bg-positive-50/60 shadow-xs'
               : 'border-border bg-panel hover:border-positive-600/35 hover:bg-subtle/40',
           )}
@@ -344,15 +344,15 @@ export function RadarPage() {
             setPreset('custom');
             setFilters({
               ...DEFAULT_RADAR_FILTERS,
-              qualityGrade: 'B',
+              qualityGrade: 'A',
               sort: 'fqs_desc',
             });
             setPage(1);
           }}
-          aria-pressed={filters.qualityGrade === 'B'}
+          aria-pressed={filters.qualityGrade === 'A'}
           className={cn(
             'rounded-xl border p-4 text-left transition-all cursor-pointer',
-            filters.qualityGrade === 'B'
+            filters.qualityGrade === 'A'
               ? 'border-brand-600/50 bg-brand-50/60 shadow-xs'
               : 'border-border bg-panel hover:border-brand-600/35 hover:bg-subtle/40',
           )}

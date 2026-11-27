@@ -286,6 +286,8 @@ export function createWatchlistRoutes(
       maxFqs: c.req.query('maxFqs'),
       minMos: c.req.query('minMos'),
       maxMos: c.req.query('maxMos'),
+      minAdtvBillion: c.req.query('minAdtvBillion'),
+      excludeHighRiskTrap: c.req.query('excludeHighRiskTrap'),
       sort: c.req.query('sort') || undefined,
       page: 1,
       pageSize: 100,

@@ -689,8 +689,8 @@ export class ListCatalogStocksUseCase {
 
         if (item.quality.score !== null) {
           summary.qualityScored += 1;
-          if (item.quality.grade === 'A') summary.eliteQuality += 1;
-          else if (item.quality.grade === 'B') summary.strongQuality += 1;
+          if (item.quality.grade === 'S') summary.eliteQuality += 1;
+          else if (item.quality.grade === 'A') summary.strongQuality += 1;
         }
         if (item.quality.qarpQuadrant === 'PRIME_OPPORTUNITY') {
           summary.primeOpportunities += 1;

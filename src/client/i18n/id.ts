@@ -340,9 +340,11 @@ export const id: I18nDictionary = {
     toastSyncFailed: 'Gagal memperbarui data pasar saat ini. Silakan coba lagi.',
     valuationFilterLabel: 'Valuasi',
     valuationAll: 'Semua',
-    qualityFilterLabel: 'Kualitas (FQS)',
+    qualityFilterLabel: 'Grade Kualitas',
     qualityAll: 'Semua',
-    moreNumericFilters: 'Rentang Diskon & Skor',
+    liquidToggle: 'Likuid (≥Rp 1M/hr)',
+    safeTrapToggle: 'Bebas Value Trap',
+    moreNumericFilters: 'Rentang Diskon (MoS)',
     minFqsPlaceholder: 'Min Skor',
     mosFilterLabel: 'Margin of Safety',
     mosPresetAny: 'Semua MoS',
@@ -623,11 +625,11 @@ export const id: I18nDictionary = {
       'Temukan saham IHSG berkualitas yang sedang diskon — saring berdasarkan Skor Kualitas dan Harga Wajar dalam 1 klik.',
     kpiTotal: 'Saham Aktif IHSG',
     kpiPrime: 'Bagus & Murah',
-    kpiPrimeHint: 'Diskon ≥ 20% · Kualitas ≥ 70 · Risiko Trap Rendah',
-    kpiElite: 'Kualitas Elite (Grade A)',
-    kpiEliteHint: 'Skor Kualitas 80–100',
-    kpiStrong: 'Kualitas Kuat (Grade B)',
-    kpiStrongHint: 'Skor Kualitas 65–79',
+    kpiPrimeHint: 'Diskon ≥ 20% · Skor ≥ 76 (S/A) · Risiko Trap Rendah',
+    kpiElite: 'Grade S (Elite)',
+    kpiEliteHint: 'Skor 88–100 · Lolos Semua Guardrail',
+    kpiStrong: 'Grade A (Sangat Kuat)',
+    kpiStrongHint: 'Skor 76–87',
     presetsLabel: 'Pilihan Cepat',
     presetAll: 'Semua Saham (Kualitas Tertinggi)',
     presetPrime: 'Bagus & Murah',
@@ -670,10 +672,12 @@ export const id: I18nDictionary = {
     emptyTitle: 'Tidak ada saham yang cocok dengan filter Radar',
     emptyBody: 'Longgarkan batas minimal skor kualitas, diskon, atau transaksi harian.',
     gradeLabels: {
-      A: 'Kualitas Elite',
-      B: 'Kualitas Kuat',
+      S: 'Elite Tier-S',
+      A: 'Sangat Kuat',
+      B: 'Baik / Solid',
       C: 'Rata-Rata / Pantau',
-      D: 'Lemah / Spekulatif',
+      D: 'Lemah / Risiko Tinggi',
+      E: 'Hindari / Bermasalah',
       INSUFFICIENT_DATA: 'Data Belum Lengkap',
     },
     quadrantLabels: {
@@ -686,6 +690,8 @@ export const id: I18nDictionary = {
     trackLabels: {
       NON_FINANCIALS: 'Model Non-Keuangan',
       FINANCIALS: 'Model Perbankan & Keuangan',
+      CYCLICALS: 'Model Siklikal & Komoditas',
+      PROPERTY_INFRA: 'Model Properti & Infrastruktur',
     },
     pillarNames: {
       profitability: 'Profitabilitas',
@@ -699,15 +705,23 @@ export const id: I18nDictionary = {
       financialHealth: 'Sehat',
       cashFlow: 'Kas',
     },
-    capNoticeTitle: 'Skor Dibatasi Otomatis (Pengaman Risiko)',
+    capNoticeTitle: 'Pengaman Risiko Institusional Aktif',
     capFromTo: 'Dibatasi dari',
     capReasons: {
       LOSS_MAKING_OR_WEAK_PROFITABILITY:
-        'Skor dibatasi maks 50 karena perusahaan merugi atau skor Profitabilitas di bawah 25.',
+        'Skor dibatasi maks 45 karena perusahaan merugi atau skor Profitabilitas di bawah 25.',
       WEAK_FINANCIAL_HEALTH:
-        'Skor dibatasi maks 55 karena Kesehatan Keuangan di bawah 30 (risiko utang atau likuiditas tinggi).',
+        'Skor dibatasi maks 50 karena Kesehatan Keuangan di bawah 30 (risiko utang atau likuiditas tinggi).',
+      FINANCIAL_DISTRESS_ALTMAN_Z:
+        'Skor dibatasi maks 55 karena Altman Z-Score di bawah 1,80 (zona rawan kesulitan keuangan).',
       WEAK_CASH_FLOW_QUALITY:
-        'Skor dibatasi maks 60 karena Kualitas Arus Kas di bawah 25 (konversi kas lemah atau arus kas bebas negatif).',
+        'Skor dibatasi maks 58 karena Kualitas Arus Kas di bawah 25 (konversi kas lemah atau arus kas bebas negatif).',
+      HIGH_RISK_VALUE_TRAP:
+        'Skor dibatasi maks 68 karena Value Trap Shield mendeteksi risiko tinggi (HIGH_RISK).',
+      INCOMPLETE_PILLAR_COVERAGE:
+        'Skor dibatasi maks 74 karena data 4 pilar belum lengkap (tidak memenuhi syarat Grade S/A).',
+      LOW_ROE_OR_REVENUE_CONTRACTION:
+        'Skor dibatasi maks 74 karena ROE Perbankan di bawah 10% atau pendapatan tahunan menyusut lebih dari 5%.',
     },
     coverageLabel: 'Kelengkapan Data',
     pillarsUnit: 'pilar',

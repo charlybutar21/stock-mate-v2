@@ -8,10 +8,10 @@ import { cn, type BadgeTone } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 
 export function qualityGradeTone(grade: QualityGrade): BadgeTone {
-  if (grade === 'A') return 'positive';
+  if (grade === 'S' || grade === 'A') return 'positive';
   if (grade === 'B') return 'info';
   if (grade === 'C') return 'warning';
-  if (grade === 'D') return 'negative';
+  if (grade === 'D' || grade === 'E') return 'negative';
   return 'neutral';
 }
 
@@ -54,10 +54,12 @@ export function QualityScoreBadge({
   const hasScore = quality.score !== null;
 
   const toneClasses: Record<QualityGrade, string> = {
-    A: 'border-positive-600/35 bg-positive-50 text-positive-700',
+    S: 'border-positive-600 bg-positive-50 text-positive-700 ring-1 ring-positive-600/20',
+    A: 'border-positive-600/40 bg-positive-50/75 text-positive-700',
     B: 'border-brand-600/35 bg-brand-50 text-brand-700',
     C: 'border-warning-600/35 bg-warning-50 text-warning-700',
-    D: 'border-negative-600/35 bg-negative-50 text-negative-700',
+    D: 'border-negative-600/35 bg-negative-50/70 text-negative-700',
+    E: 'border-negative-600/60 bg-negative-50 text-negative-700',
     INSUFFICIENT_DATA: 'border-border bg-subtle text-muted',
   };
 

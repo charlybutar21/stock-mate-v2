@@ -46,10 +46,11 @@ const TV_COLUMNS = [
   'free_cash_flow_margin_ttm',
   'piotroski_f_score_ttm',
   'altman_z_score_ttm',
-  // Intraday open & daily price change columns (appended for backwards-compatible positional parsing)
+  // Intraday open & daily price change + industry columns (appended for backwards-compatible positional parsing)
   'open',
   'change_abs',
   'change',
+  'industry',
 ] as const;
 
 interface TradingViewScanResponse {
@@ -117,6 +118,7 @@ export function parseTradingViewRowToDto(
     rawOpen,
     rawChangeAbs,
     rawChangePct,
+    rawIndustry,
   ] = row.d;
 
   const tickerFromSymbol = row.s.replace(/^IDX:/i, '').trim().toUpperCase();
@@ -133,7 +135,10 @@ export function parseTradingViewRowToDto(
       : `${ticker} Tbk`
   ).slice(0, 120);
 
-  const sector = mapYahooSectorToIdx(typeof rawSector === 'string' ? rawSector : null);
+  const sector = mapYahooSectorToIdx(
+    typeof rawSector === 'string' ? rawSector : null,
+    typeof rawIndustry === 'string' ? rawIndustry : null,
+  );
   const benchmarks = SECTOR_BENCHMARK_MULTIPLES[sector];
   const isFinancials = sector === 'FINANCIALS';
 

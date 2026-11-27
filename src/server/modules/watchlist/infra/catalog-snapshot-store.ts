@@ -2,7 +2,7 @@ import type { CatalogSummaryDto, MarketStockDto } from '@/shared/contracts';
 import type { IdxStockRecord } from '../domain/watchlist.types';
 import { mapIdxStockToMarketDto } from '../application/watchlist-catalog-use-cases';
 
-export const CATALOG_SNAPSHOT_KV_KEY = 'catalog:v2:latest';
+export const CATALOG_SNAPSHOT_KV_KEY = 'catalog:v3:latest';
 const CATALOG_SNAPSHOT_KV_TTL_SECONDS = 12 * 60 * 60; // 12 hours
 const ISOLATE_SNAPSHOT_TTL_MS = 30_000; // 30s hot in-isolate cache
 
@@ -44,8 +44,8 @@ export function buildCatalogSnapshot(
 
     if (item.quality.score !== null) {
       summary.qualityScored += 1;
-      if (item.quality.grade === 'A') summary.eliteQuality += 1;
-      else if (item.quality.grade === 'B') summary.strongQuality += 1;
+      if (item.quality.grade === 'S') summary.eliteQuality += 1;
+      else if (item.quality.grade === 'A') summary.strongQuality += 1;
     }
     if (item.quality.qarpQuadrant === 'PRIME_OPPORTUNITY') {
       summary.primeOpportunities += 1;

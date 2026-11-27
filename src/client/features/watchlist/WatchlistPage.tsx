@@ -115,7 +115,8 @@ export function WatchlistPage() {
   const [sector, setSector] = useState<IdxSector | ''>('');
   const [valuationStatus, setValuationStatus] = useState<ValuationStatusFilter | ''>('');
   const [qualityGrade, setQualityGrade] = useState<QualityGradeFilter | ''>('');
-  const [minFqsInput, setMinFqsInput] = useState('');
+  const [onlyLiquid, setOnlyLiquid] = useState(false);
+  const [excludeHighRiskTrap, setExcludeHighRiskTrap] = useState(false);
   const [mosPreset, setMosPreset] = useState<MosPreset>('any');
   const [minMosInput, setMinMosInput] = useState('');
   const [maxMosInput, setMaxMosInput] = useState('');
@@ -138,7 +139,7 @@ export function WatchlistPage() {
   const debouncedSearch = useDebouncedValue(search.trim(), 220);
   const debouncedMinMos = useDebouncedValue(parseOptionalNumericFilter(minMosInput), 250);
   const debouncedMaxMos = useDebouncedValue(parseOptionalNumericFilter(maxMosInput), 250);
-  const debouncedMinFqs = useDebouncedValue(parseOptionalNumericFilter(minFqsInput), 250);
+  const minAdtvBillion = onlyLiquid ? 1 : undefined;
 
   // Queries (auto-refresh every 3 minutes while tab is visible)
   const { data: personalItems, isLoading: isPersonalLoading } = useWatchlist();
@@ -160,7 +161,8 @@ export function WatchlistPage() {
     sector: activeTab.kind === 'all' ? sector || undefined : undefined,
     valuationStatus: activeTab.kind === 'all' ? valuationStatus || undefined : undefined,
     qualityGrade: activeTab.kind === 'all' ? qualityGrade || undefined : undefined,
-    minFqs: activeTab.kind === 'all' ? debouncedMinFqs : undefined,
+    minAdtvBillion: activeTab.kind === 'all' ? minAdtvBillion : undefined,
+    excludeHighRiskTrap: activeTab.kind === 'all' ? excludeHighRiskTrap || undefined : undefined,
     minMos: activeTab.kind === 'all' ? debouncedMinMos : undefined,
     maxMos: activeTab.kind === 'all' ? debouncedMaxMos : undefined,
     sort: activeTab.kind === 'all' ? sort : 'mos_desc',
@@ -177,7 +179,8 @@ export function WatchlistPage() {
     sector: sector || undefined,
     valuationStatus: valuationStatus || undefined,
     qualityGrade: qualityGrade || undefined,
-    minFqs: debouncedMinFqs,
+    minAdtvBillion,
+    excludeHighRiskTrap: excludeHighRiskTrap || undefined,
     minMos: debouncedMinMos,
     maxMos: debouncedMaxMos,
     sort,
@@ -285,8 +288,13 @@ export function WatchlistPage() {
     if (qualityGrade) {
       list = list.filter((i) => i.quality.grade === qualityGrade);
     }
-    if (debouncedMinFqs !== undefined) {
-      list = list.filter((i) => i.quality.score !== null && i.quality.score >= debouncedMinFqs);
+    if (onlyLiquid) {
+      list = list.filter(
+        (i) => i.fundamentals.adtvIdr !== null && i.fundamentals.adtvIdr >= 1_000_000_000,
+      );
+    }
+    if (excludeHighRiskTrap) {
+      list = list.filter((i) => i.valuation.valueTrapShield.riskLevel !== 'HIGH_RISK');
     }
     if (debouncedMinMos !== undefined) {
       list = list.filter(
@@ -341,7 +349,8 @@ export function WatchlistPage() {
     debouncedSearch,
     valuationStatus,
     qualityGrade,
-    debouncedMinFqs,
+    onlyLiquid,
+    excludeHighRiskTrap,
     debouncedMinMos,
     debouncedMaxMos,
     sort,
@@ -376,7 +385,8 @@ export function WatchlistPage() {
     setSector('');
     setValuationStatus('');
     setQualityGrade('');
-    setMinFqsInput('');
+    setOnlyLiquid(false);
+    setExcludeHighRiskTrap(false);
     setMosPreset('any');
     setMinMosInput('');
     setMaxMosInput('');
@@ -388,7 +398,8 @@ export function WatchlistPage() {
     sector !== '' ||
     valuationStatus !== '' ||
     qualityGrade !== '' ||
-    minFqsInput.trim() !== '' ||
+    onlyLiquid ||
+    excludeHighRiskTrap ||
     minMosInput.trim() !== '' ||
     maxMosInput.trim() !== '';
 
@@ -794,9 +805,14 @@ export function WatchlistPage() {
               setQualityGrade(val);
               setPage(1);
             }}
-            minFqsInput={minFqsInput}
-            onMinFqsChange={(val) => {
-              setMinFqsInput(val);
+            onlyLiquid={onlyLiquid}
+            onToggleOnlyLiquid={() => {
+              setOnlyLiquid((v) => !v);
+              setPage(1);
+            }}
+            excludeHighRiskTrap={excludeHighRiskTrap}
+            onToggleExcludeTrap={() => {
+              setExcludeHighRiskTrap((v) => !v);
               setPage(1);
             }}
             mosPreset={mosPreset}
