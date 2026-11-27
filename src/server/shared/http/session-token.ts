@@ -1,8 +1,10 @@
 import type { AuthUserDto } from '@/shared/contracts';
 import { BoundedTtlCache } from '../cache/bounded-ttl-cache';
+import { AppError } from './problem';
 
-export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
+export const ACCESS_TOKEN_TTL_SECONDS = 5 * 60; // 5 minutes (minimizes KV propagation window)
 const ACCESS_TOKEN_TTL_MS = ACCESS_TOKEN_TTL_SECONDS * 1000;
+const MIN_JWT_SECRET_BYTES = 32; // RFC 7518 Section 3.2: >= 256-bit key for HS256
 const REVOKED_KV_PREFIX = 'revoked:sid:';
 
 export interface AccessTokenClaims {
@@ -51,12 +53,31 @@ function fromBase64Url(str: string): Uint8Array | null {
   }
 }
 
-async function importHmacKey(secret?: string): Promise<CryptoKey> {
-  const keyBytes =
-    secret && secret.length >= 16 ? textEncoder.encode(secret) : getFallbackSecretBytes();
+async function importHmacKey(
+  secret?: string,
+  requireStrongSecret: boolean = false,
+): Promise<CryptoKey> {
+  const encoded = secret ? textEncoder.encode(secret) : null;
+  if (encoded && encoded.byteLength >= MIN_JWT_SECRET_BYTES) {
+    return crypto.subtle.importKey(
+      'raw',
+      encoded as BufferSource,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign', 'verify'],
+    );
+  }
+  if (requireStrongSecret) {
+    throw new AppError({
+      status: 500,
+      type: 'https://stock-mate-v2/errors/server-misconfigured',
+      title: 'Server Configuration Error',
+      detail: 'Authentication signing secret is not properly configured.',
+    });
+  }
   return crypto.subtle.importKey(
     'raw',
-    keyBytes as BufferSource,
+    getFallbackSecretBytes() as BufferSource,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign', 'verify'],
@@ -64,13 +85,14 @@ async function importHmacKey(secret?: string): Promise<CryptoKey> {
 }
 
 /**
- * Signs a compact short-lived (15m) HS256 JWT access token for zero-D1 authenticated reads.
+ * Signs a compact short-lived (5m) HS256 JWT access token for zero-D1 authenticated reads.
  */
 export async function signAccessToken(
   user: AuthUserDto,
   sessionId: string,
   secret?: string,
   nowMs: number = Date.now(),
+  requireStrongSecret: boolean = false,
 ): Promise<string> {
   const headerB64 = toBase64Url(textEncoder.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
   const claims: AccessTokenClaims = {
@@ -83,7 +105,7 @@ export async function signAccessToken(
   const payloadB64 = toBase64Url(textEncoder.encode(JSON.stringify(claims)));
   const signingInput = `${headerB64}.${payloadB64}`;
 
-  const key = await importHmacKey(secret);
+  const key = await importHmacKey(secret, requireStrongSecret);
   const sigBuf = await crypto.subtle.sign('HMAC', key, textEncoder.encode(signingInput));
   const sigB64 = toBase64Url(new Uint8Array(sigBuf));
 
@@ -94,14 +116,30 @@ export async function verifyAccessToken(
   token: string,
   secret?: string,
   nowMs: number = Date.now(),
+  requireStrongSecret: boolean = false,
 ): Promise<AccessTokenClaims | null> {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [headerB64, payloadB64, sigB64] = parts as [string, string, string];
+
+  const headerBytes = fromBase64Url(headerB64);
+  if (!headerBytes) return null;
+  try {
+    const header = JSON.parse(textDecoder.decode(headerBytes)) as {
+      alg?: unknown;
+      typ?: unknown;
+    };
+    if (header.alg !== 'HS256' || header.typ !== 'JWT') {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
   const sigBytes = fromBase64Url(sigB64);
   if (!sigBytes) return null;
 
-  const key = await importHmacKey(secret);
+  const key = await importHmacKey(secret, requireStrongSecret);
   const valid = await crypto.subtle.verify(
     'HMAC',
     key,

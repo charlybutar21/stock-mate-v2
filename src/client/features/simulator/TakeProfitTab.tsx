@@ -29,6 +29,7 @@ interface TakeProfitTabProps {
   buyFeePct: number;
   sellFeePct: number;
   includeStampDuty: boolean;
+  existingAvgIncludesBuyFee: boolean;
 }
 
 export function TakeProfitTab({
@@ -36,6 +37,7 @@ export function TakeProfitTab({
   buyFeePct,
   sellFeePct,
   includeStampDuty,
+  existingAvgIncludesBuyFee,
 }: TakeProfitTabProps) {
   const { t } = useI18n();
 
@@ -121,8 +123,17 @@ export function TakeProfitTab({
       buyFeePct,
       sellFeePct,
       includeStampDuty,
+      existingAvgIncludesBuyFee,
     });
-  }, [totalOwnedLots, avgBuyPrice, rungs, buyFeePct, sellFeePct, includeStampDuty]);
+  }, [
+    totalOwnedLots,
+    avgBuyPrice,
+    rungs,
+    buyFeePct,
+    sellFeePct,
+    includeStampDuty,
+    existingAvgIncludesBuyFee,
+  ]);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">

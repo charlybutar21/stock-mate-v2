@@ -4,6 +4,7 @@ import { BoundedTtlCache } from '@/server/shared/cache/bounded-ttl-cache';
 import { AppError, notFoundError } from '@/server/shared/http/problem';
 import { CircuitBreaker } from '@/server/shared/resilience/circuit-breaker';
 import {
+  computeBankJustifiedPbv,
   mapMarketSectorToIdx,
   SECTOR_BENCHMARK_MULTIPLES,
   type IdxMarketDataProvider,
@@ -85,6 +86,10 @@ export function parseTradingViewRowToDto(
   row: { s: string; d: Array<string | number | null> },
   nowMs = Date.now(),
 ): IdxMarketQuoteDto | null {
+  if (!Array.isArray(row.d) || row.d.length < 10) {
+    return null;
+  }
+
   const [
     rawName,
     rawDescription,
@@ -205,6 +210,29 @@ export function parseTradingViewRowToDto(
       ? round2(clamp((fcfVal / marketCapVal) * 100, -1000, 1000))
       : null;
 
+  // Currency-mismatch safeguard: IDX commodity/USD-reporting issuers (e.g. ADRO/ITMG/INCO)
+  // occasionally arrive with unconverted USD per-share figures alongside IDR close prices
+  // (e.g. P/E > 2,000x AND P/B > 200x despite healthy ROE > 5%). Null out per-share figures
+  // rather than computing severely distorted IDR fair values, while keeping unitless ratios.
+  const hasCurrencyDistortion =
+    epsVal !== null &&
+    epsVal > 0 &&
+    bvpsVal !== null &&
+    bvpsVal > 0 &&
+    roeVal !== null &&
+    roeVal > 5 &&
+    closePrice / epsVal > 2_000 &&
+    closePrice / bvpsVal > 200;
+
+  const safeEps = hasCurrencyDistortion ? null : epsVal !== null ? Math.round(epsVal) : null;
+  const safeBvps = hasCurrencyDistortion ? null : bvpsVal !== null ? Math.round(bvpsVal) : null;
+  const safeDps = hasCurrencyDistortion
+    ? null
+    : dpsVal !== null && dpsVal >= 0
+      ? Math.round(dpsVal)
+      : null;
+  const targetPbv = isFinancials ? computeBankJustifiedPbv(roeVal) : benchmarks.targetPbv;
+
   return {
     ticker,
     companyName,
@@ -215,9 +243,9 @@ export function parseTradingViewRowToDto(
     dailyChangePct,
     periodLabel: 'TTM (TradingView)',
     fundamentals: {
-      eps: epsVal !== null ? Math.round(epsVal) : null,
-      bvps: bvpsVal !== null ? Math.round(bvpsVal) : null,
-      dps: dpsVal !== null && dpsVal >= 0 ? Math.round(dpsVal) : null,
+      eps: safeEps,
+      bvps: safeBvps,
+      dps: safeDps,
       roePct: roeVal !== null ? round2(clamp(roeVal, -1000, 1000)) : null,
       der:
         isFinancials
@@ -228,7 +256,7 @@ export function parseTradingViewRowToDto(
       epsGrowthPct:
         epsGrowthVal !== null ? round2(clamp(epsGrowthVal, -1000, 1000)) : null,
       targetPer: benchmarks.targetPer,
-      targetPbv: benchmarks.targetPbv,
+      targetPbv,
       marketCapIdr: marketCapVal !== null && marketCapVal > 0 ? Math.round(marketCapVal) : null,
       adtvIdr:
         avgVol30dVal !== null && avgVol30dVal >= 0 ? Math.round(avgVol30dVal * closePrice) : null,

@@ -90,10 +90,12 @@ export class D1AuthRepository implements AuthRepository {
     };
   }
 
-  async deleteSessionByTokenHash(tokenHash: string): Promise<void> {
-    await this.db
+  async deleteSessionByTokenHash(tokenHash: string): Promise<string | null> {
+    const deleted = await this.db
       .delete(schema.sessions)
-      .where(eq(schema.sessions.tokenHash, tokenHash));
+      .where(eq(schema.sessions.tokenHash, tokenHash))
+      .returning({ id: schema.sessions.id });
+    return deleted[0]?.id ?? null;
   }
 
   async deleteExpiredSessionsForUser(userId: string, nowMs: number): Promise<void> {
@@ -104,15 +106,16 @@ export class D1AuthRepository implements AuthRepository {
       );
   }
 
-  async pruneExcessSessionsForUser(userId: string, maxActiveSessions: number): Promise<void> {
+  async pruneExcessSessionsForUser(userId: string, maxActiveSessions: number): Promise<string[]> {
     const activeRows = await this.db
       .select({ id: schema.sessions.id })
       .from(schema.sessions)
       .where(eq(schema.sessions.userId, userId))
       .orderBy(desc(schema.sessions.createdAt));
 
-    if (activeRows.length <= maxActiveSessions) return;
+    if (activeRows.length <= maxActiveSessions) return [];
     const idsToDelete = activeRows.slice(maxActiveSessions).map((r) => r.id);
     await this.db.delete(schema.sessions).where(inArray(schema.sessions.id, idsToDelete));
+    return idsToDelete;
   }
 }

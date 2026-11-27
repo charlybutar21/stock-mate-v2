@@ -35,7 +35,7 @@ export const en = {
     stepDown: 'Decrease by 1 price tick',
     stepUp: 'Increase by 1 price tick',
     disclaimer:
-      'Educational & self-analysis tool only — not financial advice or a buy/sell stock recommendation.',
+      'Educational & self-analysis tool only — not licensed investment advice or a buy/sell recommendation (UU Pasar Modal / UU P2SK).',
     cappedBadge: 'Capped',
     filterTag: 'Filter',
     activeTag: 'Active',
@@ -43,7 +43,10 @@ export const en = {
     openLabel: 'Open',
     todayChangeLabel: 'Today',
     fairValueShort: 'Fair',
-    autoSyncBadge: 'Auto-sync 5m',
+    autoSyncBadge: 'Auto-sync 5m (IDX)',
+    skipToContent: 'Skip to main content',
+    termsLink: 'Terms & Disclaimer',
+    privacyLink: 'Privacy Notice',
   },
   glossary: {
     marginOfSafety:
@@ -78,11 +81,13 @@ export const en = {
     relativePbv:
       'Estimates fair value by multiplying net book value per share by the target book-value multiple. Most reliable for banking stocks.',
     simpleDcf:
-      'Estimates how much profit the company could generate over the next 5 years plus its long-term value, then converts that total into today’s Rupiah using your expected return.',
+      'Estimates reinvestment-adjusted owner earnings (EPS adjusted for capital reinvested to grow) over the next 5 years plus terminal value, discounted back to today’s Rupiah. Disabled for banks where Price-to-Book is the institutional anchor.',
     pureAvg:
       'Your weighted average buy price across all existing and planned shares before adding broker transaction fees.',
     effectiveAvg:
       'Your true average cost per share after including broker buy fees and stamp duty (if applicable).',
+    existingAvgIncludesBuyFee:
+      'Enable this when your entered existing Average Buy Price is copied from a broker app (such as Stockbit or Ajaib) that already includes the 0.15% purchase fee, so buy fees are not double-counted.',
     realBepTick:
       'The lowest valid market price (following official exchange price increments) where selling covers all your capital plus both buy and sell fees with zero loss.',
     netPnL:
@@ -148,6 +153,9 @@ export const en = {
     goLogin: 'Sign in',
     showPassword: 'Show password',
     hidePassword: 'Hide password',
+    acceptTermsPrefix: 'I have read and agree to the',
+    acceptTermsAnd: 'and',
+    acceptTermsSuffix: ', and understand Stock-Mate is a non-advisory educational tool.',
     errors: {
       invalidEmail: 'Enter a valid email address.',
       nameTooShort: 'Name must be at least 2 characters.',
@@ -155,6 +163,7 @@ export const en = {
       passwordMin: 'Password must be at least 8 characters.',
       passwordLetter: 'Password must contain at least 1 letter.',
       passwordDigit: 'Password must contain at least 1 number.',
+      termsRequired: 'Please accept the Terms & Disclaimer and Privacy Notice to continue.',
     },
   },
   sectors: {
@@ -210,9 +219,9 @@ export const en = {
       CYCLICAL_PEAK_WARNING:
         'Cyclical Sector Caution: Low Price-to-Earnings or wide Margin of Safety in Energy or Basic Materials can come from temporary commodity cycle peaks.',
       SHRINKING_EARNINGS_TRAP:
-        'Shrinking Profit: The stock looks cheap on Margin of Safety or Price-to-Book (under 1.0x), but annual profit growth is negative or loss-making.',
+        'Shrinking Profit: The stock looks cheap on Margin of Safety or Price-to-Book (under 1.0x), but annual earnings contracted sharply (≤ -15%) or is loss-making.',
       LOW_ROE_VALUE_TRAP:
-        'Low Profitability: Despite a 15%+ Margin of Safety discount, Return on Equity is below 8%.',
+        'Low Profitability: Despite a 15%+ Margin of Safety discount, Return on Equity is below its sector quality floor (< 5% for Property, < 8% for other sectors).',
       HIGH_LEVERAGE_TRAP:
         'High Debt Risk: Looks cheap on price ratios, but non-bank Debt-to-Equity Ratio exceeds 1.5x.',
     },
@@ -225,7 +234,7 @@ export const en = {
   methodDescriptions: {
     relativePer: 'Earnings Per Share × Target Price-to-Earnings',
     relativePbv: 'Book Value Per Share × Target Price-to-Book',
-    simpleDcf: '5-Year Projected Earnings + Long-Term Value',
+    simpleDcf: 'Reinvestment-Adjusted 5-Year Owner Earnings + Terminal Value',
   },
   methodReasons: {
     REQUIRES_POSITIVE_EPS_AND_TARGET_PER:
@@ -233,7 +242,9 @@ export const en = {
     REQUIRES_POSITIVE_BVPS_AND_TARGET_PBV:
       'Needs positive Book Value Per Share and Target Price-to-Book.',
     REQUIRES_POSITIVE_EPS_AND_VALID_DCF_RATES:
-      'Needs positive Earnings Per Share, Annual Earnings Growth, and Expected Annual Return above 4%.',
+      'Needs positive Earnings Per Share, non-collapsing earnings growth (> -25%), and Expected Annual Return above 4%.',
+    NOT_APPLICABLE_FOR_BANKING:
+      'Not used for Banking & Financials — customer deposits distort operating cash flows; Price-to-Book and P/E are used instead.',
   },
   watchlist: {
     title: 'Watchlist',
@@ -298,6 +309,8 @@ export const en = {
       singleStockAlert: 'exceeds 25% single-stock guideline',
       sectorAlert: 'exceeds 40% sector guideline',
       singleHoldingNote: 'Add more holdings to evaluate concentration guidelines.',
+      retailNote:
+        'Guideline only (25% stock / 40% sector). Concentrated portfolios (< 4 stocks) or IDX blue-chip bank tilts may intentionally exceed these thresholds.',
       othersLabel: 'Others',
       showAll: 'Show all',
       showCompact: 'Compact',
@@ -499,6 +512,8 @@ export const en = {
       'Edit buy entries below to automatically recalculate capital and profit or loss.',
     sectionCoreMethods: 'Valuation Breakdown & What-If Tuning',
     sectionCoreMethodsSub: 'Inspect each valuation model and test custom assumptions side by side.',
+    corporateActionNote:
+      'Delayed third-party market data (TTM/FY). Manually adjust owned lots and average price after corporate actions (stock split, reverse split, or rights issue).',
   },
   simulator: {
     title: 'Position & Profit Simulator',
@@ -526,6 +541,7 @@ export const en = {
     buyFeePct: 'Buy Fee (%)',
     sellFeePct: 'Sell Fee (%)',
     includeStampDuty: 'Include Stamp Duty Rp 10,000 (transactions above Rp 10,000,000)',
+    existingAvgIncludesBuyFee: 'Existing average price already includes buy fee (Broker/Stockbit mode)',
     existingPosition: 'Current Position',
     existingLots: 'Owned Lots',
     existingAvgPrice: 'Average Buy Price (Rp)',
@@ -589,6 +605,7 @@ export const en = {
       idleCash: 'Remaining Cash',
       resultingBep: 'Final Break-Even Price',
       projectedNetPnL: 'Projected Net Profit / Loss',
+      stampDutyRow: 'Stamp Duty (Buy > Rp 10M)',
     },
     takeProfit: {
       title: 'Take-Profit Ladder',
@@ -757,6 +774,36 @@ export const en = {
     sectionQualitySub:
       'Transparent 4-pillar scoring across Profitability, Growth, Financial Health, and Cash Flow Quality.',
     secondarySignalsTitle: 'Liquidity & Institutional Validation',
+  },
+  legal: {
+    backToApp: 'Back to Stock-Mate',
+    lastUpdated: 'Effective Date: 2026',
+    termsTitle: 'Terms of Use & Investment Disclaimer',
+    termsSubtitle: 'Important regulatory and risk disclosures for Indonesian capital market (IDX) self-analysis.',
+    termsSections: {
+      nonAdvisoryTitle: '1. Non-Advisory & Educational Purpose (UU Pasar Modal / UU P2SK)',
+      nonAdvisoryBody:
+        'Stock-Mate is an independent software calculator and educational research workspace. Stock-Mate is NOT a licensed Investment Advisor (Penasihat Investasi), Securities Broker-Dealer, or Investment Manager supervised by Otoritas Jasa Keuangan (OJK). All Fair Value estimates, Margin of Safety percentages, Fundamental Quality Scores (FQS), Value Trap flags, and simulation outputs are purely mathematical models for self-education and do not constitute an offer, solicitation, or recommendation to buy, sell, or hold any security.',
+      dataAccuracyTitle: '2. Market Data Delay & Corporate Actions',
+      dataAccuracyBody:
+        'Market prices and trailing financial fundamentals are sourced from third-party feeds on a delayed best-effort basis. Data may contain omissions, reporting-currency differences (e.g., USD-reporting IDX issuers), or lags following stock splits, reverse splits, rights issues, or dividends. Always verify official financial reports via IDX (idx.co.id) and KSEI before executing any trade.',
+      userResponsibilityTitle: '3. Sole Investment Responsibility',
+      userResponsibilityBody:
+        'Investing in equities carries risk of partial or total capital loss. You bear full and sole responsibility for every investment decision, tax obligation, brokerage fee, and order placed through your securities account.',
+    },
+    privacyTitle: 'Privacy Notice (UU PDP Compliance)',
+    privacySubtitle: 'How Stock-Mate collects, protects, and manages your personal data under Law No. 27 of 2022 (UU PDP).',
+    privacySections: {
+      dataCollectedTitle: '1. Data We Collect (Data Minimization)',
+      dataCollectedBody:
+        'We only collect the minimum data required to operate your private workspace: your full name, email address, a salted cryptographic password hash (PBKDF2-SHA256 — we never store plaintext passwords), and the watchlists, holdings, and valuation notes you voluntarily enter.',
+      storageSecurityTitle: '2. Storage, Cookies & Security',
+      storageSecurityBody:
+        'Data is stored on Cloudflare D1/KV infrastructure and transmitted exclusively over HTTPS/TLS. Authentication uses HttpOnly, Secure, SameSite=Lax cookies — session tokens are never stored in browser localStorage. Personal data is never sold or shared with third-party advertisers.',
+      userRightsTitle: '3. Your Rights Under UU PDP',
+      userRightsBody:
+        'Under Indonesia’s Personal Data Protection Law (UU No. 27/2022), you have the right to access, correct, update, or request deletion of your personal data and watchlist records, and to withdraw consent by closing your account.',
+    },
   },
 } as const;
 

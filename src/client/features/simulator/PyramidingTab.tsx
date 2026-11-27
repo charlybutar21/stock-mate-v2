@@ -29,6 +29,7 @@ interface PyramidingTabProps {
   buyFeePct: number;
   sellFeePct: number;
   includeStampDuty: boolean;
+  existingAvgIncludesBuyFee: boolean;
 }
 
 export function PyramidingTab({
@@ -36,6 +37,7 @@ export function PyramidingTab({
   buyFeePct,
   sellFeePct,
   includeStampDuty,
+  existingAvgIncludesBuyFee,
 }: PyramidingTabProps) {
   const { t } = useI18n();
 
@@ -74,6 +76,7 @@ export function PyramidingTab({
         buyFeePct,
         sellFeePct,
         includeStampDuty,
+        existingAvgIncludesBuyFee,
         fairValueModerate: linkedStock.valuation.fairValue.moderate,
       }),
     [
@@ -87,6 +90,7 @@ export function PyramidingTab({
       buyFeePct,
       sellFeePct,
       includeStampDuty,
+      existingAvgIncludesBuyFee,
       linkedStock.valuation.fairValue.moderate,
     ],
   );
@@ -325,6 +329,20 @@ export function PyramidingTab({
                         </td>
                       </tr>
                     ))}
+                    {result.stampDutyBuy > 0 && (
+                      <tr className="bg-subtle/40 text-muted">
+                        <td
+                          colSpan={4}
+                          className="py-2.5 pr-2 pl-4 font-sans text-[11px] font-medium"
+                        >
+                          {t.simulator.pyramiding.stampDutyRow}
+                        </td>
+                        <td className="px-2 py-2.5 text-right font-semibold text-ink whitespace-nowrap">
+                          {formatIdr(result.stampDutyBuy)}
+                        </td>
+                        <td className="py-2.5 pr-4 pl-2 text-right whitespace-nowrap">-</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

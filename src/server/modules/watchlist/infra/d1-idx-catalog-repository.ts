@@ -1,10 +1,11 @@
-import { desc, eq, inArray, isNotNull, lt } from 'drizzle-orm';
+import { desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import type { IdxSector } from '@/shared/domain';
 import * as schema from '@/server/shared/db/schema';
 import type { IdxCatalogRepository, IdxStockRecord } from '../domain/watchlist.types';
 
 const BATCH_CHUNK_SIZE = 100;
+const MIN_PRUNE_CATALOG_SIZE = 200;
 
 function mapRow(row: typeof schema.idxStocks.$inferSelect): IdxStockRecord {
   return {
@@ -131,15 +132,6 @@ export class D1IdxCatalogRepository implements IdxCatalogRepository {
     return rows[0]?.syncedAt ?? null;
   }
 
-  async hasQualityMetrics(): Promise<boolean> {
-    const rows = await this.db
-      .select({ ticker: schema.idxStocks.ticker })
-      .from(schema.idxStocks)
-      .where(isNotNull(schema.idxStocks.marketCapIdr))
-      .limit(1);
-    return rows.length > 0;
-  }
-
   async upsertOne(stock: IdxStockRecord): Promise<void> {
     await this.db
       .insert(schema.idxStocks)
@@ -152,6 +144,14 @@ export class D1IdxCatalogRepository implements IdxCatalogRepository {
 
   async upsertMany(stocks: IdxStockRecord[], pruneBeforeMs?: number): Promise<void> {
     if (stocks.length === 0) return;
+
+    let existingCount = 0;
+    if (pruneBeforeMs !== undefined) {
+      const countRows = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(schema.idxStocks);
+      existingCount = Number(countRows[0]?.count ?? 0);
+    }
 
     for (let i = 0; i < stocks.length; i += BATCH_CHUNK_SIZE) {
       const chunk = stocks.slice(i, i + BATCH_CHUNK_SIZE);
@@ -168,7 +168,13 @@ export class D1IdxCatalogRepository implements IdxCatalogRepository {
     }
 
     if (pruneBeforeMs !== undefined) {
-      await this.db.delete(schema.idxStocks).where(lt(schema.idxStocks.syncedAt, pruneBeforeMs));
+      // Anti-wipe guard: never prune a populated IDX catalog if upstream returns a suspiciously small/partial batch
+      const isSuspiciousPartialSync =
+        existingCount >= MIN_PRUNE_CATALOG_SIZE &&
+        stocks.length < Math.max(MIN_PRUNE_CATALOG_SIZE, Math.floor(existingCount * 0.5));
+      if (!isSuspiciousPartialSync) {
+        await this.db.delete(schema.idxStocks).where(lt(schema.idxStocks.syncedAt, pruneBeforeMs));
+      }
     }
   }
 }

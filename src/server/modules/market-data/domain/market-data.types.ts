@@ -1,10 +1,24 @@
 import type { IdxMarketQuoteDto } from '@/shared/contracts';
-import type { IdxSector } from '@/shared/domain';
+import { round2, type IdxSector } from '@/shared/domain';
 
 export interface IdxMarketDataProvider {
   fetchIdxQuote(ticker: string): Promise<IdxMarketQuoteDto>;
   fetchIdxQuotesBatch?(tickers: string[]): Promise<Map<string, IdxMarketQuoteDto>>;
   fetchAllIdxStocks?(): Promise<IdxMarketQuoteDto[]>;
+}
+
+/**
+ * Gordon Growth Justified P/B for IDX banks: PBV = (ROE - g) / (Ke - g)
+ * Using Indonesian banking Ke = 12% and sustainable g = 6% -> (ROE - 6) / 6,
+ * clamped to [0.5x, 4.5x] so low-ROE banks are not inflated to 2.5x while
+ * high-ROE leaders (BBCA/BBRI) reflect their true excess return on equity.
+ */
+export function computeBankJustifiedPbv(roePct: number | null): number {
+  if (roePct === null || !Number.isFinite(roePct)) {
+    return SECTOR_BENCHMARK_MULTIPLES.FINANCIALS.targetPbv;
+  }
+  const justified = (roePct - 6) / 6;
+  return round2(Math.max(0.5, Math.min(4.5, justified)));
 }
 
 export const SECTOR_BENCHMARK_MULTIPLES: Record<

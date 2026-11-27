@@ -1,10 +1,11 @@
 /**
- * Lightweight circuit breaker protecting upstream TradingView market-data calls
- * against cascading latency spikes.
+ * 3-state (CLOSED / OPEN / HALF-OPEN) circuit breaker protecting upstream
+ * market-data calls against cascading latency spikes and post-cooldown thundering herds.
  */
 export class CircuitBreaker {
   private consecutiveFailures = 0;
   private openUntilMs = 0;
+  private halfOpenInFlight = false;
 
   constructor(
     private readonly failureThreshold: number = 3,
@@ -12,15 +13,20 @@ export class CircuitBreaker {
   ) {}
 
   isOpen(nowMs: number = Date.now()): boolean {
-    return this.openUntilMs > nowMs;
+    if (this.openUntilMs > nowMs) {
+      return true;
+    }
+    return this.openUntilMs > 0 && this.halfOpenInFlight;
   }
 
   recordSuccess(): void {
     this.consecutiveFailures = 0;
     this.openUntilMs = 0;
+    this.halfOpenInFlight = false;
   }
 
   recordFailure(nowMs: number = Date.now()): void {
+    this.halfOpenInFlight = false;
     this.consecutiveFailures += 1;
     if (this.consecutiveFailures >= this.failureThreshold) {
       this.openUntilMs = nowMs + this.cooldownMs;
@@ -36,6 +42,12 @@ export class CircuitBreaker {
     if (this.isOpen(now)) {
       throw onOpenError();
     }
+
+    const isHalfOpenProbe = this.openUntilMs > 0 && this.openUntilMs <= now;
+    if (isHalfOpenProbe) {
+      this.halfOpenInFlight = true;
+    }
+
     try {
       const result = await fn();
       this.recordSuccess();
@@ -43,6 +55,8 @@ export class CircuitBreaker {
     } catch (err) {
       if (isFailure(err)) {
         this.recordFailure(Date.now());
+      } else if (isHalfOpenProbe) {
+        this.halfOpenInFlight = false;
       }
       throw err;
     }

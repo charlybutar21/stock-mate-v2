@@ -208,10 +208,15 @@ function evaluateQarpQuadrant(params: {
   const { score, mosPct, valueTrapRiskLevel } = params;
   if (score === null || mosPct === null) return 'OVERVALUED_OR_UNRATED';
 
-  if (mosPct >= 20 && score >= 76 && valueTrapRiskLevel !== 'HIGH_RISK') {
+  // High-risk value traps trading at a deep apparent discount belong in VALUE_TRAP_RISK
+  if (mosPct >= 20 && valueTrapRiskLevel === 'HIGH_RISK') {
+    return 'VALUE_TRAP_RISK';
+  }
+  if (mosPct >= 20 && score >= 76) {
     return 'PRIME_OPPORTUNITY';
   }
-  if (mosPct >= 0 && mosPct < 20 && score >= 76) {
+  // Solid/Quality businesses (Grade B and above, score >= 64) trading at fair value (0-20% MoS)
+  if (mosPct >= 0 && mosPct < 20 && score >= 64) {
     return 'QUALITY_FAIR_PRICE';
   }
   if (mosPct >= 20 && score < 50) {

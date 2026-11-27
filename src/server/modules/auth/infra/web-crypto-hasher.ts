@@ -7,7 +7,7 @@ const SALT_BYTES = 16;
 const DERIVED_KEY_BYTES = 32;
 const SESSION_TOKEN_BYTES = 32;
 
-function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
+export function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) {
@@ -16,14 +16,30 @@ function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
   return diff === 0;
 }
 
+export function constantTimeEqualStrings(a: string, b: string): boolean {
+  return constantTimeEqual(sha256(utf8ToBytes(a)), sha256(utf8ToBytes(b)));
+}
+
+async function applyPepper(password: string, pepper: string): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    utf8ToBytes(pepper) as BufferSource,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, utf8ToBytes(password) as BufferSource);
+  return new Uint8Array(mac);
+}
+
 async function derivePbkdf2(
-  password: string,
+  passwordBytes: Uint8Array,
   salt: Uint8Array,
   iterations: number,
 ): Promise<Uint8Array> {
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    utf8ToBytes(password) as BufferSource,
+    passwordBytes as BufferSource,
     { name: 'PBKDF2' },
     false,
     ['deriveBits'],
@@ -43,20 +59,25 @@ async function derivePbkdf2(
 
 /**
  * Audited cryptographic auth adapter:
- * - Password KDF: Native Web Crypto PBKDF2-SHA256 (100k iterations, C++ V8, 10ms Cloudflare-safe)
+ * - Password KDF: Native Web Crypto PBKDF2-SHA256 (100k iterations — Cloudflare Workers Web Crypto max)
+ *   with optional secret-keyed HMAC-SHA256 peppering (`PASSWORD_PEPPER`) for offline crack hardening
  * - Session Tokens & Hashing: Cure53-audited @noble/hashes (CSPRNG randomBytes, SHA-256, hex encoding)
  * - Verification: Constant-time byte comparison to prevent timing side-channels
  */
 export class WebCryptoHasher implements PasswordHasher {
-  async hash(password: string): Promise<string> {
+  async hash(password: string, pepper?: string): Promise<string> {
     const salt = randomBytes(SALT_BYTES);
-    const derived = await derivePbkdf2(password, salt, PBKDF2_ITERATIONS);
-    return `pbkdf2_sha256$${PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${bytesToHex(derived)}`;
+    const usePepper = Boolean(pepper && pepper.length >= 16);
+    const inputBytes = usePepper ? await applyPepper(password, pepper!) : utf8ToBytes(password);
+    const derived = await derivePbkdf2(inputBytes, salt, PBKDF2_ITERATIONS);
+    const prefix = usePepper ? 'pbkdf2_sha256_p' : 'pbkdf2_sha256';
+    return `${prefix}$${PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${bytesToHex(derived)}`;
   }
 
-  async verify(password: string, storedHash: string): Promise<boolean> {
+  async verify(password: string, storedHash: string, pepper?: string): Promise<boolean> {
     const parts = storedHash.split('$');
-    if (parts.length !== 4 || parts[0] !== 'pbkdf2_sha256') {
+    const scheme = parts[0];
+    if (parts.length !== 4 || (scheme !== 'pbkdf2_sha256' && scheme !== 'pbkdf2_sha256_p')) {
       return false;
     }
     const iterations = Number.parseInt(parts[1]!, 10);
@@ -71,7 +92,12 @@ export class WebCryptoHasher implements PasswordHasher {
     } catch {
       return false;
     }
-    const actual = await derivePbkdf2(password, salt, iterations);
+    if (scheme === 'pbkdf2_sha256_p' && (!pepper || pepper.length < 16)) {
+      return false;
+    }
+    const inputBytes =
+      scheme === 'pbkdf2_sha256_p' ? await applyPepper(password, pepper!) : utf8ToBytes(password);
+    const actual = await derivePbkdf2(inputBytes, salt, iterations);
     return constantTimeEqual(actual, expected);
   }
 

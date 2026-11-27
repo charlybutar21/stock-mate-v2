@@ -39,6 +39,10 @@ import {
   Skeleton,
 } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
+import {
+  filterAndSortMarketStocksClient,
+  mapWatchlistItemToMarket,
+} from '@/client/lib/catalogOverlay';
 import { formatNumber } from '@/client/lib/formatters';
 import { useCalcMode } from '@/client/lib/useCalcMode';
 import { useDebouncedValue } from '@/client/lib/useDebouncedValue';
@@ -59,7 +63,6 @@ import {
   useIdxCatalog,
   useRemoveStockFromCustomWatchlist,
   useSyncAllWatchlist,
-  useSyncIdxCatalog,
   useWatchlist,
 } from './useWatchlist';
 
@@ -70,33 +73,6 @@ function parseOptionalNumericFilter(raw: string): number | undefined {
   if (!trimmed) return undefined;
   const num = Number(trimmed);
   return Number.isFinite(num) ? num : undefined;
-}
-
-function mapWatchlistItemToMarket(
-  item: WatchlistItemDto,
-  customWatchlistIds: string[],
-): MarketStockDto {
-  return {
-    watchlistItemId: item.id,
-    ticker: item.ticker,
-    companyName: item.companyName,
-    sector: item.sector,
-    currentPrice: item.currentPrice,
-    openPrice: item.openPrice,
-    dailyChange: item.dailyChange,
-    dailyChangePct: item.dailyChangePct,
-    ownedLots: item.ownedLots,
-    avgBuyPrice: item.avgBuyPrice,
-    holdingTranches: item.holdingTranches,
-    targetBuyPrice: item.targetBuyPrice,
-    investmentThesis: item.investmentThesis,
-    updatedAt: item.updatedAt,
-    isStale: item.isStale,
-    fundamentals: item.fundamentals,
-    valuation: item.valuation,
-    quality: item.quality,
-    customWatchlistIds,
-  };
 }
 
 export function WatchlistPage() {
@@ -156,6 +132,7 @@ export function WatchlistPage() {
     isLoading: isCatalogLoading,
     isFetching: isCatalogFetching,
     isError: isCatalogError,
+    refetch: refetchCatalog,
   } = useIdxCatalog({
     search: activeTab.kind === 'all' ? debouncedSearch || undefined : undefined,
     sector: activeTab.kind === 'all' ? sector || undefined : undefined,
@@ -187,7 +164,6 @@ export function WatchlistPage() {
   });
 
   // Mutations
-  const syncCatalogMutation = useSyncIdxCatalog();
   const syncAllMutation = useSyncAllWatchlist();
   const ensureItemMutation = useEnsureWatchlistItem();
   const deleteItemMutation = useDeleteWatchlistItem();
@@ -268,80 +244,20 @@ export function WatchlistPage() {
   }, [personalItems, calcMode]);
 
   const filteredMyStocks = useMemo(() => {
-    let list = myStocksAll.map((item) =>
+    const mapped = myStocksAll.map((item) =>
       mapWatchlistItemToMarket(item, tickerMembershipMap.get(item.ticker) ?? []),
     );
-    if (sector) {
-      list = list.filter((i) => i.sector === sector);
-    }
-    if (debouncedSearch) {
-      const needle = debouncedSearch.toLowerCase();
-      list = list.filter(
-        (i) =>
-          i.ticker.toLowerCase().includes(needle) ||
-          i.companyName.toLowerCase().includes(needle),
-      );
-    }
-    if (valuationStatus) {
-      list = list.filter((i) => i.valuation.valuationStatus === valuationStatus);
-    }
-    if (qualityGrade) {
-      list = list.filter((i) => i.quality.grade === qualityGrade);
-    }
-    if (onlyLiquid) {
-      list = list.filter(
-        (i) => i.fundamentals.adtvIdr !== null && i.fundamentals.adtvIdr >= 1_000_000_000,
-      );
-    }
-    if (excludeHighRiskTrap) {
-      list = list.filter((i) => i.valuation.valueTrapShield.riskLevel !== 'HIGH_RISK');
-    }
-    if (debouncedMinMos !== undefined) {
-      list = list.filter(
-        (i) => i.valuation.mosPct !== null && i.valuation.mosPct >= debouncedMinMos,
-      );
-    }
-    if (debouncedMaxMos !== undefined) {
-      list = list.filter(
-        (i) => i.valuation.mosPct !== null && i.valuation.mosPct <= debouncedMaxMos,
-      );
-    }
-
-    const sorted = [...list];
-    sorted.sort((a, b) => {
-      if (sort === 'mos_desc') {
-        return (b.valuation.mosPct ?? -Infinity) - (a.valuation.mosPct ?? -Infinity);
-      }
-      if (sort === 'mos_asc') {
-        return (a.valuation.mosPct ?? Infinity) - (b.valuation.mosPct ?? Infinity);
-      }
-      if (sort === 'fqs_desc') {
-        return (b.quality.score ?? -Infinity) - (a.quality.score ?? -Infinity);
-      }
-      if (sort === 'qarp_desc') {
-        const scoreA =
-          a.quality.score !== null && a.valuation.mosPct !== null
-            ? a.quality.score * 0.6 + Math.max(-50, Math.min(80, a.valuation.mosPct)) * 0.4
-            : -Infinity;
-        const scoreB =
-          b.quality.score !== null && b.valuation.mosPct !== null
-            ? b.quality.score * 0.6 + Math.max(-50, Math.min(80, b.valuation.mosPct)) * 0.4
-            : -Infinity;
-        return scoreB - scoreA;
-      }
-      if (sort === 'ticker_asc') return a.ticker.localeCompare(b.ticker);
-      if (sort === 'ticker_desc') return b.ticker.localeCompare(a.ticker);
-      if (sort === 'price_asc') return a.currentPrice - b.currentPrice;
-      if (sort === 'price_desc') return b.currentPrice - a.currentPrice;
-      if (sort === 'fair_value_desc') {
-        return (
-          (b.valuation.fairValue.moderate ?? -Infinity) -
-          (a.valuation.fairValue.moderate ?? -Infinity)
-        );
-      }
-      return a.ticker.localeCompare(b.ticker);
+    return filterAndSortMarketStocksClient(mapped, {
+      search: debouncedSearch || undefined,
+      sector: sector || undefined,
+      valuationStatus: valuationStatus || undefined,
+      qualityGrade: qualityGrade || undefined,
+      minAdtvBillion: onlyLiquid ? 1 : undefined,
+      excludeHighRiskTrap: excludeHighRiskTrap || undefined,
+      minMos: debouncedMinMos,
+      maxMos: debouncedMaxMos,
+      sort,
     });
-    return sorted;
   }, [
     myStocksAll,
     tickerMembershipMap,
@@ -408,11 +324,13 @@ export function WatchlistPage() {
     setPage(1);
   };
 
-  const handleSyncCatalog = () => {
-    syncCatalogMutation.mutate(undefined, {
-      onSuccess: () => showToast(t.watchlist.toastSyncDone, 'success'),
-      onError: () => showToast(t.watchlist.toastSyncFailed, 'error'),
-    });
+  const handleRefreshCatalog = async () => {
+    const res = await refetchCatalog();
+    if (res.isError) {
+      showToast(t.watchlist.toastSyncFailed, 'error');
+    } else {
+      showToast(t.watchlist.toastSyncDone, 'success');
+    }
   };
 
   const handleSyncAll = () => {
@@ -877,11 +795,11 @@ export function WatchlistPage() {
               {activeTab.kind === 'all' && !hasActiveFilters && (
                 <Button
                   variant="outlineBrand"
-                  onClick={handleSyncCatalog}
-                  disabled={syncCatalogMutation.isPending}
+                  onClick={() => void handleRefreshCatalog()}
+                  disabled={isCatalogFetching}
                 >
                   <RefreshCw
-                    className={`h-4 w-4 ${syncCatalogMutation.isPending ? 'animate-spin' : ''}`}
+                    className={`h-4 w-4 ${isCatalogFetching ? 'animate-spin' : ''}`}
                     aria-hidden="true"
                   />
                   {t.watchlist.syncIhsgBtn}

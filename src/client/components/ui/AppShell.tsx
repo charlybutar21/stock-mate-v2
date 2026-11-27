@@ -99,6 +99,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-surface text-ink transition-colors duration-150">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-brand-solid focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-white focus:shadow-lg"
+      >
+        {t.common.skipToContent}
+      </a>
       <header className="sticky top-0 z-30 border-b border-border bg-panel/95 backdrop-blur-xs">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6">
           <div className="flex h-full items-center gap-4 sm:gap-6">
@@ -164,14 +170,27 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-5 pb-24 sm:px-6 md:pt-6 md:pb-12">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="mx-auto w-full max-w-6xl flex-1 px-4 pt-5 pb-24 focus:outline-none sm:px-6 md:pt-6 md:pb-12"
+      >
         {children}
 
-        <footer className="mt-10 border-t border-border/70 pt-4 text-center">
+        <footer className="mt-10 border-t border-border/70 pt-4 text-center space-y-1.5">
           <p className="inline-flex items-center justify-center gap-1.5 text-[11px] leading-relaxed text-muted">
             <Info className="h-3.5 w-3.5 shrink-0 text-muted/80" aria-hidden="true" />
             <span>{t.common.disclaimer}</span>
           </p>
+          <div className="flex items-center justify-center gap-3 text-[11px] text-muted">
+            <Link to="/terms" className="font-medium hover:text-brand-700 hover:underline">
+              {t.common.termsLink}
+            </Link>
+            <span aria-hidden="true">·</span>
+            <Link to="/privacy" className="font-medium hover:text-brand-700 hover:underline">
+              {t.common.privacyLink}
+            </Link>
+          </div>
         </footer>
       </main>
 

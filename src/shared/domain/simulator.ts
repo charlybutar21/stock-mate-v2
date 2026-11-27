@@ -8,6 +8,7 @@ import {
   SHARES_PER_LOT,
   STAMP_DUTY_IDR,
   STAMP_DUTY_THRESHOLD_IDR,
+  stepIdxPrice,
   type IdxSector,
 } from './idx-rules';
 
@@ -24,6 +25,8 @@ export interface ForwardSimulationInput {
   buyFeePct?: number;
   sellFeePct?: number;
   includeStampDuty?: boolean;
+  /** True when existingAvgPrice was copied from a broker app (e.g. Stockbit) and already includes buy fees */
+  existingAvgIncludesBuyFee?: boolean;
   fairValueModerate?: number | null;
   referenceCurrentPrice?: number | null;
 }
@@ -109,6 +112,33 @@ function computeBepRaw(
   return bepBase;
 }
 
+/**
+ * Guarantees discrete zero-loss break-even at an official IDX tick price,
+ * even across the Rp 10,000,000 Bea Materai cliff where tick ceiling pushes
+ * gross proceeds over Rp 10M and triggers the Rp 10,000 stamp duty.
+ */
+function computeBepIdxTick(
+  bepRawExact: number,
+  totalCost: number,
+  totalShares: number,
+  sellFeeRate: number,
+  includeStampDuty: boolean,
+): number {
+  let tickPrice = ceilToIdxTick(bepRawExact);
+  // Since sellFeeRate < 1 and totalShares >= 100, net proceeds strictly increase every tick
+  // so this loop terminates in at most 1-2 steps across the Rp 10M stamp-duty cliff.
+  while (true) {
+    const gross = totalShares * tickPrice;
+    const fee = Math.round(gross * sellFeeRate);
+    const stamp =
+      includeStampDuty && gross > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
+    if (gross - fee - stamp >= totalCost) {
+      return tickPrice;
+    }
+    tickPrice = stepIdxPrice(tickPrice, 'up');
+  }
+}
+
 export function simulateForwardAverageDown(input: ForwardSimulationInput): ForwardSimulationOutput {
   const buyFeePct = input.buyFeePct ?? DEFAULT_BUY_FEE_PCT;
   const sellFeePct = input.sellFeePct ?? DEFAULT_SELL_FEE_PCT;
@@ -155,18 +185,21 @@ export function simulateForwardAverageDown(input: ForwardSimulationInput): Forwa
     return { valid: false, errorCode: 'INVALID_POSITION' };
   }
 
-  const existingGross = existingShares * input.existingAvgPrice;
+  const existingGross = Math.round(existingShares * input.existingAvgPrice);
   const plannedGross = input.plannedTranches.reduce(
-    (sum, t) => sum + t.lots * SHARES_PER_LOT * t.buyPrice,
+    (sum, t) => sum + Math.round(t.lots * SHARES_PER_LOT * t.buyPrice),
     0,
   );
   const totalGrossBuy = existingGross + plannedGross;
 
   const fBuy = buyFeePct / 100;
   const fSell = sellFeePct / 100;
+  const existingAvgIncludesBuyFee = input.existingAvgIncludesBuyFee ?? false;
 
-  const totalBuyFee = Math.round(totalGrossBuy * fBuy);
   const plannedBuyFee = Math.round(plannedGross * fBuy);
+  const totalBuyFee = existingAvgIncludesBuyFee
+    ? plannedBuyFee
+    : Math.round(totalGrossBuy * fBuy);
   const stampDutyBuy =
     includeStampDuty && plannedGross > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
 
@@ -178,9 +211,15 @@ export function simulateForwardAverageDown(input: ForwardSimulationInput): Forwa
 
   const bepRawExact = computeBepRaw(totalCost, totalShares, fSell, includeStampDuty);
   const bepRaw = round2(bepRawExact);
-  const bepIdxTick = ceilToIdxTick(bepRawExact);
+  const bepIdxTick = computeBepIdxTick(
+    bepRawExact,
+    totalCost,
+    totalShares,
+    fSell,
+    includeStampDuty,
+  );
 
-  const grossSell = totalShares * input.targetSellPrice;
+  const grossSell = Math.round(totalShares * input.targetSellPrice);
   const sellFee = Math.round(grossSell * fSell);
   const stampDutySell =
     includeStampDuty && grossSell > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
@@ -197,9 +236,17 @@ export function simulateForwardAverageDown(input: ForwardSimulationInput): Forwa
         ? input.referenceCurrentPrice
         : lastTranchePrice;
 
-    const existingCost = existingGross + Math.round(existingGross * fBuy);
+    const existingCost = existingAvgIncludesBuyFee
+      ? existingGross
+      : existingGross + Math.round(existingGross * fBuy);
     const existingBepRaw = computeBepRaw(existingCost, existingShares, fSell, includeStampDuty);
-    const existingBepTick = ceilToIdxTick(existingBepRaw);
+    const existingBepTick = computeBepIdxTick(
+      existingBepRaw,
+      existingCost,
+      existingShares,
+      fSell,
+      includeStampDuty,
+    );
 
     gainToBepBeforePct = round2(((existingBepTick - baseRefPrice) / baseRefPrice) * 100);
     gainToBepAfterPct = round2(((bepIdxTick - baseRefPrice) / baseRefPrice) * 100);
@@ -374,16 +421,20 @@ export function calculateGoalSeekAverageDown(input: GoalSeekInput): GoalSeekOutp
     return { valid: false, errorCode: 'INVALID_GOAL_SEEK_BOUNDS' };
   }
 
+  // Use fixed-point integer cents (price * 100) to prevent IEEE-754 subtraction noise
+  // from causing Math.ceil() to overshoot by +1 extra lot on decimal prices.
+  const existingCents = Math.round(input.existingAvgPrice * 100);
+  const targetCents = Math.round(input.targetPureAvg * 100);
+  const plannedCents = Math.round(input.plannedBuyPrice * 100);
   const lotsNeeded = Math.ceil(
-    (input.existingLots * (input.existingAvgPrice - input.targetPureAvg)) /
-      (input.targetPureAvg - input.plannedBuyPrice),
+    (input.existingLots * (existingCents - targetCents)) / (targetCents - plannedCents),
   );
   const resultingPureAvg = round2(
     (input.existingLots * input.existingAvgPrice + lotsNeeded * input.plannedBuyPrice) /
       (input.existingLots + lotsNeeded),
   );
   const sharesNeeded = lotsNeeded * SHARES_PER_LOT;
-  const cashGross = sharesNeeded * input.plannedBuyPrice;
+  const cashGross = Math.round(sharesNeeded * input.plannedBuyPrice);
   const cashBuyFee = Math.round(cashGross * (buyFeePct / 100));
   const cashStampDuty =
     includeStampDuty && cashGross > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
@@ -597,6 +648,7 @@ export interface PyramidingPlanInput {
   buyFeePct?: number;
   sellFeePct?: number;
   includeStampDuty?: boolean;
+  existingAvgIncludesBuyFee?: boolean;
   fairValueModerate?: number | null;
 }
 
@@ -620,6 +672,7 @@ export interface PyramidingPlanResult {
   strategy: PyramidingStrategy;
   totalCashBudget: number;
   totalCashUsed: number;
+  stampDutyBuy: number;
   remainingIdleCash: number;
   stages: PyramidingStage[];
   plannedTranches: PlannedTranche[];
@@ -675,7 +728,7 @@ export function planPyramidingAllocation(
   let runningLots = input.existingLots;
   let runningGross =
     input.existingLots > 0
-      ? input.existingLots * SHARES_PER_LOT * input.existingAvgPrice
+      ? Math.round(input.existingLots * SHARES_PER_LOT * input.existingAvgPrice)
       : 0;
 
   const stages: PyramidingStage[] = [];
@@ -731,6 +784,7 @@ export function planPyramidingAllocation(
     buyFeePct,
     sellFeePct,
     includeStampDuty,
+    existingAvgIncludesBuyFee: input.existingAvgIncludesBuyFee,
     fairValueModerate: input.fairValueModerate,
     referenceCurrentPrice: input.referencePrice,
   }) as ForwardSimulationResult;
@@ -742,6 +796,7 @@ export function planPyramidingAllocation(
     strategy: input.strategy,
     totalCashBudget: input.totalCashBudget,
     totalCashUsed,
+    stampDutyBuy: simOut.stampDutyBuy,
     remainingIdleCash: Math.max(0, input.totalCashBudget - totalCashUsed),
     stages,
     plannedTranches,
@@ -761,6 +816,7 @@ export interface TakeProfitLadderInput {
   buyFeePct?: number;
   sellFeePct?: number;
   includeStampDuty?: boolean;
+  existingAvgIncludesBuyFee?: boolean;
 }
 
 export interface TakeProfitRungResult {
@@ -835,27 +891,42 @@ export function simulateTakeProfitLadder(
     return { valid: false, errorCode: 'INVALID_TRANCHE' };
   }
 
-  const fBuy = buyFeePct / 100;
+  const fBuy = input.existingAvgIncludesBuyFee ? 0 : buyFeePct / 100;
   const fSell = sellFeePct / 100;
 
   const totalOwnedShares = input.totalOwnedLots * SHARES_PER_LOT;
-  const totalInitialGross = totalOwnedShares * input.avgBuyPrice;
-  const totalInitialCostBasis = totalInitialGross + Math.round(totalInitialGross * fBuy);
+  const totalInitialGross = Math.round(totalOwnedShares * input.avgBuyPrice);
+  const totalInitialBuyFee = Math.round(totalInitialGross * fBuy);
+  const totalInitialCostBasis = totalInitialGross + totalInitialBuyFee;
+  const isFullExit = totalLotsSold === input.totalOwnedLots;
 
   let totalAllocatedCostBasis = 0;
+  let allocatedGrossSoFar = 0;
+  let allocatedBuyFeeSoFar = 0;
   let totalNetProceeds = 0;
 
   const rungs: TakeProfitRungResult[] = input.rungs.map((rung, idx) => {
+    const isLastRung = idx === input.rungs.length - 1;
     const sharesSold = rung.lotsToSell * SHARES_PER_LOT;
     const sellPctOfTotal = round2((rung.lotsToSell / input.totalOwnedLots) * 100);
-    const grossProceeds = sharesSold * rung.targetSellPrice;
+    const grossProceeds = Math.round(sharesSold * rung.targetSellPrice);
     const sellFee = Math.round(grossProceeds * fSell);
     const stampDuty =
       includeStampDuty && grossProceeds > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
     const netProceeds = grossProceeds - sellFee - stampDuty;
 
-    const rungGrossCost = sharesSold * input.avgBuyPrice;
-    const allocatedCostBasis = rungGrossCost + Math.round(rungGrossCost * fBuy);
+    const rungGrossCost =
+      isFullExit && isLastRung
+        ? totalInitialGross - allocatedGrossSoFar
+        : Math.round(sharesSold * input.avgBuyPrice);
+    const rungBuyFee =
+      isFullExit && isLastRung
+        ? totalInitialBuyFee - allocatedBuyFeeSoFar
+        : Math.round(rungGrossCost * fBuy);
+    allocatedGrossSoFar += rungGrossCost;
+    allocatedBuyFeeSoFar += rungBuyFee;
+
+    const allocatedCostBasis = rungGrossCost + rungBuyFee;
     const realizedNetPnL = netProceeds - allocatedCostBasis;
     const realizedPnLPct = round2((realizedNetPnL / allocatedCostBasis) * 100);
 

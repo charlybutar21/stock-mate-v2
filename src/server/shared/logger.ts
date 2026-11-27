@@ -17,6 +17,7 @@ const REDACTED_KEYS = new Set([
   'api_key',
   'jwt_secret',
   'catalog_sync_secret',
+  'password_pepper',
   'cf-connecting-ip',
   'ip',
   'clientip',

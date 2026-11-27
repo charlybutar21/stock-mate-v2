@@ -10,8 +10,9 @@ import {
   watchlistQuerySchema,
 } from '@/shared/contracts';
 import type { AuthRepository, PasswordHasher } from '@/server/modules/auth/domain/auth.types';
+import { constantTimeEqualStrings } from '@/server/modules/auth/infra/web-crypto-hasher';
 import type { IdxMarketDataProvider } from '@/server/modules/market-data/domain/market-data.types';
-import { createAuthMiddleware } from '@/server/shared/http/auth-mw';
+import { createAuthMiddleware, isSecureRequest } from '@/server/shared/http/auth-mw';
 import { parseJsonBody } from '@/server/shared/http/json-body';
 import { forbiddenError, notFoundError, zodToValidationError } from '@/server/shared/http/problem';
 import { createRateLimitMiddleware } from '@/server/shared/http/rate-limit-mw';
@@ -88,6 +89,12 @@ export function createWatchlistRoutes(
     keyBy: 'userOrIp',
     keyPrefix: 'watchlist:catalog-sync',
   });
+  const writeRateLimiter = createRateLimitMiddleware({
+    maxRequests: 30,
+    windowMs: 60_000,
+    keyBy: 'userOrIp',
+    keyPrefix: 'watchlist:write',
+  });
 
   router.use('*', requireAuth);
 
@@ -112,7 +119,7 @@ export function createWatchlistRoutes(
     return c.json({ items }, 200);
   });
 
-  router.post('/', async (c) => {
+  router.post('/', writeRateLimiter, async (c) => {
     const input = await parseJsonBody(c, createWatchlistSchema);
     const user = c.get('user')!;
     const { watchlistRepo } = getDeps(c.env.DB);
@@ -131,7 +138,7 @@ export function createWatchlistRoutes(
     return c.json(result, 200);
   });
 
-  router.post('/ensure', async (c) => {
+  router.post('/ensure', writeRateLimiter, async (c) => {
     const input = await parseJsonBody(c, ensureWatchlistStockSchema);
     const user = c.get('user')!;
     const { watchlistRepo, idxCatalogRepo, marketDataProvider } = getDeps(c.env.DB);
@@ -195,11 +202,15 @@ export function createWatchlistRoutes(
   });
 
   router.post('/catalog/sync', catalogSyncRateLimiter, async (c) => {
-    // When CATALOG_SYNC_SECRET is configured in production, restrict global TradingView scrape
-    // to background Cron/Admin callers to eliminate public write-amplification DoS.
-    if (c.env.CATALOG_SYNC_SECRET) {
+    // Fail-closed in HTTPS/production and verify Bearer secret in constant time to prevent
+    // timing side-channels and public write-amplification DoS.
+    const configuredSecret = c.env.CATALOG_SYNC_SECRET;
+    if (configuredSecret || isSecureRequest(c)) {
       const authHeader = c.req.header('authorization') ?? '';
-      if (authHeader !== `Bearer ${c.env.CATALOG_SYNC_SECRET}`) {
+      if (
+        !configuredSecret ||
+        !constantTimeEqualStrings(authHeader, `Bearer ${configuredSecret}`)
+      ) {
         throw forbiddenError(
           'Global IHSG catalog sync runs automatically in background. Admin authorization required.',
         );
@@ -230,7 +241,7 @@ export function createWatchlistRoutes(
     return c.json({ groups }, 200);
   });
 
-  router.post('/groups', async (c) => {
+  router.post('/groups', writeRateLimiter, async (c) => {
     const input = await parseJsonBody(c, createCustomWatchlistSchema);
     const user = c.get('user')!;
     const { customWatchlistRepo, idxCatalogRepo, watchlistRepo, marketDataProvider } = getDeps(
@@ -247,7 +258,7 @@ export function createWatchlistRoutes(
     return c.json({ group }, 201);
   });
 
-  router.patch('/groups/:groupId', async (c) => {
+  router.patch('/groups/:groupId', writeRateLimiter, async (c) => {
     const groupId = assertValidItemId(c.req.param('groupId'), 'Custom watchlist');
     const input = await parseJsonBody(c, updateCustomWatchlistSchema);
     const user = c.get('user')!;
@@ -258,7 +269,7 @@ export function createWatchlistRoutes(
     return c.json({ group }, 200);
   });
 
-  router.delete('/groups/:groupId', async (c) => {
+  router.delete('/groups/:groupId', writeRateLimiter, async (c) => {
     const groupId = assertValidItemId(c.req.param('groupId'), 'Custom watchlist');
     const user = c.get('user')!;
     const { customWatchlistRepo } = getDeps(c.env.DB);
@@ -302,7 +313,7 @@ export function createWatchlistRoutes(
     return c.json(result, 200);
   });
 
-  router.post('/groups/:groupId/stocks', async (c) => {
+  router.post('/groups/:groupId/stocks', writeRateLimiter, async (c) => {
     const groupId = assertValidItemId(c.req.param('groupId'), 'Custom watchlist');
     const input = await parseJsonBody(c, addCustomWatchlistStockSchema);
     const user = c.get('user')!;
@@ -320,7 +331,7 @@ export function createWatchlistRoutes(
     return c.json({ item }, 201);
   });
 
-  router.delete('/groups/:groupId/stocks/:ticker', async (c) => {
+  router.delete('/groups/:groupId/stocks/:ticker', writeRateLimiter, async (c) => {
     const groupId = assertValidItemId(c.req.param('groupId'), 'Custom watchlist');
     const ticker = assertValidTickerParam(c.req.param('ticker'));
     const user = c.get('user')!;
@@ -343,7 +354,7 @@ export function createWatchlistRoutes(
     return c.json({ item }, 200);
   });
 
-  router.patch('/:id', async (c) => {
+  router.patch('/:id', writeRateLimiter, async (c) => {
     const id = assertValidItemId(c.req.param('id'));
     const input = await parseJsonBody(c, updateWatchlistSchema);
     const user = c.get('user')!;
@@ -354,7 +365,7 @@ export function createWatchlistRoutes(
     return c.json({ item }, 200);
   });
 
-  router.delete('/:id', async (c) => {
+  router.delete('/:id', writeRateLimiter, async (c) => {
     const user = c.get('user')!;
     const id = assertValidItemId(c.req.param('id'));
     const { watchlistRepo } = getDeps(c.env.DB);

@@ -30,11 +30,12 @@ describe('Core-3 2026 valuation engine', () => {
     expect(result.methods).toHaveLength(3);
     expect(byMethod.relativePer).toEqual({ method: 'relativePer', fairValue: 9900, status: 'VALID' });
     expect(byMethod.relativePbv).toEqual({ method: 'relativePbv', fairValue: 9600, status: 'VALID' });
-    expect(byMethod.simpleDcf).toEqual({ method: 'simpleDcf', fairValue: 8100, status: 'VALID' });
+    // Reinvestment-adjusted DCF: b_explicit = 12/22.5 (payout 7/15), b_terminal = 4/22.5 (payout 37/45) -> 1050 + 4810 = 5860
+    expect(byMethod.simpleDcf).toEqual({ method: 'simpleDcf', fairValue: 5860, status: 'VALID' });
 
-    // Sorted valid: [8100, 9600, 9900] -> median = 9600, mos = (9600 - 9000) / 9600 * 100 = 6.25%
+    // Sorted valid: [5860, 9600, 9900] -> median = 9600, mos = (9600 - 9000) / 9600 * 100 = 6.25%
     expect(result.fairValue).toEqual({
-      conservative: 8100,
+      conservative: 5860,
       moderate: 9600,
       optimistic: 9900,
       validCount: 3,
@@ -47,12 +48,13 @@ describe('Core-3 2026 valuation engine', () => {
     });
   });
 
-  it('handles Banking sector DER=NOT_APPLICABLE_BANKING and even-count median', () => {
+  it('disables Simple DCF for Banking sector, sets DER=NOT_APPLICABLE_BANKING, and uses even-count median', () => {
     const result = calculateValuation({
       sector: 'FINANCIALS',
       currentPrice: 9500,
       eps: 400,
       bvps: 2000,
+      epsGrowthPct: 12, // Still N/A for banking
       targetPer: 15, // 6000
       targetPbv: 2.5, // 5000
       der: 5.5,
@@ -60,6 +62,13 @@ describe('Core-3 2026 valuation engine', () => {
     });
     expect(result.qualityFlags.derFlag).toBe('NOT_APPLICABLE_BANKING');
     expect(result.qualityFlags.roeFlag).toBe('MODERATE');
+    const dcf = result.methods.find((m) => m.method === 'simpleDcf');
+    expect(dcf).toEqual({
+      method: 'simpleDcf',
+      fairValue: null,
+      status: 'NA',
+      reasonCode: 'NOT_APPLICABLE_FOR_BANKING',
+    });
     // 2 valid methods [5000, 6000] -> even median = 5500 -> Overvalued
     expect(result.fairValue).toEqual({
       conservative: 5000,
@@ -70,7 +79,7 @@ describe('Core-3 2026 valuation engine', () => {
     expect(result.valuationStatus).toBe('OVERVALUED');
   });
 
-  it('handles Loss-Making & Zero Dividend gracefully with N/A reasons', () => {
+  it('withholds composite Fair Value & MoS on Loss-Making stocks while keeping Relative P/B reference visible', () => {
     const result = calculateValuation({
       sector: 'TECHNOLOGY',
       currentPrice: 50,
@@ -91,18 +100,21 @@ describe('Core-3 2026 valuation engine', () => {
       status: 'VALID',
     });
     expect(naMethods).toHaveLength(2);
+    // Composite Fair Value & MoS are withheld so loss-making/FCA stocks cannot rank UNDERVALUED
     expect(result.fairValue).toEqual({
-      conservative: 240,
-      moderate: 240,
-      optimistic: 240,
+      conservative: null,
+      moderate: null,
+      optimistic: null,
       validCount: 1,
     });
-    expect(result.mosPct).toBe(79.17);
-    expect(result.valuationStatus).toBe('UNDERVALUED');
+    expect(result.mosPct).toBeNull();
+    expect(result.valuationStatus).toBe('INSUFFICIENT_DATA');
     expect(result.qualityFlags).toEqual({
       roeFlag: 'WEAK',
       derFlag: 'HIGH_LEVERAGE',
     });
+    expect(result.valueTrapShield.riskLevel).toBe('HIGH_RISK');
+    expect(result.valueTrapShield.warnings).toContain('SHRINKING_EARNINGS_TRAP');
   });
 
   it('handles Sub-50 IDX stock (Rp 12), default assumptions, and INSUFFICIENT_DATA', () => {
@@ -183,7 +195,7 @@ describe('Core-3 2026 valuation engine', () => {
       warnings: ['LOW_ROE_VALUE_TRAP'],
     });
 
-    // 3. HIGH_RISK: Shrinking earnings + High leverage on non-bank stock
+    // 3. HIGH_RISK: Shrinking earnings (<= -15%) + High leverage on non-bank stock
     const highRiskTrap = calculateValuation({
       sector: 'PROPERTY_REAL_ESTATE',
       currentPrice: 500,
@@ -199,37 +211,71 @@ describe('Core-3 2026 valuation engine', () => {
       riskLevel: 'HIGH_RISK',
       warnings: ['SHRINKING_EARNINGS_TRAP', 'HIGH_LEVERAGE_TRAP'],
     });
+
+    // 4. Sector-aware Property ROE floor (5%) & minor YoY dip (-5%) do NOT trigger false-positive Value Trap
+    const healthyProperty = calculateValuation({
+      sector: 'PROPERTY_REAL_ESTATE',
+      currentPrice: 1000,
+      eps: 120,
+      bvps: 1900,
+      roePct: 6.5, // above 5% property landbank floor
+      der: 0.35,
+      epsGrowthPct: -5, // mild dip above -15% threshold
+      targetPer: 12,
+      targetPbv: 1.0,
+    });
+    expect(healthyProperty.valueTrapShield).toEqual({
+      riskLevel: 'CLEAR',
+      warnings: [],
+    });
+
+    // 5. Property stock with ROE < 5% still triggers LOW_ROE_VALUE_TRAP
+    const weakProperty = calculateValuation({
+      sector: 'PROPERTY_REAL_ESTATE',
+      currentPrice: 800,
+      eps: 80,
+      bvps: 1800,
+      roePct: 4.2,
+      der: 0.4,
+      epsGrowthPct: 2,
+      targetPer: 12,
+      targetPbv: 1.0,
+    });
+    expect(weakProperty.valueTrapShield).toEqual({
+      riskLevel: 'WATCH',
+      warnings: ['LOW_ROE_VALUE_TRAP'],
+    });
   });
 
-  it('prevents DCF sign inversion and false-positive MoS on extreme negative epsGrowthPct', () => {
-    // Severe decline <= -100% -> DCF marked N/A, never produces negative fairValue or positive MoS
-    const extremeDrop = calculateValuation({
+  it('prevents DCF sign inversion and disables DCF on collapsing earnings (<= -25%)', () => {
+    // Severe decline <= -25% -> DCF marked N/A, never produces negative fairValue or false recovery
+    const collapsing = calculateValuation({
       sector: 'INDUSTRIALS',
       currentPrice: 500,
       eps: 100,
-      epsGrowthPct: -120,
+      epsGrowthPct: -35,
     });
-    const dcf = extremeDrop.methods.find((m) => m.method === 'simpleDcf');
+    const dcf = collapsing.methods.find((m) => m.method === 'simpleDcf');
     expect(dcf).toEqual({
       method: 'simpleDcf',
       fairValue: null,
       status: 'NA',
       reasonCode: 'REQUIRES_POSITIVE_EPS_AND_VALID_DCF_RATES',
     });
-    expect(extremeDrop.fairValue.moderate).toBeNull();
-    expect(extremeDrop.mosPct).toBeNull();
-    expect(extremeDrop.valuationStatus).toBe('INSUFFICIENT_DATA');
+    expect(collapsing.fairValue.moderate).toBeNull();
+    expect(collapsing.mosPct).toBeNull();
+    expect(collapsing.valuationStatus).toBe('INSUFFICIENT_DATA');
 
-    // Moderate negative growth (-45%) -> clamped to -20% floor, strictly positive fair value
-    const clampedNeg = calculateValuation({
+    // Moderate negative growth (-20%) -> valid DCF with 0% explicit retention and positive fair value
+    const moderateNeg = calculateValuation({
       sector: 'INDUSTRIALS',
       currentPrice: 500,
       eps: 100,
-      epsGrowthPct: -45,
+      epsGrowthPct: -20,
     });
-    const clampedDcf = clampedNeg.methods.find((m) => m.method === 'simpleDcf');
-    expect(clampedDcf?.status).toBe('VALID');
-    expect(clampedDcf?.fairValue).toBeGreaterThan(0);
-    expect(clampedNeg.fairValue.moderate).toBeGreaterThan(0);
+    const moderateDcf = moderateNeg.methods.find((m) => m.method === 'simpleDcf');
+    expect(moderateDcf?.status).toBe('VALID');
+    expect(moderateDcf?.fairValue).toBeGreaterThan(0);
+    expect(moderateNeg.fairValue.moderate).toBeGreaterThan(0);
   });
 });

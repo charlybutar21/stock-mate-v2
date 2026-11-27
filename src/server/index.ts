@@ -438,9 +438,13 @@ export async function runScheduledCatalogSync(env: AppBindings): Promise<void> {
       kvEnabled: Boolean(env.STOCK_MATE_KV),
     });
   } catch (err) {
+    const safeErrorMessage =
+      err instanceof Error
+        ? err.message.replace(/https?:\/\/\S+/g, '[URL]').slice(0, 160)
+        : 'Unknown error';
     logJson('error', 'cron_catalog_sync_failed', correlationId, {
       errorName: err instanceof Error ? err.name : 'UnknownError',
-      errorMessage: err instanceof Error ? err.message.slice(0, 160) : 'Unknown error',
+      errorMessage: safeErrorMessage,
       durationMs: Date.now() - start,
     });
   }

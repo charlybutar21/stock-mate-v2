@@ -214,7 +214,32 @@ describe('calculateFundamentalQuality (FQS v2 — 4-Track & S-E Grading)', () =>
       valueTrapRiskLevel: 'HIGH_RISK',
     });
     expect(negCfBank.pillars.cashFlow.score).toBe(10); // (15*40 + 20*20 + 0*40)/100 = 10
-    expect(negCfBank.qarpQuadrant).toBe('DEEP_VALUE_TURNAROUND');
+    expect(negCfBank.qarpQuadrant).toBe('VALUE_TRAP_RISK');
+
+    // Deep discount + mediocre quality (50-75) + CLEAR/WATCH risk maps to DEEP_VALUE_TURNAROUND
+    const turnaround = calculateFundamentalQuality({
+      sector: 'INDUSTRIALS',
+      currentPrice: 1000,
+      eps: 100,
+      roePct: 12,
+      roicPct: 9,
+      operatingMarginPct: 12,
+      netMarginPct: 8,
+      revenueGrowthPct: 6,
+      epsGrowthPct: 8,
+      der: 0.7,
+      currentRatio: 1.5,
+      netDebtToEbitda: 1.5,
+      cfoToNetIncome: 0.9,
+      fcfMarginPct: 5,
+      fcfYieldPct: 4,
+      altmanZScore: 2.8,
+      mosPct: 30,
+      valueTrapRiskLevel: 'CLEAR',
+    });
+    expect(turnaround.score).toBeGreaterThanOrEqual(50);
+    expect(turnaround.score).toBeLessThan(76);
+    expect(turnaround.qarpQuadrant).toBe('DEEP_VALUE_TURNAROUND');
   });
 
   it('enforces all 7 institutional Weak-Link caps (loss-making, Altman Z distress, weak health, weak CF, HIGH_RISK trap, incomplete pillars, revenue contraction)', () => {

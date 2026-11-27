@@ -29,6 +29,12 @@ const RadarPage = lazy(() =>
 const SimulatorPage = lazy(() =>
   import('./features/simulator/SimulatorPage').then((m) => ({ default: m.SimulatorPage })),
 );
+const TermsPage = lazy(() =>
+  import('./features/legal/LegalPages').then((m) => ({ default: m.TermsPage })),
+);
+const PrivacyPage = lazy(() =>
+  import('./features/legal/LegalPages').then((m) => ({ default: m.PrivacyPage })),
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -124,6 +130,22 @@ export function App() {
                         <RequireAuth>
                           <SimulatorPage />
                         </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/terms"
+                      element={
+                        <Suspense fallback={<FullPageSkeleton />}>
+                          <TermsPage />
+                        </Suspense>
+                      }
+                    />
+                    <Route
+                      path="/privacy"
+                      element={
+                        <Suspense fallback={<FullPageSkeleton />}>
+                          <PrivacyPage />
+                        </Suspense>
                       }
                     />
                     <Route path="*" element={<Navigate to="/watchlist" replace />} />

@@ -1,9 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import type {
   AddCustomWatchlistStockRequest,
   CatalogQuery,
   CatalogResponseDto,
-  CatalogSyncResponseDto,
   CreateCustomWatchlistRequest,
   CreateWatchlistRequest,
   CustomWatchlistGroupDto,
@@ -15,6 +15,10 @@ import type {
   WatchlistQuery,
 } from '@/shared/contracts';
 import { apiRequest } from '@/client/lib/apiClient';
+import {
+  queryCatalogSnapshot,
+  type CatalogSnapshotResponse,
+} from '@/client/lib/catalogOverlay';
 
 function buildCatalogQueryString(query?: Partial<CatalogQuery>): string {
   const params = new URLSearchParams();
@@ -46,7 +50,20 @@ function buildCatalogQueryString(query?: Partial<CatalogQuery>): string {
   return params.toString();
 }
 
-const AUTO_REFRESH_INTERVAL_MS = 3 * 60 * 1000; // Auto-refresh every 3 minutes when tab is active
+const AUTO_REFRESH_INTERVAL_MS = 3 * 60 * 1000; // Auto-refresh personal items every 3 minutes when tab is active
+const CATALOG_SNAPSHOT_STALE_MS = 2 * 60 * 1000;
+const CATALOG_SNAPSHOT_REFRESH_MS = 5 * 60 * 1000; // Matches 5m IDX cron cadence
+
+export function useCatalogSnapshot(enabled = true) {
+  return useQuery<CatalogSnapshotResponse>({
+    queryKey: ['catalog', 'snapshot'],
+    enabled,
+    staleTime: CATALOG_SNAPSHOT_STALE_MS,
+    refetchInterval: CATALOG_SNAPSHOT_REFRESH_MS,
+    refetchIntervalInBackground: false,
+    queryFn: () => apiRequest<CatalogSnapshotResponse>('/api/v1/catalog/snapshot'),
+  });
+}
 
 export function useWatchlist(query?: Partial<WatchlistQuery>) {
   const params = new URLSearchParams();
@@ -83,51 +100,56 @@ export function useWatchlistItem(id: string | undefined) {
   });
 }
 
+/**
+ * Edge-cached IHSG catalog screener hook: fetches the shared CDN/KV snapshot once
+ * (`GET /api/v1/catalog/snapshot`, 0 D1 reads) and overlays the logged-in user's
+ * personal holdings & custom watchlist memberships client-side in O(N) (<2ms).
+ */
 export function useIdxCatalog(query?: Partial<CatalogQuery>, enabled = true) {
-  const qs = buildCatalogQueryString(query);
-  return useQuery<CatalogResponseDto>({
-    queryKey: ['watchlist', 'catalog', qs],
-    enabled,
-    staleTime: 60 * 1000,
-    refetchInterval: AUTO_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: false,
-    placeholderData: keepPreviousData,
-    queryFn: () => apiRequest<CatalogResponseDto>(`/api/v1/watchlist/catalog${qs ? `?${qs}` : ''}`),
-  });
+  const snapshotQuery = useCatalogSnapshot(enabled);
+  const personalQuery = useWatchlist();
+  const groupsQuery = useCustomWatchlists();
+
+  const data = useMemo<CatalogResponseDto | undefined>(() => {
+    if (!snapshotQuery.data) return undefined;
+    return queryCatalogSnapshot(
+      snapshotQuery.data,
+      personalQuery.data ?? [],
+      groupsQuery.data ?? [],
+      query,
+    );
+  }, [snapshotQuery.data, personalQuery.data, groupsQuery.data, query]);
+
+  return {
+    data,
+    isLoading: snapshotQuery.isLoading,
+    isFetching: snapshotQuery.isFetching,
+    isError: snapshotQuery.isError,
+    refetch: snapshotQuery.refetch,
+  };
 }
 
 export function useIdxCatalogSearch(search: string, enabled = true) {
   const trimmed = search.trim();
-  const qs = buildCatalogQueryString({
-    search: trimmed || undefined,
-    sort: 'ticker_asc',
-    page: 1,
-    pageSize: 10,
-  });
+  const snapshotQuery = useCatalogSnapshot(enabled);
 
-  return useQuery<MarketStockDto[]>({
-    queryKey: ['watchlist', 'catalog-search', trimmed],
-    enabled: enabled && trimmed.length >= 1,
-    staleTime: 5 * 60 * 1000,
-    placeholderData: keepPreviousData,
-    queryFn: async () => {
-      const res = await apiRequest<CatalogResponseDto>(`/api/v1/watchlist/catalog?${qs}`);
-      return res.items;
-    },
-  });
-}
+  const data = useMemo<MarketStockDto[]>(() => {
+    if (!enabled || trimmed.length < 1 || !snapshotQuery.data) return [];
+    const res = queryCatalogSnapshot(snapshotQuery.data, [], [], {
+      search: trimmed,
+      sort: 'ticker_asc',
+      page: 1,
+      pageSize: 10,
+    });
+    return res.items;
+  }, [enabled, trimmed, snapshotQuery.data]);
 
-export function useSyncIdxCatalog() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      apiRequest<CatalogSyncResponseDto>('/api/v1/watchlist/catalog/sync', {
-        method: 'POST',
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
-    },
-  });
+  return {
+    data,
+    isLoading: enabled && trimmed.length >= 1 && snapshotQuery.isLoading,
+    isFetching: enabled && trimmed.length >= 1 && snapshotQuery.isFetching,
+    isError: snapshotQuery.isError,
+  };
 }
 
 export function useEnsureWatchlistItem() {

@@ -63,8 +63,25 @@ export function createRateLimitMiddleware(
     const key = `${clientId}:${scope}`;
     const kv = c.env.STOCK_MATE_KV;
 
-    let count = 0;
+    let kvCount = 0;
     let retryAfterSec = windowSec;
+
+    // Always increment in-isolate bucket atomically first so concurrent bursts on the same
+    // Worker isolate cannot bypass limits via Cloudflare KV get+put race conditions.
+    let bucket = buckets.get(key);
+    if (!bucket || bucket.resetAtMs <= nowMs) {
+      if (buckets.size >= maxTrackedKeys) {
+        pruneExpired(nowMs);
+      }
+      bucket = {
+        count: 0,
+        resetAtMs: nowMs + options.windowMs,
+      };
+      buckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    const localCount = bucket.count;
+    retryAfterSec = Math.max(1, Math.ceil((bucket.resetAtMs - nowMs) / 1000));
 
     if (kv) {
       const windowBucket = Math.floor(nowMs / options.windowMs);
@@ -75,32 +92,17 @@ export function createRateLimitMiddleware(
       try {
         const currentRaw = await kv.get(kvKey);
         const current = currentRaw ? Number.parseInt(currentRaw, 10) : 0;
-        count = (Number.isFinite(current) ? current : 0) + 1;
-        await kv.put(kvKey, String(count), {
+        kvCount = Math.max(localCount, (Number.isFinite(current) ? current : 0) + 1);
+        await kv.put(kvKey, String(kvCount), {
           expirationTtl: Math.max(60, windowSec + 10),
         });
       } catch {
-        // Fallback to local bucket if KV temporarily fails
-        count = 0;
+        // Fallback to local atomic bucket if KV temporarily fails
+        kvCount = localCount;
       }
     }
 
-    if (count === 0) {
-      let bucket = buckets.get(key);
-      if (!bucket || bucket.resetAtMs <= nowMs) {
-        if (buckets.size >= maxTrackedKeys) {
-          pruneExpired(nowMs);
-        }
-        bucket = {
-          count: 0,
-          resetAtMs: nowMs + options.windowMs,
-        };
-        buckets.set(key, bucket);
-      }
-      bucket.count += 1;
-      count = bucket.count;
-      retryAfterSec = Math.max(1, Math.ceil((bucket.resetAtMs - nowMs) / 1000));
-    }
+    const count = Math.max(localCount, kvCount);
 
     const remaining = Math.max(0, options.maxRequests - count);
     c.header('X-RateLimit-Limit', String(options.maxRequests));

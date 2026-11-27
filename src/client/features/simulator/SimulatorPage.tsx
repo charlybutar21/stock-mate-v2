@@ -17,6 +17,7 @@ import { useWatchlist } from '@/client/features/watchlist/useWatchlist';
 import { statusTone } from '@/client/lib/valuationTone';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatPercent } from '@/client/lib/formatters';
+import { useCalcMode } from '@/client/lib/useCalcMode';
 import { ForwardTab } from './ForwardTab';
 
 const GoalSeekTab = lazy(() =>
@@ -33,6 +34,7 @@ type SimulatorTabMode = 'forward' | 'pyramiding' | 'takeProfit' | 'goalSeek';
 
 export function SimulatorPage() {
   const { t } = useI18n();
+  const { isBrokerGross } = useCalcMode();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: items, isLoading } = useWatchlist({ sort: 'ticker_asc' });
 
@@ -43,6 +45,7 @@ export function SimulatorPage() {
   const [buyFeePct, setBuyFeePct] = useState(String(DEFAULT_BUY_FEE_PCT));
   const [sellFeePct, setSellFeePct] = useState(String(DEFAULT_SELL_FEE_PCT));
   const [includeStampDuty, setIncludeStampDuty] = useState(false);
+  const [existingAvgIncludesBuyFee, setExistingAvgIncludesBuyFee] = useState(isBrokerGross);
 
   const effectiveSelectedId = (() => {
     if (!items || items.length === 0) return '';
@@ -164,19 +167,41 @@ export function SimulatorPage() {
               </div>
             </div>
 
-            <div className="border-t border-border/80 pt-3">
-              <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-ink">
+            <div className="space-y-2 border-t border-border/80 pt-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-ink">
                 <input
+                  id="sim-stamp-duty"
                   type="checkbox"
                   checked={includeStampDuty}
                   onChange={(e) => setIncludeStampDuty(e.target.checked)}
                   className="h-4 w-4 rounded border-input-border accent-brand-600 cursor-pointer"
                 />
+                <label htmlFor="sim-stamp-duty" className="cursor-pointer">
+                  {t.simulator.includeStampDuty}
+                </label>
                 <TermTooltip
-                  label={t.simulator.includeStampDuty}
+                  label={t.simulator.stampDutyLabel}
                   definition={t.glossary.stampDuty}
+                  iconOnly
                 />
-              </label>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-medium text-ink">
+                <input
+                  id="sim-existing-avg-fee"
+                  type="checkbox"
+                  checked={existingAvgIncludesBuyFee}
+                  onChange={(e) => setExistingAvgIncludesBuyFee(e.target.checked)}
+                  className="h-4 w-4 rounded border-input-border accent-brand-600 cursor-pointer"
+                />
+                <label htmlFor="sim-existing-avg-fee" className="cursor-pointer">
+                  {t.simulator.existingAvgIncludesBuyFee}
+                </label>
+                <TermTooltip
+                  label={t.simulator.existingAvgIncludesBuyFee}
+                  definition={t.glossary.existingAvgIncludesBuyFee}
+                  iconOnly
+                />
+              </div>
             </div>
           </div>
         </Card>
@@ -271,6 +296,7 @@ export function SimulatorPage() {
           buyFeePct={Number(buyFeePct || 0)}
           sellFeePct={Number(sellFeePct || 0)}
           includeStampDuty={includeStampDuty}
+          existingAvgIncludesBuyFee={existingAvgIncludesBuyFee}
         />
       )}
 
@@ -282,6 +308,7 @@ export function SimulatorPage() {
             buyFeePct={Number(buyFeePct || 0)}
             sellFeePct={Number(sellFeePct || 0)}
             includeStampDuty={includeStampDuty}
+            existingAvgIncludesBuyFee={existingAvgIncludesBuyFee}
           />
         )}
 
@@ -292,6 +319,7 @@ export function SimulatorPage() {
             buyFeePct={Number(buyFeePct || 0)}
             sellFeePct={Number(sellFeePct || 0)}
             includeStampDuty={includeStampDuty}
+            existingAvgIncludesBuyFee={existingAvgIncludesBuyFee}
           />
         )}
 

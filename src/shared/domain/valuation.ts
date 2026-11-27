@@ -11,7 +11,8 @@ export type ValuationMethodKey = 'relativePer' | 'relativePbv' | 'simpleDcf';
 export type ValuationMethodReasonCode =
   | 'REQUIRES_POSITIVE_EPS_AND_TARGET_PER'
   | 'REQUIRES_POSITIVE_BVPS_AND_TARGET_PBV'
-  | 'REQUIRES_POSITIVE_EPS_AND_VALID_DCF_RATES';
+  | 'REQUIRES_POSITIVE_EPS_AND_VALID_DCF_RATES'
+  | 'NOT_APPLICABLE_FOR_BANKING';
 
 export interface ValuationMethodResult {
   method: ValuationMethodKey;
@@ -145,19 +146,24 @@ function evaluateValueTrapShield(params: {
   const looksCheapOnMosOrPbv =
     (params.mosPct !== null && params.mosPct >= 0) ||
     (params.currentPbv !== null && params.currentPbv < 1);
+  // Trigger shrinking-earnings trap on actual losses or material YoY contraction (<= -15%),
+  // avoiding false-positive HIGH_RISK flags on minor single-digit cyclical dips.
   const hasShrinkingOrNegativeEarnings =
-    (params.epsGrowthPct !== null && params.epsGrowthPct < 0) ||
+    (params.epsGrowthPct !== null && params.epsGrowthPct <= -15) ||
     (params.eps !== null && params.eps <= 0);
 
   if (looksCheapOnMosOrPbv && hasShrinkingOrNegativeEarnings) {
     warnings.push('SHRINKING_EARNINGS_TRAP');
   }
 
+  // Property developers hold large historical landbanks with lower structural ROE (~6-10%),
+  // so apply a 5% ROE floor for PROPERTY_REAL_ESTATE and 8% for all other sectors.
+  const lowRoeFloorPct = params.sector === 'PROPERTY_REAL_ESTATE' ? 5 : 8;
   if (
     params.mosPct !== null &&
     params.mosPct >= 15 &&
     params.roePct !== null &&
-    params.roePct < 8
+    params.roePct < lowRoeFloorPct
   ) {
     warnings.push('LOW_ROE_VALUE_TRAP');
   }
@@ -241,27 +247,49 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
           reasonCode: 'REQUIRES_POSITIVE_BVPS_AND_TARGET_PBV',
         };
 
-  // 3. Simple DCF (5-Year Projected EPS + Terminal Value)
+  // 3. Simple DCF (5-Year Reinvestment-Adjusted FCFE Proxy + Terminal Value)
+  // Disabled for FINANCIALS (banks require CAR retention; P/B & P/E are authoritative)
+  // and disabled when earnings are collapsing (<= -25% YoY) to avoid unrealistic perpetual recovery.
   const r = discountRatePct / 100;
   const gt = terminalGrowthPct / 100;
   let simpleDcf: ValuationMethodResult;
-  if (
+  if (input.sector === 'FINANCIALS') {
+    simpleDcf = {
+      method: 'simpleDcf',
+      fairValue: null,
+      status: 'NA',
+      reasonCode: 'NOT_APPLICABLE_FOR_BANKING',
+    };
+  } else if (
     eps !== null &&
     eps > 0 &&
     epsGrowthPct !== null &&
-    epsGrowthPct > -100 &&
+    epsGrowthPct > -25 &&
     r > gt &&
     projectionYears >= 1
   ) {
-    // Clamp effective growth to [-20%, +20%] so severe earnings swings cannot invert DCF sign
+    // Clamp effective growth to [-20%, +20%]
     const gEff = Math.max(-0.2, Math.min(epsGrowthPct / 100, 0.2));
+    // Reinvestment adjustment (b = g / ROE) prevents double-counting retained earnings.
+    // When ROE is unavailable and growth is positive, apply a conservative 35% retention proxy.
+    const explicitRetention =
+      gEff <= 0
+        ? 0
+        : roePct !== null && roePct > 0
+          ? Math.min(0.75, Math.max(0, (gEff * 100) / roePct))
+          : 0.35;
+    const terminalRetention =
+      roePct !== null && roePct > 0 ? Math.min(0.5, Math.max(0, (gt * 100) / roePct)) : 0.25;
+    const explicitPayout = 1 - explicitRetention;
+    const terminalPayout = 1 - terminalRetention;
+
     let pvCashFlows = 0;
     for (let t = 1; t <= projectionYears; t++) {
-      pvCashFlows += (eps * Math.pow(1 + gEff, t)) / Math.pow(1 + r, t);
+      pvCashFlows += (eps * Math.pow(1 + gEff, t) * explicitPayout) / Math.pow(1 + r, t);
     }
     const terminalEps = eps * Math.pow(1 + gEff, projectionYears);
     const pvTerminal =
-      (terminalEps * (1 + gt)) / ((r - gt) * Math.pow(1 + r, projectionYears));
+      (terminalEps * (1 + gt) * terminalPayout) / ((r - gt) * Math.pow(1 + r, projectionYears));
     simpleDcf = {
       method: 'simpleDcf',
       fairValue: Math.max(1, Math.round(pvCashFlows + pvTerminal)),
@@ -286,13 +314,19 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
     .map((m) => m.fairValue)
     .sort((a, b) => a - b);
 
+  const isLossMaking = eps !== null && eps <= 0;
+  const hasNegativeRoe = roePct !== null && roePct < 0;
+
   let conservative: number | null = null;
   let moderate: number | null = null;
   let optimistic: number | null = null;
   let mosPct: number | null = null;
   let valuationStatus: ValuationStatus = 'INSUFFICIENT_DATA';
 
-  if (validValues.length > 0) {
+  // Guard against false-positive UNDERVALUED on loss-making/distressed stocks (EPS <= 0 or ROE < 0):
+  // Individual method outputs (e.g. Relative P/B asset reference) remain visible in `methods`,
+  // while composite Fair Value & MoS are withheld so bankrupt/FCA stocks cannot top `mos_desc` screens.
+  if (validValues.length > 0 && !isLossMaking && !hasNegativeRoe) {
     conservative = validValues[0]!;
     moderate = computeMedian(validValues);
     optimistic = validValues[validValues.length - 1]!;

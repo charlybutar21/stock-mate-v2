@@ -18,6 +18,7 @@ export function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -45,6 +46,9 @@ export function RegisterPage() {
     }
     if (password !== confirmPassword) {
       next.confirmPassword = t.auth.passwordMismatch;
+    }
+    if (!acceptedTerms) {
+      next.acceptedTerms = t.auth.errors.termsRequired;
     }
     if (Object.keys(next).length > 0) {
       setFieldErrors(next);
@@ -168,6 +172,34 @@ export function RegisterPage() {
               className="h-10"
             />
           </Field>
+
+          <div className="space-y-1">
+            <label className="flex items-start gap-2 text-xs leading-relaxed text-muted cursor-pointer">
+              <input
+                id="reg-terms"
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-input-border accent-brand-600 cursor-pointer"
+              />
+              <span>
+                {t.auth.acceptTermsPrefix}{' '}
+                <Link to="/terms" className="font-semibold text-brand-700 hover:underline">
+                  {t.common.termsLink}
+                </Link>{' '}
+                {t.auth.acceptTermsAnd}{' '}
+                <Link to="/privacy" className="font-semibold text-brand-700 hover:underline">
+                  {t.common.privacyLink}
+                </Link>
+                {t.auth.acceptTermsSuffix}
+              </span>
+            </label>
+            {fieldErrors.acceptedTerms && (
+              <p className="text-xs text-negative-600" role="alert">
+                {fieldErrors.acceptedTerms}
+              </p>
+            )}
+          </div>
 
           <Button type="submit" className="w-full" size="lg" disabled={register.isPending}>
             {register.isPending ? t.auth.registering : t.auth.registerBtn}

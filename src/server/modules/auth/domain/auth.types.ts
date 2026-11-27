@@ -20,8 +20,8 @@ export interface SessionWithUser {
 }
 
 export interface PasswordHasher {
-  hash(password: string): Promise<string>;
-  verify(password: string, storedHash: string): Promise<boolean>;
+  hash(password: string, pepper?: string): Promise<string>;
+  verify(password: string, storedHash: string, pepper?: string): Promise<boolean>;
   generateSessionToken(): string;
   hashToken(rawToken: string): Promise<string>;
 }
@@ -37,7 +37,7 @@ export interface AuthRepository {
     createdAt: number;
   }): Promise<void>;
   findValidSessionByTokenHash(tokenHash: string, nowMs: number): Promise<SessionWithUser | null>;
-  deleteSessionByTokenHash(tokenHash: string): Promise<void>;
+  deleteSessionByTokenHash(tokenHash: string): Promise<string | null>;
   deleteExpiredSessionsForUser(userId: string, nowMs: number): Promise<void>;
-  pruneExcessSessionsForUser?(userId: string, maxActiveSessions: number): Promise<void>;
+  pruneExcessSessionsForUser?(userId: string, maxActiveSessions: number): Promise<string[]>;
 }

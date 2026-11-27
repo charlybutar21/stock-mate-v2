@@ -244,10 +244,12 @@ export function TermTooltip({
   label,
   definition,
   className,
+  iconOnly = false,
 }: {
   label: string;
   definition: string;
   className?: string;
+  iconOnly?: boolean;
 }) {
   const tooltipId = useId();
   const triggerRef = useRef<HTMLSpanElement>(null);
@@ -323,6 +325,7 @@ export function TermTooltip({
         ref={triggerRef}
         tabIndex={0}
         role="button"
+        aria-label={iconOnly ? label : undefined}
         aria-expanded={Boolean(coords)}
         aria-describedby={coords ? tooltipId : undefined}
         onMouseEnter={show}
@@ -343,11 +346,13 @@ export function TermTooltip({
           }
         }}
         className={cn(
-          'inline-flex items-center gap-1 cursor-help border-b border-dotted border-muted/50 hover:border-brand-600 hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
+          iconOnly
+            ? 'inline-flex h-4 w-4 items-center justify-center rounded-full text-muted/80 hover:text-brand-600 cursor-help transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600'
+            : 'inline-flex items-center gap-1 cursor-help border-b border-dotted border-muted/50 hover:border-brand-600 hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
           className,
         )}
       >
-        <span>{label}</span>
+        {!iconOnly && <span>{label}</span>}
         <HelpCircle className="h-3 w-3 shrink-0 text-muted/75" aria-hidden="true" />
       </span>
 
@@ -393,9 +398,12 @@ export function Field({
 }) {
   return (
     <div className="min-w-0 space-y-1.5">
-      <label htmlFor={htmlFor} className="block text-xs font-medium text-ink">
-        {tooltip ? <TermTooltip label={label} definition={tooltip} /> : label}
-      </label>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor={htmlFor} className="block text-xs font-medium text-ink">
+          {label}
+        </label>
+        {tooltip && <TermTooltip label={label} definition={tooltip} iconOnly />}
+      </div>
       {children}
       {error ? (
         <p className="text-xs text-negative-600" role="alert">

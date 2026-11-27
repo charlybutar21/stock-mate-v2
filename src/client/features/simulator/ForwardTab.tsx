@@ -25,6 +25,7 @@ interface ForwardTabProps {
   buyFeePct: number;
   sellFeePct: number;
   includeStampDuty: boolean;
+  existingAvgIncludesBuyFee: boolean;
 }
 
 export function ForwardTab({
@@ -32,6 +33,7 @@ export function ForwardTab({
   buyFeePct,
   sellFeePct,
   includeStampDuty,
+  existingAvgIncludesBuyFee,
 }: ForwardTabProps) {
   const { t } = useI18n();
 
@@ -88,6 +90,7 @@ export function ForwardTab({
       buyFeePct,
       sellFeePct,
       includeStampDuty,
+      existingAvgIncludesBuyFee,
       fairValueModerate: linkedStock.valuation.fairValue.moderate,
       referenceCurrentPrice: linkedStock.currentPrice,
     });
@@ -99,6 +102,7 @@ export function ForwardTab({
     buyFeePct,
     sellFeePct,
     includeStampDuty,
+    existingAvgIncludesBuyFee,
     linkedStock.valuation.fairValue.moderate,
     linkedStock.currentPrice,
   ]);

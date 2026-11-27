@@ -21,6 +21,7 @@ export interface AuthSessionResult {
   user: AuthUserDto;
   sessionId: string;
   rawSessionToken: string;
+  revokedSessionIds: string[];
 }
 
 export class RegisterUseCase {
@@ -32,6 +33,7 @@ export class RegisterUseCase {
   async execute(
     input: RegisterRequest,
     existingTokenHash?: string,
+    pepper?: string,
   ): Promise<AuthSessionResult> {
     const normalizedEmail = input.email.trim().toLowerCase();
     const existing = await this.authRepo.findActiveUserByEmail(normalizedEmail);
@@ -43,7 +45,7 @@ export class RegisterUseCase {
 
     const now = Date.now();
     const userId = crypto.randomUUID();
-    const passwordHash = await this.hasher.hash(input.password);
+    const passwordHash = await this.hasher.hash(input.password, pepper);
 
     try {
       await this.authRepo.createUser({
@@ -62,8 +64,10 @@ export class RegisterUseCase {
       throw err;
     }
 
+    const revokedSessionIds: string[] = [];
     if (existingTokenHash) {
-      await this.authRepo.deleteSessionByTokenHash(existingTokenHash);
+      const deletedId = await this.authRepo.deleteSessionByTokenHash(existingTokenHash);
+      if (deletedId) revokedSessionIds.push(deletedId);
     }
 
     const sessionId = crypto.randomUUID();
@@ -86,6 +90,7 @@ export class RegisterUseCase {
       },
       sessionId,
       rawSessionToken,
+      revokedSessionIds,
     };
   }
 }
@@ -99,6 +104,7 @@ export class LoginUseCase {
   async execute(
     input: LoginRequest,
     existingTokenHash?: string,
+    pepper?: string,
   ): Promise<AuthSessionResult> {
     const normalizedEmail = input.email.trim().toLowerCase();
     const user = await this.authRepo.findActiveUserByEmail(normalizedEmail);
@@ -108,14 +114,16 @@ export class LoginUseCase {
       throw unauthorizedError('Invalid email or password.');
     }
 
-    const valid = await this.hasher.verify(input.password, user.passwordHash);
+    const valid = await this.hasher.verify(input.password, user.passwordHash, pepper);
     if (!valid) {
       throw unauthorizedError('Invalid email or password.');
     }
 
     const now = Date.now();
+    const revokedSessionIds: string[] = [];
     if (existingTokenHash) {
-      await this.authRepo.deleteSessionByTokenHash(existingTokenHash);
+      const deletedId = await this.authRepo.deleteSessionByTokenHash(existingTokenHash);
+      if (deletedId) revokedSessionIds.push(deletedId);
     }
     await this.authRepo.deleteExpiredSessionsForUser(user.id, now);
 
@@ -132,7 +140,11 @@ export class LoginUseCase {
     });
 
     if (this.authRepo.pruneExcessSessionsForUser) {
-      await this.authRepo.pruneExcessSessionsForUser(user.id, MAX_ACTIVE_SESSIONS_PER_USER);
+      const evictedIds = await this.authRepo.pruneExcessSessionsForUser(
+        user.id,
+        MAX_ACTIVE_SESSIONS_PER_USER,
+      );
+      revokedSessionIds.push(...evictedIds);
     }
 
     return {
@@ -143,6 +155,7 @@ export class LoginUseCase {
       },
       sessionId,
       rawSessionToken,
+      revokedSessionIds,
     };
   }
 }
@@ -150,7 +163,7 @@ export class LoginUseCase {
 export class LogoutUseCase {
   constructor(private readonly authRepo: AuthRepository) {}
 
-  async execute(tokenHash: string): Promise<void> {
-    await this.authRepo.deleteSessionByTokenHash(tokenHash);
+  async execute(tokenHash: string): Promise<string | null> {
+    return this.authRepo.deleteSessionByTokenHash(tokenHash);
   }
 }

@@ -125,37 +125,48 @@ export function StockDetailPage() {
     setSyncNotice(null);
     try {
       const quote = await fetchQuoteMutation.mutateAsync(item.ticker);
+      const qf = quote.fundamentals;
+      // Preserve stored extended FQS metrics when an upstream quote omits optional fields
+      const pickOpt = <T,>(val: T | null | undefined, existing: T | null): T | null =>
+        val !== undefined ? val : existing;
+
       await updateMutation.mutateAsync({
         id: item.id,
         payload: {
           currentPrice: quote.currentPrice,
           fundamentals: {
             periodLabel: quote.periodLabel,
-            eps: quote.fundamentals.eps,
-            bvps: quote.fundamentals.bvps,
-            dps: quote.fundamentals.dps,
-            roePct: quote.fundamentals.roePct,
-            der: quote.fundamentals.der,
-            epsGrowthPct: quote.fundamentals.epsGrowthPct,
-            marketCapIdr: quote.fundamentals.marketCapIdr ?? null,
-            adtvIdr: quote.fundamentals.adtvIdr ?? null,
-            roaPct: quote.fundamentals.roaPct ?? null,
-            roicPct: quote.fundamentals.roicPct ?? null,
-            operatingMarginPct: quote.fundamentals.operatingMarginPct ?? null,
-            netMarginPct: quote.fundamentals.netMarginPct ?? null,
-            revenueGrowthPct: quote.fundamentals.revenueGrowthPct ?? null,
-            netIncomeGrowthPct: quote.fundamentals.netIncomeGrowthPct ?? null,
-            currentRatio: quote.fundamentals.currentRatio ?? null,
-            netDebtToEbitda: quote.fundamentals.netDebtToEbitda ?? null,
-            equityToAssetsPct: quote.fundamentals.equityToAssetsPct ?? null,
-            wholesaleDer: quote.fundamentals.wholesaleDer ?? null,
-            cfoToNetIncome: quote.fundamentals.cfoToNetIncome ?? null,
-            fcfMarginPct: quote.fundamentals.fcfMarginPct ?? null,
-            fcfYieldPct: quote.fundamentals.fcfYieldPct ?? null,
-            cfoPositive: quote.fundamentals.cfoPositive ?? null,
-            fcfPositive: quote.fundamentals.fcfPositive ?? null,
-            piotroskiFScore: quote.fundamentals.piotroskiFScore ?? null,
-            altmanZScore: quote.fundamentals.altmanZScore ?? null,
+            eps: qf.eps,
+            bvps: qf.bvps,
+            dps: qf.dps,
+            roePct: qf.roePct,
+            der: qf.der,
+            epsGrowthPct: qf.epsGrowthPct,
+            marketCapIdr: pickOpt(qf.marketCapIdr, item.fundamentals.marketCapIdr),
+            adtvIdr: pickOpt(qf.adtvIdr, item.fundamentals.adtvIdr),
+            roaPct: pickOpt(qf.roaPct, item.fundamentals.roaPct),
+            roicPct: pickOpt(qf.roicPct, item.fundamentals.roicPct),
+            operatingMarginPct: pickOpt(
+              qf.operatingMarginPct,
+              item.fundamentals.operatingMarginPct,
+            ),
+            netMarginPct: pickOpt(qf.netMarginPct, item.fundamentals.netMarginPct),
+            revenueGrowthPct: pickOpt(qf.revenueGrowthPct, item.fundamentals.revenueGrowthPct),
+            netIncomeGrowthPct: pickOpt(
+              qf.netIncomeGrowthPct,
+              item.fundamentals.netIncomeGrowthPct,
+            ),
+            currentRatio: pickOpt(qf.currentRatio, item.fundamentals.currentRatio),
+            netDebtToEbitda: pickOpt(qf.netDebtToEbitda, item.fundamentals.netDebtToEbitda),
+            equityToAssetsPct: pickOpt(qf.equityToAssetsPct, item.fundamentals.equityToAssetsPct),
+            wholesaleDer: pickOpt(qf.wholesaleDer, item.fundamentals.wholesaleDer),
+            cfoToNetIncome: pickOpt(qf.cfoToNetIncome, item.fundamentals.cfoToNetIncome),
+            fcfMarginPct: pickOpt(qf.fcfMarginPct, item.fundamentals.fcfMarginPct),
+            fcfYieldPct: pickOpt(qf.fcfYieldPct, item.fundamentals.fcfYieldPct),
+            cfoPositive: pickOpt(qf.cfoPositive, item.fundamentals.cfoPositive),
+            fcfPositive: pickOpt(qf.fcfPositive, item.fundamentals.fcfPositive),
+            piotroskiFScore: pickOpt(qf.piotroskiFScore, item.fundamentals.piotroskiFScore),
+            altmanZScore: pickOpt(qf.altmanZScore, item.fundamentals.altmanZScore),
           },
         },
       });
@@ -334,6 +345,9 @@ export function StockDetailPage() {
               {item.fundamentals.periodLabel && (
                 <p className="text-xs text-muted">{item.fundamentals.periodLabel}</p>
               )}
+              <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-muted/90">
+                {t.detail.corporateActionNote}
+              </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Badge tone={roeTone(liveValuation.qualityFlags.roeFlag)}>
                   {t.qualityFlags.roe[liveValuation.qualityFlags.roeFlag]}

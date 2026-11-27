@@ -5,6 +5,7 @@ export interface AppBindings {
   STOCK_MATE_KV?: KVNamespace;
   JWT_SECRET?: string;
   CATALOG_SYNC_SECRET?: string;
+  PASSWORD_PEPPER?: string;
 }
 
 export interface AppVariables {

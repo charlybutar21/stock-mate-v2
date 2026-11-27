@@ -12,6 +12,7 @@ import {
   createAuthMiddleware,
   getAccessCookieToken,
   getSessionCookieToken,
+  isSecureRequest,
   isValidSessionTokenFormat,
   setAuthCookies,
 } from '@/server/shared/http/auth-mw';
@@ -38,20 +39,33 @@ export function createAuthRoutes(
   router.post('/register', authRateLimiter, async (c) => {
     const input = await parseJsonBody(c, registerRequestSchema);
     const { authRepo, hasher, revocationStore } = getDeps(c.env.DB);
+    const secure = isSecureRequest(c);
     const priorRawCookie = getSessionCookieToken(c);
     const priorTokenHash = isValidSessionTokenFormat(priorRawCookie)
       ? await hasher.hashToken(priorRawCookie)
       : undefined;
     const priorAccessCookie = getAccessCookieToken(c);
     if (priorAccessCookie) {
-      const priorClaims = await verifyAccessToken(priorAccessCookie, c.env.JWT_SECRET);
+      const priorClaims = await verifyAccessToken(
+        priorAccessCookie,
+        c.env.JWT_SECRET,
+        Date.now(),
+        secure,
+      );
       if (priorClaims) {
         await revocationStore.revoke(priorClaims.sid, c.env.STOCK_MATE_KV);
       }
     }
 
     const useCase = new RegisterUseCase(authRepo, hasher);
-    const { user, sessionId, rawSessionToken } = await useCase.execute(input, priorTokenHash);
+    const { user, sessionId, rawSessionToken, revokedSessionIds } = await useCase.execute(
+      input,
+      priorTokenHash,
+      c.env.PASSWORD_PEPPER,
+    );
+    await Promise.all(
+      revokedSessionIds.map((sid) => revocationStore.revoke(sid, c.env.STOCK_MATE_KV)),
+    );
 
     await setAuthCookies(c, {
       user,
@@ -65,20 +79,33 @@ export function createAuthRoutes(
   router.post('/login', authRateLimiter, async (c) => {
     const input = await parseJsonBody(c, loginRequestSchema);
     const { authRepo, hasher, revocationStore } = getDeps(c.env.DB);
+    const secure = isSecureRequest(c);
     const priorRawCookie = getSessionCookieToken(c);
     const priorTokenHash = isValidSessionTokenFormat(priorRawCookie)
       ? await hasher.hashToken(priorRawCookie)
       : undefined;
     const priorAccessCookie = getAccessCookieToken(c);
     if (priorAccessCookie) {
-      const priorClaims = await verifyAccessToken(priorAccessCookie, c.env.JWT_SECRET);
+      const priorClaims = await verifyAccessToken(
+        priorAccessCookie,
+        c.env.JWT_SECRET,
+        Date.now(),
+        secure,
+      );
       if (priorClaims) {
         await revocationStore.revoke(priorClaims.sid, c.env.STOCK_MATE_KV);
       }
     }
 
     const useCase = new LoginUseCase(authRepo, hasher);
-    const { user, sessionId, rawSessionToken } = await useCase.execute(input, priorTokenHash);
+    const { user, sessionId, rawSessionToken, revokedSessionIds } = await useCase.execute(
+      input,
+      priorTokenHash,
+      c.env.PASSWORD_PEPPER,
+    );
+    await Promise.all(
+      revokedSessionIds.map((sid) => revocationStore.revoke(sid, c.env.STOCK_MATE_KV)),
+    );
 
     await setAuthCookies(c, {
       user,
@@ -91,11 +118,21 @@ export function createAuthRoutes(
 
   router.post('/logout', async (c) => {
     const { authRepo, hasher, revocationStore } = getDeps(c.env.DB);
+    const secure = isSecureRequest(c);
     const rawAccessCookie = getAccessCookieToken(c);
     if (rawAccessCookie) {
-      const claims = await verifyAccessToken(rawAccessCookie, c.env.JWT_SECRET);
-      if (claims) {
-        await revocationStore.revoke(claims.sid, c.env.STOCK_MATE_KV);
+      try {
+        const claims = await verifyAccessToken(
+          rawAccessCookie,
+          c.env.JWT_SECRET,
+          Date.now(),
+          secure,
+        );
+        if (claims) {
+          await revocationStore.revoke(claims.sid, c.env.STOCK_MATE_KV);
+        }
+      } catch {
+        // Still proceed to revoke D1 session & clear cookies
       }
     }
 
@@ -103,7 +140,10 @@ export function createAuthRoutes(
     if (isValidSessionTokenFormat(rawSessionCookie)) {
       const tokenHash = await hasher.hashToken(rawSessionCookie);
       const useCase = new LogoutUseCase(authRepo);
-      await useCase.execute(tokenHash);
+      const deletedSessionId = await useCase.execute(tokenHash);
+      if (deletedSessionId) {
+        await revocationStore.revoke(deletedSessionId, c.env.STOCK_MATE_KV);
+      }
     }
 
     clearAuthCookies(c);

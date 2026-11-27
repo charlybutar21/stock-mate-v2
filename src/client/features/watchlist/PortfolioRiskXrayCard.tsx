@@ -288,23 +288,26 @@ export function PortfolioRiskXrayCard({ risk }: PortfolioRiskXrayCardProps) {
 
       {/* Slim Single-Line Alert Strip */}
       {hasAlerts && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning-600/25 bg-warning-50/70 px-3 py-1.5 text-[11px] text-warning-700">
-          <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
-          <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-            {risk.alerts.map((alert) => (
-              <span key={`${alert.code}-${alert.target}`} className="font-medium">
-                <strong className="font-mono">
-                  {alert.code === 'SECTOR_CONCENTRATION'
-                    ? t.sectors[alert.target as keyof typeof t.sectors]
-                    : alert.target}
-                </strong>{' '}
-                ({formatPercent(alert.weightPct)}){' '}
-                {alert.code === 'SINGLE_STOCK_CONCENTRATION'
-                  ? t.watchlist.xray.singleStockAlert
-                  : t.watchlist.xray.sectorAlert}
-              </span>
-            ))}
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning-600/25 bg-warning-50/70 px-3 py-1.5 text-[11px] text-warning-700">
+            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+              {risk.alerts.map((alert) => (
+                <span key={`${alert.code}-${alert.target}`} className="font-medium">
+                  <strong className="font-mono">
+                    {alert.code === 'SECTOR_CONCENTRATION'
+                      ? t.sectors[alert.target as keyof typeof t.sectors]
+                      : alert.target}
+                  </strong>{' '}
+                  ({formatPercent(alert.weightPct)}){' '}
+                  {alert.code === 'SINGLE_STOCK_CONCENTRATION'
+                    ? t.watchlist.xray.singleStockAlert
+                    : t.watchlist.xray.sectorAlert}
+                </span>
+              ))}
+            </div>
           </div>
+          <p className="text-[11px] text-muted">{t.watchlist.xray.retailNote}</p>
         </div>
       )}
 

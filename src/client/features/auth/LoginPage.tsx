@@ -138,6 +138,15 @@ export function LoginPage() {
       <p className="mt-5 max-w-md text-center text-[11px] leading-relaxed text-muted">
         {t.common.disclaimer}
       </p>
+      <div className="mt-2 flex items-center justify-center gap-3 text-[11px] text-muted">
+        <Link to="/terms" className="font-medium hover:text-brand-700 hover:underline">
+          {t.common.termsLink}
+        </Link>
+        <span aria-hidden="true">·</span>
+        <Link to="/privacy" className="font-medium hover:text-brand-700 hover:underline">
+          {t.common.privacyLink}
+        </Link>
+      </div>
     </div>
   );
 }

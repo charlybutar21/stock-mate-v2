@@ -58,7 +58,13 @@ export async function setAuthCookies(
     maxAge: params.sessionTtlSeconds,
   });
 
-  const accessJwt = await signAccessToken(params.user, params.sessionId, c.env.JWT_SECRET);
+  const accessJwt = await signAccessToken(
+    params.user,
+    params.sessionId,
+    c.env.JWT_SECRET,
+    Date.now(),
+    secure,
+  );
   setCookie(c, accessName, accessJwt, {
     httpOnly: true,
     secure,
@@ -96,9 +102,10 @@ export function createAuthMiddleware(
     const rawSessionToken = getSessionCookieToken(c);
 
     // Fast path: verify short-lived signed access cookie with ZERO D1 queries
+    const secure = isSecureRequest(c);
     const rawAccessToken = getAccessCookieToken(c);
     if (rawAccessToken) {
-      const claims = await verifyAccessToken(rawAccessToken, c.env.JWT_SECRET);
+      const claims = await verifyAccessToken(rawAccessToken, c.env.JWT_SECRET, Date.now(), secure);
       if (claims) {
         const revoked = await revocationStore.isRevoked(claims.sid, c.env.STOCK_MATE_KV);
         if (!revoked) {
@@ -113,7 +120,7 @@ export function createAuthMiddleware(
       }
     }
 
-    // Fallback / Refresh path: validate revocable session token in D1 and re-issue 15m access cookie
+    // Fallback / Refresh path: validate revocable session token in D1 and re-issue short-lived access cookie
     if (!isValidSessionTokenFormat(rawSessionToken)) {
       throw unauthorizedError('Authentication required.');
     }
@@ -129,9 +136,14 @@ export function createAuthMiddleware(
     c.set('sessionTokenHash', tokenHash);
 
     // Re-issue short-lived stateless access cookie so subsequent reads skip D1
-    const secure = isSecureRequest(c);
     const accessName = secure ? HOST_ACCESS_COOKIE_NAME : ACCESS_COOKIE_NAME;
-    const accessJwt = await signAccessToken(session.user, session.sessionId, c.env.JWT_SECRET);
+    const accessJwt = await signAccessToken(
+      session.user,
+      session.sessionId,
+      c.env.JWT_SECRET,
+      Date.now(),
+      secure,
+    );
     setCookie(c, accessName, accessJwt, {
       httpOnly: true,
       secure,

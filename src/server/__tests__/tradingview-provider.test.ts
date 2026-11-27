@@ -35,7 +35,7 @@ describe('TradingViewIdxProvider parser', () => {
       wholesaleDer: 0.02,
       epsGrowthPct: 4.11,
       targetPer: 15,
-      targetPbv: 2.5,
+      targetPbv: 2.53, // Gordon Growth Justified P/B: (21.2047 - 6) / 6 = 2.53
     });
   });
 
@@ -248,5 +248,34 @@ describe('TradingViewIdxProvider parser', () => {
     const dmas = parseTradingViewRowToDto({ s: 'IDX:DMAS', d: dmasRow });
     expect(dmas!.sector).toBe('PROPERTY_REAL_ESTATE');
     expect(dmas!.fundamentals.der).toBe(0.05);
+  });
+
+  it('guards against malformed short rows and unconverted USD commodity fundamentals (e.g. ITMG)', () => {
+    expect(parseTradingViewRowToDto({ s: 'IDX:BAD', d: ['BAD', 'Broken', 100] })).toBeNull();
+
+    // Unconverted USD per-share figures alongside IDR close price (P/E = 10,000x, P/B = 2,083x, ROE = 20.8%)
+    const usdCorruptedItmg = parseTradingViewRowToDto({
+      s: 'IDX:ITMG',
+      d: [
+        'ITMG',
+        'PT Indo Tambangraya Megah Tbk',
+        25000,
+        'Energy Minerals',
+        2.5, // USD instead of IDR ~40,000
+        12.0, // USD instead of IDR ~190,000
+        1.8, // USD dividend
+        20.8,
+        0.22,
+        -10.5,
+      ],
+    });
+    expect(usdCorruptedItmg).not.toBeNull();
+    expect(usdCorruptedItmg!.fundamentals.eps).toBeNull();
+    expect(usdCorruptedItmg!.fundamentals.bvps).toBeNull();
+    expect(usdCorruptedItmg!.fundamentals.dps).toBeNull();
+    // Currency-invariant ratios remain intact
+    expect(usdCorruptedItmg!.fundamentals.roePct).toBe(20.8);
+    expect(usdCorruptedItmg!.fundamentals.der).toBe(0.22);
+    expect(usdCorruptedItmg!.fundamentals.epsGrowthPct).toBe(-10.5);
   });
 });

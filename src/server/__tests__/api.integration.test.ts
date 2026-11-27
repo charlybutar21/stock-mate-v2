@@ -1488,7 +1488,8 @@ describe('Stock-Mate v2 API Integration', () => {
     );
     expect(headerlessCsrf.status).toBe(403);
 
-    // 3. Max 5 active sessions cap on repeated logins
+    // 3. Max 5 active sessions cap on repeated logins + immediate JWT revocation of evicted sessions (SEC-02)
+    let latestCookies = allCookies;
     for (let i = 0; i < 6; i++) {
       const loginAttempt = await app.request(
         'http://localhost/api/v1/auth/login',
@@ -1500,26 +1501,65 @@ describe('Stock-Mate v2 API Integration', () => {
         { DB: d1 },
       );
       expect(loginAttempt.status).toBe(200);
+      latestCookies = extractAllAuthCookies(loginAttempt);
     }
     const sessionCountRow = sqlite.prepare('SELECT COUNT(*) as cnt FROM sessions').get() as {
       cnt: number;
     };
     expect(sessionCountRow.cnt).toBeLessThanOrEqual(5);
 
+    // Evicted Session #1 access token MUST be rejected immediately (not valid until TTL expiry)
+    const evictedMe = await app.request(
+      'http://localhost/api/v1/auth/me',
+      { headers: { Cookie: allCookies } },
+      { DB: d1 },
+    );
+    expect(evictedMe.status).toBe(401);
+
     // 4. CATALOG_SYNC_SECRET restricts user-triggered global sync (403 without secret, 200 with secret)
     const deniedSync = await app.request(
       'http://localhost/api/v1/watchlist/catalog/sync',
-      { method: 'POST', headers: { Cookie: allCookies, ...CSRF_OK } },
+      { method: 'POST', headers: { Cookie: latestCookies, ...CSRF_OK } },
       { DB: d1, CATALOG_SYNC_SECRET: 'super-secret-cron-token' },
     );
     expect(deniedSync.status).toBe(403);
+
+    // Fail-closed in HTTPS/production when CATALOG_SYNC_SECRET is unset
+    const httpsDeniedSync = await app.request(
+      'https://stock-mate.example.com/api/v1/watchlist/catalog/sync',
+      {
+        method: 'POST',
+        headers: {
+          Cookie: latestCookies,
+          Origin: 'https://stock-mate.example.com',
+          'X-Requested-With': 'StockMate',
+        },
+      },
+      { DB: d1, JWT_SECRET: '0123456789abcdef0123456789abcdef' },
+    );
+    expect(httpsDeniedSync.status).toBe(403);
+
+    // Fail-closed in HTTPS/production when JWT_SECRET is missing (SEC-01)
+    const httpsNoJwtSecret = await app.request(
+      'https://stock-mate.example.com/api/v1/auth/login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'https://stock-mate.example.com',
+        },
+        body: JSON.stringify({ email: 'p0@example.com', password: 'Password123' }),
+      },
+      { DB: d1 },
+    );
+    expect(httpsNoJwtSecret.status).toBe(500);
 
     const allowedSync = await app.request(
       'http://localhost/api/v1/watchlist/catalog/sync',
       {
         method: 'POST',
         headers: {
-          Cookie: allCookies,
+          Cookie: latestCookies,
           Authorization: 'Bearer super-secret-cron-token',
           ...CSRF_OK,
         },

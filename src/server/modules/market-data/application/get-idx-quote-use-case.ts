@@ -6,12 +6,16 @@ import {
   fromX100,
 } from '@/server/modules/watchlist/application/watchlist-use-cases';
 import {
+  computeBankJustifiedPbv,
   SECTOR_BENCHMARK_MULTIPLES,
   type IdxMarketDataProvider,
 } from '../domain/market-data.types';
 
 export function mapIdxStockRecordToQuoteDto(stock: IdxStockRecord): IdxMarketQuoteDto {
   const benchmarks = SECTOR_BENCHMARK_MULTIPLES[stock.sector];
+  const roePct = fromBps(stock.roeBps);
+  const fallbackTargetPbv =
+    stock.sector === 'FINANCIALS' ? computeBankJustifiedPbv(roePct) : benchmarks.targetPbv;
   return {
     ticker: stock.ticker,
     companyName: stock.companyName,
@@ -25,11 +29,11 @@ export function mapIdxStockRecordToQuoteDto(stock: IdxStockRecord): IdxMarketQuo
       eps: stock.eps,
       bvps: stock.bvps,
       dps: stock.dps,
-      roePct: fromBps(stock.roeBps),
+      roePct,
       der: fromX100(stock.derX100),
       epsGrowthPct: fromBps(stock.epsGrowthBps),
       targetPer: fromX100(stock.targetPerX100) ?? benchmarks.targetPer,
-      targetPbv: fromX100(stock.targetPbvX100) ?? benchmarks.targetPbv,
+      targetPbv: fromX100(stock.targetPbvX100) ?? fallbackTargetPbv,
       marketCapIdr: stock.marketCapIdr,
       adtvIdr: stock.adtvIdr,
       roaPct: fromBps(stock.roaBps),

@@ -2,7 +2,7 @@ import type { CatalogSummaryDto, MarketStockDto } from '@/shared/contracts';
 import type { IdxStockRecord } from '../domain/watchlist.types';
 import { mapIdxStockToMarketDto } from '../application/watchlist-catalog-use-cases';
 
-export const CATALOG_SNAPSHOT_KV_KEY = 'catalog:v3:latest';
+export const CATALOG_SNAPSHOT_KV_KEY = 'catalog:v4:latest';
 const CATALOG_SNAPSHOT_KV_TTL_SECONDS = 12 * 60 * 60; // 12 hours
 const ISOLATE_SNAPSHOT_TTL_MS = 30_000; // 30s hot in-isolate cache
 

@@ -37,7 +37,7 @@ export const id: I18nDictionary = {
     stepDown: 'Turun 1 fraksi harga',
     stepUp: 'Naik 1 fraksi harga',
     disclaimer:
-      'Alat bantu edukasi & analisis mandiri — bukan saran investasi atau rekomendasi beli/jual saham.',
+      'Alat bantu edukasi & analisis mandiri — bukan Penasihat Investasi berizin OJK atau rekomendasi beli/jual saham (UU Pasar Modal / UU P2SK).',
     cappedBadge: 'Dibatasi',
     filterTag: 'Filter',
     activeTag: 'Aktif',
@@ -45,7 +45,10 @@ export const id: I18nDictionary = {
     openLabel: 'Buka',
     todayChangeLabel: 'Hari Ini',
     fairValueShort: 'Wajar',
-    autoSyncBadge: 'Auto-sync 5 mnt',
+    autoSyncBadge: 'Auto-sync 5 mnt (BEI)',
+    skipToContent: 'Langsung ke konten utama',
+    termsLink: 'Ketentuan & Disclaimer',
+    privacyLink: 'Kebijakan Privasi',
   },
   glossary: {
     marginOfSafety:
@@ -80,11 +83,13 @@ export const id: I18nDictionary = {
     relativePbv:
       'Menghitung harga wajar dengan mengalikan nilai aset bersih per saham dengan target kelipatan nilai buku. Paling cocok untuk menilai saham bank.',
     simpleDcf:
-      'Memperkirakan total laba yang bisa dihasilkan perusahaan selama 5 tahun ke depan ditambah nilai jangka panjangnya, lalu dihitung nilainya dalam uang hari ini sesuai target keuntungan Anda.',
+      'Memperkirakan laba pemilik yang disesuaikan dengan kebutuhan reinvestasi (owner earnings) selama 5 tahun ke depan ditambah nilai jangka panjang, lalu didiskonto ke nilai hari ini. Dinonaktifkan untuk saham perbankan karena rasio PBV adalah acuan utama.',
     pureAvg:
       'Harga beli rata-rata dari seluruh saham yang sudah dimiliki dan yang direncanakan untuk dibeli, sebelum ditambah biaya transaksi sekuritas.',
     effectiveAvg:
       'Modal rata-rata sebenarnya per lembar saham setelah memasukkan biaya beli sekuritas dan Bea Materai (jika berlaku).',
+    existingAvgIncludesBuyFee:
+      'Aktifkan jika Harga Rata-Rata posisi saat ini disalin dari aplikasi sekuritas (seperti Stockbit/Ajaib) yang sudah memasukkan biaya beli 0,15%, agar biaya beli tidak terhitung dua kali.',
     realBepTick:
       'Harga jual terendah di bursa (sudah mengikuti kelipatan fraksi harga resmi) agar hasil jual bersih bisa balik modal penuh setelah dipotong biaya beli dan biaya jual.',
     netPnL:
@@ -150,6 +155,9 @@ export const id: I18nDictionary = {
     goLogin: 'Masuk di sini',
     showPassword: 'Lihat kata sandi',
     hidePassword: 'Sembunyikan kata sandi',
+    acceptTermsPrefix: 'Saya telah membaca dan menyetujui',
+    acceptTermsAnd: 'serta',
+    acceptTermsSuffix: ', dan memahami Stock-Mate adalah alat edukasi non-advisory.',
     errors: {
       invalidEmail: 'Masukkan alamat email yang valid.',
       nameTooShort: 'Nama minimal 2 karakter.',
@@ -157,6 +165,7 @@ export const id: I18nDictionary = {
       passwordMin: 'Kata sandi minimal 8 karakter.',
       passwordLetter: 'Kata sandi harus mengandung minimal 1 huruf.',
       passwordDigit: 'Kata sandi harus mengandung minimal 1 angka.',
+      termsRequired: 'Centang persetujuan Ketentuan & Kebijakan Privasi untuk melanjutkan.',
     },
   },
   sectors: {
@@ -212,9 +221,9 @@ export const id: I18nDictionary = {
       CYCLICAL_PEAK_WARNING:
         'Waspada Siklus Komoditas: Rasio Harga/Laba yang rendah atau Margin of Safety besar di sektor Energi atau Barang Baku sering muncul saat puncak siklus komoditas sementara.',
       SHRINKING_EARNINGS_TRAP:
-        'Laba Menyusut: Terlihat murah secara Margin of Safety atau Rasio Harga/Nilai Buku (di bawah 1,0x), tetapi pertumbuhan laba tahunan sedang negatif atau merugi.',
+        'Laba Menyusut: Terlihat murah secara Margin of Safety atau Rasio Harga/Nilai Buku (di bawah 1,0x), tetapi laba tahunan menyusut tajam (≤ -15%) atau merugi.',
       LOW_ROE_VALUE_TRAP:
-        'Profitabilitas Rendah: Meski diskon Margin of Safety di atas 15%, Imbal Hasil Ekuitas masih di bawah 8%.',
+        'Profitabilitas Rendah: Meski diskon Margin of Safety di atas 15%, Imbal Hasil Ekuitas di bawah batas kualitas sektornya (< 5% Properti, < 8% sektor lain).',
       HIGH_LEVERAGE_TRAP:
         'Risiko Utang Tinggi: Terlihat murah secara rasio harga, namun Rasio Utang terhadap Ekuitas non-bank melebihi 1,5x.',
     },
@@ -227,7 +236,7 @@ export const id: I18nDictionary = {
   methodDescriptions: {
     relativePer: 'Laba per Saham × Target Rasio Harga/Laba',
     relativePbv: 'Nilai Buku per Saham × Target Rasio Nilai Buku',
-    simpleDcf: 'Proyeksi Laba 5 Tahun + Nilai Jangka Panjang',
+    simpleDcf: 'Proyeksi Laba Pemilik (Adjusted Reinvestment) 5 Tahun + Nilai Terminal',
   },
   methodReasons: {
     REQUIRES_POSITIVE_EPS_AND_TARGET_PER:
@@ -235,7 +244,9 @@ export const id: I18nDictionary = {
     REQUIRES_POSITIVE_BVPS_AND_TARGET_PBV:
       'Memerlukan Nilai Buku per Saham positif dan Target Rasio Nilai Buku.',
     REQUIRES_POSITIVE_EPS_AND_VALID_DCF_RATES:
-      'Memerlukan Laba per Saham positif, Pertumbuhan Laba Tahunan, dan Target Imbal Hasil di atas 4%.',
+      'Memerlukan Laba per Saham positif, pertumbuhan laba tidak anjlok (> -25%), dan Target Imbal Hasil di atas 4%.',
+    NOT_APPLICABLE_FOR_BANKING:
+      'Tidak digunakan untuk Perbankan & Keuangan — simpanan nasabah mendistorsi arus kas operasi; gunakan PBV dan PER sebagai acuan.',
   },
   watchlist: {
     title: 'Watchlist',
@@ -301,6 +312,8 @@ export const id: I18nDictionary = {
       singleStockAlert: 'melebihi batas 25% per emiten',
       sectorAlert: 'melebihi batas 40% per sektor',
       singleHoldingNote: 'Tambahkan saham lain untuk mengevaluasi batas konsentrasi.',
+      retailNote:
+        'Panduan umum saja (25% per saham / 40% per sektor). Portofolio terkonsentrasi (< 4 saham) atau fokus bank blue-chip IHSG dapat secara sadar melampaui batas ini.',
       othersLabel: 'Lainnya',
       showAll: 'Lihat semua',
       showCompact: 'Ringkas',
@@ -501,6 +514,8 @@ export const id: I18nDictionary = {
     sectionPositionSub: 'Ubah catatan beli di bawah untuk menghitung ulang modal dan laba/rugi.',
     sectionCoreMethods: 'Rincian Harga Wajar & Uji Asumsi',
     sectionCoreMethodsSub: 'Bandingkan tiap metode valuasi dan simulasikan patokan Anda.',
+    corporateActionNote:
+      'Data pasar pihak ketiga bersifat tertunda (TTM/FY). Sesuaikan lot & harga rata-rata secara manual bila terjadi aksi korporasi (stock split, reverse split, atau right issue).',
   },
   simulator: {
     title: 'Simulator Beli & Jual',
@@ -527,6 +542,7 @@ export const id: I18nDictionary = {
     buyFeePct: 'Biaya Beli (%)',
     sellFeePct: 'Biaya Jual (%)',
     includeStampDuty: 'Sertakan Bea Materai Rp10.000 (transaksi di atas Rp10.000.000)',
+    existingAvgIncludesBuyFee: 'Harga rata-rata lama sudah termasuk biaya beli (Mode Broker/Stockbit)',
     existingPosition: 'Posisi Saat Ini',
     existingLots: 'Lot Dimiliki',
     existingAvgPrice: 'Harga Rata-Rata (Rp)',
@@ -590,6 +606,7 @@ export const id: I18nDictionary = {
       idleCash: 'Sisa Kas',
       resultingBep: 'Harga Impas Akhir',
       projectedNetPnL: 'Estimasi Laba / Rugi Bersih',
+      stampDutyRow: 'Bea Materai (Beli > Rp10 Jt)',
     },
     takeProfit: {
       title: 'Tangga Take-Profit',
@@ -758,5 +775,35 @@ export const id: I18nDictionary = {
     sectionQualitySub:
       'Penilaian transparan 4 pilar: Profitabilitas, Pertumbuhan, Kesehatan Keuangan, dan Kualitas Arus Kas.',
     secondarySignalsTitle: 'Likuiditas & Validasi Institusional',
+  },
+  legal: {
+    backToApp: 'Kembali ke Stock-Mate',
+    lastUpdated: 'Berlaku sejak: 2026',
+    termsTitle: 'Ketentuan Penggunaan & Disclaimer Investasi',
+    termsSubtitle: 'Pengungkapan regulasi dan risiko penting untuk analisis mandiri pasar modal Indonesia (BEI).',
+    termsSections: {
+      nonAdvisoryTitle: '1. Tujuan Edukasi & Non-Advisory (UU Pasar Modal / UU P2SK)',
+      nonAdvisoryBody:
+        'Stock-Mate adalah perangkat lunak kalkulator dan ruang riset edukatif independen. Stock-Mate BUKAN Penasihat Investasi berizin, Perantara Pedagang Efek (Sekuritas), maupun Manajer Investasi yang diawasi Otoritas Jasa Keuangan (OJK). Seluruh estimasi Harga Wajar, Margin of Safety, Fundamental Quality Score (FQS), peringatan Value Trap, dan hasil simulasi bersifat model matematis untuk pembelajaran mandiri dan bukan merupakan penawaran atau rekomendasi beli/jual/tahan efek.',
+      dataAccuracyTitle: '2. Keterlambatan Data Pasar & Aksi Korporasi',
+      dataAccuracyBody:
+        'Harga pasar dan data keuangan bersumber dari penyedia pihak ketiga secara tertunda (best-effort). Data dapat mengalami perbedaan mata uang pelaporan (misalnya emiten BEI berpelaporan USD) atau jeda penyesuaian setelah aksi korporasi (stock split, reverse split, right issue, atau dividen). Selalu verifikasi laporan keuangan resmi melalui BEI (idx.co.id) dan KSEI sebelum bertransaksi.',
+      userResponsibilityTitle: '3. Tanggung Jawab Penuh Pengguna',
+      userResponsibilityBody:
+        'Investasi saham mengandung risiko penurunan nilai hingga kerugian modal. Anda bertanggung jawab penuh secara pribadi atas setiap keputusan investasi, kewajiban pajak, biaya sekuritas, dan eksekusi order di akun efek Anda.',
+    },
+    privacyTitle: 'Kebijakan Privasi (Kepatuhan UU PDP)',
+    privacySubtitle: 'Bagaimana Stock-Mate mengumpulkan, melindungi, dan mengelola data pribadi Anda sesuai UU No. 27 Tahun 2022 (UU PDP).',
+    privacySections: {
+      dataCollectedTitle: '1. Data yang Dikumpulkan (Minimisasi Data)',
+      dataCollectedBody:
+        'Kami hanya mengumpulkan data minimum yang dibutuhkan untuk mengoperasikan ruang kerja pribadi Anda: nama lengkap, alamat email, hash kata sandi terenkripsi dengan salt (PBKDF2-SHA256 — kami tidak pernah menyimpan kata sandi polos), serta daftar watchlist, kepemilikan lot, dan catatan valuasi yang Anda masukkan sendiri.',
+      storageSecurityTitle: '2. Penyimpanan, Cookie & Keamanan',
+      storageSecurityBody:
+        'Data disimpan pada infrastruktur Cloudflare D1/KV dan dikirimkan sepenuhnya melalui HTTPS/TLS. Autentikasi menggunakan cookie HttpOnly, Secure, SameSite=Lax — token sesi tidak pernah disimpan di localStorage browser. Data pribadi Anda tidak pernah dijual atau dibagikan ke pihak pengiklan.',
+      userRightsTitle: '3. Hak Anda Berdasarkan UU PDP',
+      userRightsBody:
+        'Sesuai Undang-Undang Pelindungan Data Pribadi (UU No. 27/2022), Anda berhak mengakses, memperbarui, mengoreksi, atau meminta penghapusan data pribadi dan catatan watchlist Anda, serta menarik persetujuan dengan menutup akun.',
+    },
   },
 };

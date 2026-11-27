@@ -64,6 +64,77 @@ describe('simulator engine', () => {
     expect(withStamp.netPnL).toBe(1_887_000);
     expect(withStamp.netPnLPct).toBe(8.56);
     expect(withStamp.guardrails.isAboveFairValue).toBe(false);
+
+    // FIN-01: Bea Materai Rp 10M cliff — ceilToIdxTick pushes gross proceeds over Rp 10M,
+    // so computeBepIdxTick must step up 1 extra tick to guarantee netProceeds >= totalCost (zero loss).
+    const stampCliff = simulateForwardAverageDown({
+      existingLots: 0,
+      existingAvgPrice: 0,
+      plannedTranches: [{ lots: 100, buyPrice: 997 }], // gross = 9,970,000 + buyFee 14,955 = 9,984,955
+      targetSellPrice: 1010,
+      buyFeePct: 0.15,
+      sellFeePct: 0.25,
+      includeStampDuty: true,
+    });
+    expect(stampCliff.valid).toBe(true);
+    if (stampCliff.valid) {
+      // Raw BEP = 9,984,955 / (10,000 * 0.9975) = 1000.998 -> ceilToIdxTick = 1005 (gross 10,050,000 > 10M)
+      // At 1005: 10,050,000 - 25,125 - 10,000 = 10,014,875 >= 9,984,955.
+      // Tighter cliff: 500 lots @ 199 (gross 9,950,000, cost 9,964,925, raw BEP 199.80 -> ceil 200 -> 10,000,000 ok)
+      // Exact cliff: 100 lots @ 998 -> cost 9,994,970, raw BEP = 1002.002 -> ceil = 1005 -> net 10,014,875
+      // Ultra-tight cliff: 100 lots @ 1000 (gross 10,000,000 -> cost 10,015,000 -> raw BEP 1004.01 -> ceil 1005 -> net 10,014,875 < 10,015,000!)
+      expect(stampCliff.bepIdxTick).toBe(1005);
+    }
+
+    const exactStampCliff = simulateForwardAverageDown({
+      existingLots: 11,
+      existingAvgPrice: 9054.58, // gross = 9,960,038, buyFee = 14,940 -> totalCost = 9,974,978
+      plannedTranches: [],
+      targetSellPrice: 9125,
+      buyFeePct: 0.15,
+      sellFeePct: 0.25,
+      includeStampDuty: true,
+    });
+    expect(exactStampCliff.valid).toBe(true);
+    if (exactStampCliff.valid) {
+      // Raw BEP = 9090.89 (gross at raw BEP = 9,999,978 <= 10M, so raw BEP excludes stamp duty).
+      // ceilToIdxTick(9090.89) = 9100 -> gross = 10,010,000 > 10M -> triggers Rp 10,000 stamp duty ->
+      // netProceeds = 9,974,975 < totalCost (9,974,978)! computeBepIdxTick must step up to 9125.
+      expect(exactStampCliff.bepIdxTick).toBe(9125);
+      const grossAtBep = exactStampCliff.totalShares * exactStampCliff.bepIdxTick;
+      const netAtBep = grossAtBep - Math.round(grossAtBep * 0.0025) - 10_000;
+      expect(netAtBep).toBeGreaterThanOrEqual(exactStampCliff.totalCost);
+    }
+
+    // FIN-02: existingAvgIncludesBuyFee=true does not double-count buy fee on existing lots
+    const brokerAvgSim = simulateForwardAverageDown({
+      ...baseInput,
+      existingAvgIncludesBuyFee: true,
+      includeStampDuty: false,
+    });
+    expect(brokerAvgSim.valid).toBe(true);
+    if (brokerAvgSim.valid) {
+      expect(brokerAvgSim.plannedBuyFee).toBe(18_000);
+      expect(brokerAvgSim.totalBuyFee).toBe(18_000); // only planned tranche charged buy fee
+      expect(brokerAvgSim.totalCost).toBe(22_018_000);
+    }
+
+    // FIN-04: Decimal FCA prices produce integer Rupiah outputs with zero IEEE-754 float drift
+    const decimalFca = simulateForwardAverageDown({
+      existingLots: 1,
+      existingAvgPrice: 1.15,
+      plannedTranches: [{ lots: 1, buyPrice: 1.15 }],
+      targetSellPrice: 1.15,
+      buyFeePct: 0.15,
+      sellFeePct: 0.25,
+    });
+    expect(decimalFca.valid).toBe(true);
+    if (decimalFca.valid) {
+      expect(Number.isInteger(decimalFca.existingGross)).toBe(true);
+      expect(Number.isInteger(decimalFca.plannedGross)).toBe(true);
+      expect(Number.isInteger(decimalFca.grossSell)).toBe(true);
+      expect(decimalFca.existingGross).toBe(115);
+    }
   });
 
   it('matches Golden Case 4 — Goal-Seek Calculator (without & with Bea Materai)', () => {
@@ -446,6 +517,7 @@ describe('simulator engine', () => {
     });
     expect(planWithStamp.valid).toBe(true);
     if (planWithStamp.valid) {
+      expect(planWithStamp.stampDutyBuy).toBe(10_000);
       expect(planWithStamp.simulation.stampDutyBuy).toBe(10_000);
       expect(planWithStamp.totalCashUsed).toBe(planWithStamp.simulation.plannedCashRequired);
       expect(planWithStamp.totalCashUsed).toBeLessThanOrEqual(20_000_000);
@@ -578,6 +650,37 @@ describe('simulator engine', () => {
       expect(fullExit.remainingEffectiveCostPerShare).toBe(0);
       expect(fullExit.isFreeRidePosition).toBe(false);
       expect(fullExit.rungs[0]?.stampDuty).toBe(10_000);
+    }
+
+    // Full exit across 3 rungs with non-divisible buy fee -> exact last-rung remainder reconciliation
+    const fullMultiRung = simulateTakeProfitLadder({
+      totalOwnedLots: 3,
+      avgBuyPrice: 3333, // gross = 999,900, buyFee = 1,500 (exact)
+      rungs: [
+        { lotsToSell: 1, targetSellPrice: 3600 },
+        { lotsToSell: 1, targetSellPrice: 3800 },
+        { lotsToSell: 1, targetSellPrice: 4000 },
+      ],
+      buyFeePct: 0.15,
+      sellFeePct: 0.25,
+    });
+    expect(fullMultiRung.valid).toBe(true);
+    if (fullMultiRung.valid) {
+      const sumAllocated = fullMultiRung.rungs.reduce((s, r) => s + r.allocatedCostBasis, 0);
+      expect(sumAllocated).toBe(fullMultiRung.totalInitialCostBasis);
+    }
+
+    // existingAvgIncludesBuyFee=true in Take-Profit Ladder skips double-counting buy fee
+    const brokerTp = simulateTakeProfitLadder({
+      totalOwnedLots: 10,
+      avgBuyPrice: 5000,
+      rungs: [{ lotsToSell: 10, targetSellPrice: 5500 }],
+      existingAvgIncludesBuyFee: true,
+    });
+    expect(brokerTp.valid).toBe(true);
+    if (brokerTp.valid) {
+      expect(brokerTp.totalInitialCostBasis).toBe(5_000_000);
+      expect(brokerTp.totalAllocatedCostBasis).toBe(5_000_000);
     }
 
     // Validation error branches

@@ -122,7 +122,6 @@ export interface IdxCatalogRepository {
   findByTicker(ticker: string): Promise<IdxStockRecord | null>;
   findByTickers(tickers: string[]): Promise<IdxStockRecord[]>;
   getLatestSyncedAt(): Promise<number | null>;
-  hasQualityMetrics(): Promise<boolean>;
   upsertMany(stocks: IdxStockRecord[], pruneBeforeMs?: number): Promise<void>;
   upsertOne(stock: IdxStockRecord): Promise<void>;
 }
