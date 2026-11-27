@@ -101,6 +101,9 @@ export interface IdxStockRecord extends QualityMetricColumnsRecord {
   companyName: string;
   sector: IdxSector;
   currentPrice: number;
+  openPrice: number | null;
+  dailyChange: number | null;
+  dailyChangeBps: number | null;
   periodLabel: string | null;
   eps: number | null;
   bvps: number | null;

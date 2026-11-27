@@ -335,6 +335,9 @@ export interface WatchlistItemDto {
   companyName: string;
   sector: IdxSector;
   currentPrice: number;
+  openPrice: number | null;
+  dailyChange: number | null;
+  dailyChangePct: number | null;
   ownedLots: number;
   avgBuyPrice: number | null;
   holdingTranches: HoldingTrancheDto[];
@@ -355,6 +358,9 @@ export interface MarketStockDto {
   companyName: string;
   sector: IdxSector;
   currentPrice: number;
+  openPrice: number | null;
+  dailyChange: number | null;
+  dailyChangePct: number | null;
   ownedLots: number;
   avgBuyPrice: number | null;
   holdingTranches: HoldingTrancheDto[];

@@ -17,6 +17,7 @@ import {
   DEFAULT_SELL_FEE_PCT,
   type IdxSector,
 } from '@/shared/domain';
+import { IntradayPriceCell } from '@/client/components/ui/IntradayPriceCell';
 import { Badge, cn, TermTooltip } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
@@ -120,14 +121,15 @@ export function MarketStockTable({
                   </button>
                 </div>
 
-                <div className="shrink-0 text-right font-mono tabular-nums">
-                  <div className="text-base font-bold text-ink">{formatIdr(item.currentPrice)}</div>
-                  <div className="mt-0.5 text-[11px] text-muted">
-                    {t.watchlist.colFairValue}:{' '}
-                    <span className="font-semibold text-ink">
-                      {formatIdr(item.valuation.fairValue.moderate)}
-                    </span>
-                  </div>
+                <div className="shrink-0">
+                  <IntradayPriceCell
+                    currentPrice={item.currentPrice}
+                    openPrice={item.openPrice}
+                    dailyChange={item.dailyChange}
+                    dailyChangePct={item.dailyChangePct}
+                    size="md"
+                    fairValueModerate={item.valuation.fairValue.moderate}
+                  />
                 </div>
               </div>
 
@@ -296,11 +298,11 @@ export function MarketStockTable({
 
       {/* Desktop High-Density Table */}
       <div className="hidden w-full overflow-x-auto md:block">
-        <table className="w-full min-w-[920px] table-fixed border-collapse text-left text-sm">
+        <table className="w-full min-w-[940px] table-fixed border-collapse text-left text-sm">
           <colgroup>
-            <col className="w-[19%]" />
-            <col className="w-[13%]" />
-            <col className="w-[10%]" />
+            <col className="w-[18%]" />
+            <col className="w-[12%]" />
+            <col className="w-[12%]" />
             <col className="w-[10%]" />
             <col className="w-[14%]" />
             <col className="w-[9%]" />
@@ -416,11 +418,15 @@ export function MarketStockTable({
                     </button>
                   </td>
 
-                  {/* Current Price */}
-                  <td
-                    className={`px-3 py-3.5 text-right align-middle font-mono text-sm font-bold tabular-nums whitespace-nowrap ${priceColor}`}
-                  >
-                    {formatIdr(item.currentPrice)}
+                  {/* Current Price + Today's Change + Open Price */}
+                  <td className="px-3 py-3.5 text-right align-middle">
+                    <IntradayPriceCell
+                      currentPrice={item.currentPrice}
+                      openPrice={item.openPrice}
+                      dailyChange={item.dailyChange}
+                      dailyChangePct={item.dailyChangePct}
+                      priceColorClass={priceColor}
+                    />
                   </td>
 
                   {/* Moderate Fair Value */}

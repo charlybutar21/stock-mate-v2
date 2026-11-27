@@ -53,6 +53,14 @@ interface RadarFilterPanelProps {
   onResetAll: () => void;
 }
 
+const GRADE_PILLS: Array<{ value: QualityGradeFilter | ''; label: string }> = [
+  { value: '', label: '' },
+  { value: 'A', label: 'A (80+)' },
+  { value: 'B', label: 'B (65–79)' },
+  { value: 'C', label: 'C (50–64)' },
+  { value: 'D', label: 'D (<50)' },
+];
+
 export function RadarFilterPanel({
   preset,
   filters,
@@ -71,41 +79,43 @@ export function RadarFilterPanel({
 
   return (
     <Card className="space-y-4 p-4">
-      {/* 1-Click Smart Presets */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted">
+      {/* Row 1: 1-Click Smart Presets */}
+      <div className="space-y-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted uppercase">
           <Filter className="h-3.5 w-3.5" aria-hidden="true" />
-          {t.radar.presetsLabel}:
+          {t.radar.presetsLabel}
         </span>
-        {(
-          [
-            ['all', t.radar.presetAll],
-            ['prime', t.radar.presetPrime],
-            ['compounders', t.radar.presetCompounders],
-            ['fortress', t.radar.presetFortress],
-            ['garp', t.radar.presetGarp],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={preset === id}
-            onClick={() => onApplyPreset(id)}
-            className={cn(
-              'inline-flex h-8 sm:h-7 items-center rounded-full border px-3 text-xs font-semibold transition-all cursor-pointer',
-              preset === id
-                ? 'border-brand-600 bg-brand-solid text-white shadow-2xs'
-                : 'border-border bg-subtle/70 text-ink hover:border-brand-600/45 hover:bg-brand-50/60 hover:text-brand-700',
-            )}
-          >
-            {label}
-          </button>
-        ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {(
+            [
+              ['all', t.radar.presetAll],
+              ['prime', t.radar.presetPrime],
+              ['compounders', t.radar.presetCompounders],
+              ['fortress', t.radar.presetFortress],
+              ['garp', t.radar.presetGarp],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={preset === id}
+              onClick={() => onApplyPreset(id)}
+              className={cn(
+                'inline-flex h-8 sm:h-7 items-center rounded-full border px-3 text-xs font-semibold transition-all cursor-pointer',
+                preset === id
+                  ? 'border-brand-600 bg-brand-solid text-white shadow-2xs'
+                  : 'border-border bg-subtle/70 text-ink hover:border-brand-600/45 hover:bg-brand-50/60 hover:text-brand-700',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Primary Controls */}
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-12">
-        <div className="relative lg:col-span-3">
+      {/* Row 2: Clean 12-Col Primary Search / Sector / Sort Bar */}
+      <div className="grid grid-cols-1 gap-2.5 border-t border-border/75 pt-3.5 sm:grid-cols-2 lg:grid-cols-12">
+        <div className="relative sm:col-span-2 lg:col-span-5">
           <Search
             className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted"
             aria-hidden="true"
@@ -114,7 +124,7 @@ export function RadarFilterPanel({
             value={filters.search}
             onChange={(e) => onPatchFilters({ search: e.target.value })}
             placeholder={t.watchlist.searchPlaceholder}
-            className="pl-9 pr-8"
+            className="h-10 sm:h-9 pl-9 pr-8 text-xs"
             aria-label={t.watchlist.searchPlaceholder}
           />
           {filters.search && (
@@ -122,18 +132,22 @@ export function RadarFilterPanel({
               type="button"
               onClick={() => onPatchFilters({ search: '' })}
               aria-label="Clear search"
-              className="absolute top-1/2 right-2.5 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center text-muted hover:text-ink cursor-pointer"
+              className="absolute top-1/2 right-2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted hover:text-ink cursor-pointer"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           )}
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-3">
           <Select
             value={filters.sector}
             onChange={(e) => onPatchFilters({ sector: e.target.value as IdxSector | '' })}
             aria-label={t.watchlist.colSector}
+            className={cn(
+              'h-10 sm:h-9 text-xs',
+              filters.sector && 'border-brand-600/55 font-medium text-brand-700',
+            )}
           >
             <option value="">{t.watchlist.allSectors}</option>
             {IDX_SECTORS.map((sec) => (
@@ -144,53 +158,12 @@ export function RadarFilterPanel({
           </Select>
         </div>
 
-        <div className="lg:col-span-2">
-          <Select
-            value={filters.valuationStatus}
-            onChange={(e) =>
-              onPatchFilters({ valuationStatus: e.target.value as ValuationStatusFilter | '' })
-            }
-            aria-label={t.watchlist.valuationFilterLabel}
-          >
-            <option value="">
-              {t.watchlist.valuationFilterLabel}: {t.watchlist.valuationAll}
-            </option>
-            <option value="UNDERVALUED">{t.valuationStatus.UNDERVALUED}</option>
-            <option value="FAIRLY_VALUED">{t.valuationStatus.FAIRLY_VALUED}</option>
-            <option value="OVERVALUED">{t.valuationStatus.OVERVALUED}</option>
-          </Select>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5 sm:col-span-2 lg:col-span-2">
-          <Input
-            type="number"
-            min={-100}
-            max={100}
-            value={filters.minMos}
-            onChange={(e) => onPatchFilters({ minMos: e.target.value })}
-            placeholder={t.radar.filterMinMos}
-            title={t.radar.filterMinMos}
-            aria-label={t.radar.filterMinMos}
-            className="font-mono tabular-nums"
-          />
-          <Input
-            type="number"
-            min={0}
-            max={100}
-            value={filters.minFqs}
-            onChange={(e) => onPatchFilters({ minFqs: e.target.value })}
-            placeholder={t.radar.filterMinFqs}
-            title={t.radar.filterMinFqs}
-            aria-label={t.radar.filterMinFqs}
-            className="font-mono tabular-nums"
-          />
-        </div>
-
-        <div className="sm:col-span-2 lg:col-span-3">
+        <div className="lg:col-span-4">
           <Select
             value={filters.sort}
             onChange={(e) => onPatchFilters({ sort: e.target.value as CatalogSortOption })}
             aria-label="Sort order"
+            className="h-10 sm:h-9 text-xs"
           >
             <option value="fqs_desc">{t.radar.sortFqsDesc}</option>
             <option value="qarp_desc">{t.radar.sortQarpDesc}</option>
@@ -205,7 +178,110 @@ export function RadarFilterPanel({
         </div>
       </div>
 
-      {/* Advanced Pillar & Guardrail Filters Toggle */}
+      {/* Row 3: Two Dedicated Non-Colliding Quick Filter Blocks (Quality Score FQS | Valuation & Discount) */}
+      <div className="grid grid-cols-1 gap-3.5 border-t border-border/75 pt-3.5 lg:grid-cols-2 lg:gap-5">
+        {/* Quality Score (FQS) Quick Filter */}
+        <div className="space-y-1.5">
+          <span className="block text-[11px] font-semibold tracking-wide text-muted uppercase">
+            {t.watchlist.qualityFilterLabel}
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {GRADE_PILLS.map((opt) => {
+              const active = filters.qualityGrade === opt.value;
+              const label = opt.value === '' ? t.watchlist.qualityAll : opt.label;
+              return (
+                <button
+                  key={opt.value || 'all'}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onPatchFilters({ qualityGrade: opt.value })}
+                  className={cn(
+                    'inline-flex h-8 sm:h-7 items-center rounded-md border px-2.5 text-xs font-semibold transition-colors cursor-pointer',
+                    active && opt.value === 'A'
+                      ? 'border-positive-600/50 bg-positive-50 text-positive-700'
+                      : active && opt.value === 'B'
+                        ? 'border-brand-600/50 bg-brand-50 text-brand-700'
+                        : active && opt.value === 'C'
+                          ? 'border-warning-600/50 bg-warning-50 text-warning-700'
+                          : active && opt.value === 'D'
+                            ? 'border-negative-600/50 bg-negative-50 text-negative-700'
+                            : active
+                              ? 'border-brand-600/50 bg-brand-50 text-brand-700'
+                              : 'border-border bg-display text-muted hover:border-muted/60 hover:text-ink',
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={filters.minFqs}
+              onChange={(e) => onPatchFilters({ minFqs: e.target.value })}
+              placeholder={t.radar.filterMinFqs}
+              title={t.radar.filterMinFqs}
+              aria-label={t.radar.filterMinFqs}
+              className="h-8 sm:h-7 w-24 px-2 font-mono text-xs tabular-nums"
+            />
+          </div>
+        </div>
+
+        {/* Valuation Status & Min Discount Quick Filter */}
+        <div className="space-y-1.5">
+          <span className="block text-[11px] font-semibold tracking-wide text-muted uppercase">
+            {t.watchlist.valuationFilterLabel} &amp; {t.watchlist.mosFilterLabel}
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { value: '', label: t.watchlist.valuationAll },
+                { value: 'UNDERVALUED', label: t.valuationStatus.UNDERVALUED },
+                { value: 'FAIRLY_VALUED', label: t.valuationStatus.FAIRLY_VALUED },
+                { value: 'OVERVALUED', label: t.valuationStatus.OVERVALUED },
+              ] as const
+            ).map((opt) => {
+              const active = filters.valuationStatus === opt.value;
+              return (
+                <button
+                  key={opt.value || 'all'}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onPatchFilters({ valuationStatus: opt.value })}
+                  className={cn(
+                    'inline-flex h-8 sm:h-7 items-center rounded-md border px-2.5 text-xs font-semibold transition-colors cursor-pointer',
+                    active && opt.value === 'UNDERVALUED'
+                      ? 'border-positive-600/50 bg-positive-50 text-positive-700'
+                      : active && opt.value === 'FAIRLY_VALUED'
+                        ? 'border-warning-600/50 bg-warning-50 text-warning-700'
+                        : active && opt.value === 'OVERVALUED'
+                          ? 'border-negative-600/50 bg-negative-50 text-negative-700'
+                          : active
+                            ? 'border-brand-600/50 bg-brand-50 text-brand-700'
+                            : 'border-border bg-display text-muted hover:border-muted/60 hover:text-ink',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+            <Input
+              type="number"
+              min={-100}
+              max={100}
+              value={filters.minMos}
+              onChange={(e) => onPatchFilters({ minMos: e.target.value })}
+              placeholder={t.radar.filterMinMos}
+              title={t.radar.filterMinMos}
+              aria-label={t.radar.filterMinMos}
+              className="h-8 sm:h-7 w-28 px-2 font-mono text-xs tabular-nums"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Row 4: Advanced Pillar Filters Toggle + Summary Count */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/80 pt-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -328,25 +404,6 @@ export function RadarFilterPanel({
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="radar-grade" className="text-xs font-medium text-ink">
-              {t.radar.filterGradeLabel}
-            </label>
-            <Select
-              id="radar-grade"
-              value={filters.qualityGrade}
-              onChange={(e) =>
-                onPatchFilters({ qualityGrade: e.target.value as QualityGradeFilter | '' })
-              }
-            >
-              <option value="">{t.radar.filterGradeAll}</option>
-              <option value="A">Grade A (80–100)</option>
-              <option value="B">Grade B (65–79)</option>
-              <option value="C">Grade C (50–64)</option>
-              <option value="D">Grade D (&lt; 50)</option>
-            </Select>
-          </div>
-
-          <div className="space-y-1">
             <label htmlFor="radar-adtv" className="text-xs font-medium text-ink">
               <TermTooltip label={t.radar.filterAdtvLabel} definition={t.glossary.adtv} />
             </label>
@@ -383,7 +440,7 @@ export function RadarFilterPanel({
             </Select>
           </div>
 
-          <div className="flex items-end pb-1">
+          <div className="flex items-end pb-1 sm:col-span-2">
             <label className="flex items-center gap-2 text-xs font-medium text-ink cursor-pointer">
               <input
                 type="checkbox"

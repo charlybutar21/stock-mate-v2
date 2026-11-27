@@ -129,10 +129,16 @@ function parseHoldingTranches(
   return [];
 }
 
+export type CatalogFallbackRecord = QualityMetricColumnsRecord & {
+  openPrice?: number | null;
+  dailyChange?: number | null;
+  dailyChangeBps?: number | null;
+};
+
 export function mapRecordToDto(
   record: WatchlistItemRecord,
   nowMs = Date.now(),
-  catalogFallback?: QualityMetricColumnsRecord | null,
+  catalogFallback?: CatalogFallbackRecord | null,
 ): WatchlistItemDto {
   const f = record.fundamentals;
   const roePct = fromBps(f.roeBps);
@@ -239,6 +245,12 @@ export function mapRecordToDto(
     companyName: record.companyName,
     sector: record.sector,
     currentPrice: record.currentPrice,
+    openPrice: catalogFallback?.openPrice ?? null,
+    dailyChange: catalogFallback?.dailyChange ?? null,
+    dailyChangePct:
+      catalogFallback?.dailyChangeBps !== undefined
+        ? fromBps(catalogFallback.dailyChangeBps)
+        : null,
     ownedLots: record.ownedLots,
     avgBuyPrice: preciseAvgBuyPrice,
     holdingTranches,
@@ -295,7 +307,7 @@ export class ListWatchlistUseCase {
 
   async execute(userId: string, query: WatchlistQuery): Promise<WatchlistItemDto[]> {
     const records = await this.repo.listByUser(userId, query.sector);
-    const catalogMap = new Map<string, QualityMetricColumnsRecord>();
+    const catalogMap = new Map<string, CatalogFallbackRecord>();
     if (this.catalogRepo && records.length > 0) {
       const catRows = await this.catalogRepo.findByTickers(records.map((r) => r.ticker));
       for (const row of catRows) {

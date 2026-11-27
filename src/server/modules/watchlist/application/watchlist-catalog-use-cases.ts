@@ -25,7 +25,6 @@ import type {
   FundamentalsRecord,
   IdxCatalogRepository,
   IdxStockRecord,
-  QualityMetricColumnsRecord,
   WatchlistItemRecord,
   WatchlistRepository,
 } from '../domain/watchlist.types';
@@ -39,6 +38,7 @@ import {
   MAX_WATCHLIST_ITEMS_PER_USER,
   toBps,
   toX100,
+  type CatalogFallbackRecord,
 } from './watchlist-use-cases';
 
 export const CATALOG_AUTO_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -50,6 +50,9 @@ export function quoteToIdxStockRecord(quote: IdxMarketQuoteDto, syncedAt: number
     companyName: quote.companyName,
     sector: quote.sector,
     currentPrice: quote.currentPrice,
+    openPrice: quote.openPrice ?? null,
+    dailyChange: quote.dailyChange ?? null,
+    dailyChangeBps: toBps(quote.dailyChangePct),
     periodLabel: quote.periodLabel,
     eps: quote.fundamentals.eps,
     bvps: quote.fundamentals.bvps,
@@ -148,6 +151,9 @@ export function mapIdxStockToMarketDto(
     companyName: stock.companyName,
     sector: stock.sector,
     currentPrice: stock.currentPrice,
+    openPrice: stock.openPrice,
+    dailyChange: stock.dailyChange,
+    dailyChangePct: fromBps(stock.dailyChangeBps),
     ownedLots: 0,
     avgBuyPrice: null,
     holdingTranches: [],
@@ -200,7 +206,7 @@ export function mapWatchlistRecordToMarketDto(
   record: WatchlistItemRecord,
   customWatchlistIds: string[],
   nowMs = Date.now(),
-  catalogFallback?: QualityMetricColumnsRecord | null,
+  catalogFallback?: CatalogFallbackRecord | null,
 ): MarketStockDto {
   const dto = mapRecordToDto(record, nowMs, catalogFallback);
   return {
@@ -209,6 +215,9 @@ export function mapWatchlistRecordToMarketDto(
     companyName: dto.companyName,
     sector: dto.sector,
     currentPrice: dto.currentPrice,
+    openPrice: dto.openPrice,
+    dailyChange: dto.dailyChange,
+    dailyChangePct: dto.dailyChangePct,
     ownedLots: dto.ownedLots,
     avgBuyPrice: dto.avgBuyPrice,
     holdingTranches: dto.holdingTranches,
@@ -631,7 +640,12 @@ export class ListCatalogStocksUseCase {
       const userRecord = userItemByTicker.get(base.ticker);
       const customIds = membershipMap.get(base.ticker) ?? [];
       if (userRecord) {
-        const fallbackQuality = extractQualityColumnsFromInput(base.fundamentals);
+        const fallbackQuality: CatalogFallbackRecord = {
+          ...extractQualityColumnsFromInput(base.fundamentals),
+          openPrice: base.openPrice,
+          dailyChange: base.dailyChange,
+          dailyChangeBps: toBps(base.dailyChangePct),
+        };
         merged.push(mapWatchlistRecordToMarketDto(userRecord, customIds, now, fallbackQuality));
       } else if (customIds.length > 0) {
         merged.push({ ...base, customWatchlistIds: customIds });

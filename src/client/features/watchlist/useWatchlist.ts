@@ -46,6 +46,8 @@ function buildCatalogQueryString(query?: Partial<CatalogQuery>): string {
   return params.toString();
 }
 
+const AUTO_REFRESH_INTERVAL_MS = 3 * 60 * 1000; // Auto-refresh every 3 minutes when tab is active
+
 export function useWatchlist(query?: Partial<WatchlistQuery>) {
   const params = new URLSearchParams();
   if (query?.search) params.set('search', query.search);
@@ -55,6 +57,8 @@ export function useWatchlist(query?: Partial<WatchlistQuery>) {
 
   return useQuery<WatchlistItemDto[]>({
     queryKey: ['watchlist', 'list', qs],
+    refetchInterval: AUTO_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const res = await apiRequest<{ items: WatchlistItemDto[] }>(
         `/api/v1/watchlist${qs ? `?${qs}` : ''}`,
@@ -68,6 +72,8 @@ export function useWatchlistItem(id: string | undefined) {
   return useQuery<WatchlistItemDto>({
     queryKey: ['watchlist', 'detail', id],
     enabled: Boolean(id),
+    refetchInterval: AUTO_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const res = await apiRequest<{ item: WatchlistItemDto }>(
         `/api/v1/watchlist/${encodeURIComponent(id!)}`,
@@ -82,7 +88,9 @@ export function useIdxCatalog(query?: Partial<CatalogQuery>, enabled = true) {
   return useQuery<CatalogResponseDto>({
     queryKey: ['watchlist', 'catalog', qs],
     enabled,
-    staleTime: 2 * 60 * 1000,
+    staleTime: 60 * 1000,
+    refetchInterval: AUTO_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
     queryFn: () => apiRequest<CatalogResponseDto>(`/api/v1/watchlist/catalog${qs ? `?${qs}` : ''}`),
   });
@@ -154,12 +162,26 @@ export function useCustomWatchlists() {
 
 export function useCustomWatchlistStocks(
   groupId: string | null,
-  query?: Partial<Pick<CatalogQuery, 'search' | 'sector' | 'valuationStatus' | 'minMos' | 'maxMos' | 'sort'>>,
+  query?: Partial<
+    Pick<
+      CatalogQuery,
+      | 'search'
+      | 'sector'
+      | 'valuationStatus'
+      | 'qualityGrade'
+      | 'minFqs'
+      | 'minMos'
+      | 'maxMos'
+      | 'sort'
+    >
+  >,
 ) {
   const qs = buildCatalogQueryString(query);
   return useQuery<{ group: CustomWatchlistGroupDto; items: MarketStockDto[] }>({
     queryKey: ['watchlist', 'group-stocks', groupId, qs],
     enabled: Boolean(groupId),
+    refetchInterval: AUTO_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
     queryFn: () =>
       apiRequest<{ group: CustomWatchlistGroupDto; items: MarketStockDto[] }>(

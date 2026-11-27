@@ -19,6 +19,7 @@ import type {
   CatalogSortOption,
   CustomWatchlistGroupDto,
   MarketStockDto,
+  QualityGradeFilter,
   ValuationStatusFilter,
   WatchlistItemDto,
 } from '@/shared/contracts';
@@ -81,6 +82,9 @@ function mapWatchlistItemToMarket(
     companyName: item.companyName,
     sector: item.sector,
     currentPrice: item.currentPrice,
+    openPrice: item.openPrice,
+    dailyChange: item.dailyChange,
+    dailyChangePct: item.dailyChangePct,
     ownedLots: item.ownedLots,
     avgBuyPrice: item.avgBuyPrice,
     holdingTranches: item.holdingTranches,
@@ -110,6 +114,8 @@ export function WatchlistPage() {
   const [search, setSearch] = useState('');
   const [sector, setSector] = useState<IdxSector | ''>('');
   const [valuationStatus, setValuationStatus] = useState<ValuationStatusFilter | ''>('');
+  const [qualityGrade, setQualityGrade] = useState<QualityGradeFilter | ''>('');
+  const [minFqsInput, setMinFqsInput] = useState('');
   const [mosPreset, setMosPreset] = useState<MosPreset>('any');
   const [minMosInput, setMinMosInput] = useState('');
   const [maxMosInput, setMaxMosInput] = useState('');
@@ -132,8 +138,9 @@ export function WatchlistPage() {
   const debouncedSearch = useDebouncedValue(search.trim(), 220);
   const debouncedMinMos = useDebouncedValue(parseOptionalNumericFilter(minMosInput), 250);
   const debouncedMaxMos = useDebouncedValue(parseOptionalNumericFilter(maxMosInput), 250);
+  const debouncedMinFqs = useDebouncedValue(parseOptionalNumericFilter(minFqsInput), 250);
 
-  // Queries
+  // Queries (auto-refresh every 3 minutes while tab is visible)
   const { data: personalItems, isLoading: isPersonalLoading } = useWatchlist();
   const { data: customGroups = [], isLoading: isGroupsLoading } = useCustomWatchlists();
 
@@ -152,6 +159,8 @@ export function WatchlistPage() {
     search: activeTab.kind === 'all' ? debouncedSearch || undefined : undefined,
     sector: activeTab.kind === 'all' ? sector || undefined : undefined,
     valuationStatus: activeTab.kind === 'all' ? valuationStatus || undefined : undefined,
+    qualityGrade: activeTab.kind === 'all' ? qualityGrade || undefined : undefined,
+    minFqs: activeTab.kind === 'all' ? debouncedMinFqs : undefined,
     minMos: activeTab.kind === 'all' ? debouncedMinMos : undefined,
     maxMos: activeTab.kind === 'all' ? debouncedMaxMos : undefined,
     sort: activeTab.kind === 'all' ? sort : 'mos_desc',
@@ -167,6 +176,8 @@ export function WatchlistPage() {
     search: debouncedSearch || undefined,
     sector: sector || undefined,
     valuationStatus: valuationStatus || undefined,
+    qualityGrade: qualityGrade || undefined,
+    minFqs: debouncedMinFqs,
     minMos: debouncedMinMos,
     maxMos: debouncedMaxMos,
     sort,
@@ -268,6 +279,26 @@ export function WatchlistPage() {
           i.companyName.toLowerCase().includes(needle),
       );
     }
+    if (valuationStatus) {
+      list = list.filter((i) => i.valuation.valuationStatus === valuationStatus);
+    }
+    if (qualityGrade) {
+      list = list.filter((i) => i.quality.grade === qualityGrade);
+    }
+    if (debouncedMinFqs !== undefined) {
+      list = list.filter((i) => i.quality.score !== null && i.quality.score >= debouncedMinFqs);
+    }
+    if (debouncedMinMos !== undefined) {
+      list = list.filter(
+        (i) => i.valuation.mosPct !== null && i.valuation.mosPct >= debouncedMinMos,
+      );
+    }
+    if (debouncedMaxMos !== undefined) {
+      list = list.filter(
+        (i) => i.valuation.mosPct !== null && i.valuation.mosPct <= debouncedMaxMos,
+      );
+    }
+
     const sorted = [...list];
     sorted.sort((a, b) => {
       if (sort === 'mos_desc') {
@@ -303,7 +334,18 @@ export function WatchlistPage() {
       return a.ticker.localeCompare(b.ticker);
     });
     return sorted;
-  }, [myStocksAll, tickerMembershipMap, sector, debouncedSearch, sort]);
+  }, [
+    myStocksAll,
+    tickerMembershipMap,
+    sector,
+    debouncedSearch,
+    valuationStatus,
+    qualityGrade,
+    debouncedMinFqs,
+    debouncedMinMos,
+    debouncedMaxMos,
+    sort,
+  ]);
 
   const applyMosPreset = (preset: MosPreset) => {
     setMosPreset(preset);
@@ -333,6 +375,8 @@ export function WatchlistPage() {
     setSearch('');
     setSector('');
     setValuationStatus('');
+    setQualityGrade('');
+    setMinFqsInput('');
     setMosPreset('any');
     setMinMosInput('');
     setMaxMosInput('');
@@ -343,6 +387,8 @@ export function WatchlistPage() {
     search.trim() !== '' ||
     sector !== '' ||
     valuationStatus !== '' ||
+    qualityGrade !== '' ||
+    minFqsInput.trim() !== '' ||
     minMosInput.trim() !== '' ||
     maxMosInput.trim() !== '';
 
@@ -492,8 +538,6 @@ export function WatchlistPage() {
       : activeTab.kind === 'custom'
         ? isCustomStocksError
         : false;
-
-  const showValuationScreener = activeTab.kind === 'all' || activeTab.kind === 'custom';
 
   return (
     <div className="space-y-8">
@@ -645,6 +689,10 @@ export function WatchlistPage() {
                     ? t.watchlist.tabMyStocks
                     : (activeCustomGroup?.name ?? t.watchlist.tabCustomGroupLabel)}
               </h2>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-positive-600/30 bg-positive-50 px-2 py-0.5 text-[10px] font-semibold text-positive-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-positive-600" aria-hidden="true" />
+                {t.common.autoSyncBadge}
+              </span>
               {activeTab.kind === 'all' && isCatalogFetching && !isCatalogLoading && (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted" aria-hidden="true" />
               )}
@@ -660,26 +708,10 @@ export function WatchlistPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             {activeTab.kind === 'all' && (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleSyncCatalog}
-                  disabled={syncCatalogMutation.isPending}
-                >
-                  <RefreshCw
-                    className={`h-3.5 w-3.5 ${syncCatalogMutation.isPending ? 'animate-spin' : ''}`}
-                    aria-hidden="true"
-                  />
-                  {syncCatalogMutation.isPending
-                    ? t.watchlist.syncingIhsg
-                    : t.watchlist.syncIhsgBtn}
-                </Button>
-                <Button variant="outlineBrand" size="sm" onClick={handleOpenManualAdd}>
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                  {t.watchlist.addStock}
-                </Button>
-              </>
+              <Button variant="outlineBrand" size="sm" onClick={handleOpenManualAdd}>
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                {t.watchlist.addStock}
+              </Button>
             )}
 
             {activeTab.kind === 'my_stocks' && (
@@ -757,6 +789,16 @@ export function WatchlistPage() {
               setValuationStatus(val);
               setPage(1);
             }}
+            qualityGrade={qualityGrade}
+            onQualityGradeChange={(val) => {
+              setQualityGrade(val);
+              setPage(1);
+            }}
+            minFqsInput={minFqsInput}
+            onMinFqsChange={(val) => {
+              setMinFqsInput(val);
+              setPage(1);
+            }}
             mosPreset={mosPreset}
             onApplyMosPreset={applyMosPreset}
             minMosInput={minMosInput}
@@ -771,7 +813,6 @@ export function WatchlistPage() {
               setMosPreset(minMosInput.trim() || val.trim() ? 'custom' : 'any');
               setPage(1);
             }}
-            showValuationScreener={showValuationScreener}
             showCounts={activeTab.kind === 'all'}
             summary={summary}
             hasActiveFilters={hasActiveFilters}
@@ -817,7 +858,7 @@ export function WatchlistPage() {
                   {t.watchlist.resetFilters}
                 </Button>
               )}
-              {activeTab.kind === 'all' && (
+              {activeTab.kind === 'all' && !hasActiveFilters && (
                 <Button
                   variant="outlineBrand"
                   onClick={handleSyncCatalog}

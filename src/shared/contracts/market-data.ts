@@ -5,6 +5,9 @@ export interface IdxMarketQuoteDto {
   companyName: string;
   sector: IdxSector;
   currentPrice: number;
+  openPrice?: number | null;
+  dailyChange?: number | null;
+  dailyChangePct?: number | null;
   periodLabel: string;
   fundamentals: {
     eps: number | null;

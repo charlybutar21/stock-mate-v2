@@ -40,6 +40,9 @@ export const en = {
     filterTag: 'Filter',
     activeTag: 'Active',
     perPageShort: 'per page',
+    openLabel: 'Open',
+    todayChangeLabel: 'Today',
+    autoSyncBadge: 'Auto-sync 5m',
   },
   glossary: {
     marginOfSafety:
@@ -333,6 +336,10 @@ export const en = {
     toastSyncFailed: 'Unable to refresh market data right now. Please retry shortly.',
     valuationFilterLabel: 'Valuation',
     valuationAll: 'All',
+    qualityFilterLabel: 'Quality (FQS)',
+    qualityAll: 'All',
+    moreNumericFilters: 'Discount & Score Range',
+    minFqsPlaceholder: 'Min FQS',
     mosFilterLabel: 'Margin of Safety',
     mosPresetAny: 'Any MoS',
     mosPreset50: '≥ 50%',

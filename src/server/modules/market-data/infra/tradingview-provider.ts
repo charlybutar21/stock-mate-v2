@@ -10,7 +10,7 @@ import {
 } from '../domain/market-data.types';
 
 const TV_SCANNER_URL = 'https://scanner.tradingview.com/indonesia/scan';
-const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const QUOTE_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
 const UPSTREAM_TIMEOUT_MS = 8_000;
 const UNIVERSE_TIMEOUT_MS = 15_000;
 const IDX_TICKER_REGEX = /^[A-Z]{4}$/;
@@ -46,6 +46,10 @@ const TV_COLUMNS = [
   'free_cash_flow_margin_ttm',
   'piotroski_f_score_ttm',
   'altman_z_score_ttm',
+  // Intraday open & daily price change columns (appended for backwards-compatible positional parsing)
+  'open',
+  'change_abs',
+  'change',
 ] as const;
 
 interface TradingViewScanResponse {
@@ -110,6 +114,9 @@ export function parseTradingViewRowToDto(
     rawFcfMargin,
     rawPiotroski,
     rawAltmanZ,
+    rawOpen,
+    rawChangeAbs,
+    rawChangePct,
   ] = row.d;
 
   const tickerFromSymbol = row.s.replace(/^IDX:/i, '').trim().toUpperCase();
@@ -156,6 +163,15 @@ export function parseTradingViewRowToDto(
   const fcfMarginVal = asFinite(rawFcfMargin);
   const piotroskiVal = asFinite(rawPiotroski);
   const altmanZVal = asFinite(rawAltmanZ);
+  const openVal = asFinite(rawOpen);
+  const changeAbsVal = asFinite(rawChangeAbs);
+  const changePctVal = asFinite(rawChangePct);
+
+  const openPrice =
+    openVal !== null && openVal > 0 ? Math.max(MIN_IDX_PRICE, Math.round(openVal)) : null;
+  const dailyChange = changeAbsVal !== null ? Math.round(changeAbsVal) : null;
+  const dailyChangePct =
+    changePctVal !== null ? round2(clamp(changePctVal, -100, 1000)) : null;
 
   let netDebtToEbitda: number | null = null;
   if (!isFinancials && netDebtVal !== null) {
@@ -189,6 +205,9 @@ export function parseTradingViewRowToDto(
     companyName,
     sector,
     currentPrice,
+    openPrice,
+    dailyChange,
+    dailyChangePct,
     periodLabel: 'TTM (TradingView)',
     fundamentals: {
       eps: epsVal !== null ? Math.round(epsVal) : null,

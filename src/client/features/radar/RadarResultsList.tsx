@@ -8,11 +8,11 @@ import {
 } from 'lucide-react';
 import type { CustomWatchlistGroupDto, MarketStockDto } from '@/shared/contracts';
 import type { IdxSector } from '@/shared/domain';
+import { IntradayPriceCell } from '@/client/components/ui/IntradayPriceCell';
 import { Badge, cn, TermTooltip } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import {
   formatCompactIdr,
-  formatIdr,
   formatMultiple,
   formatPercent,
 } from '@/client/lib/formatters';
@@ -90,11 +90,15 @@ export function RadarResultsList({
                   </div>
                 </div>
 
-                <div className="shrink-0 text-right font-mono tabular-nums">
-                  <div className="text-base font-bold text-ink">{formatIdr(item.currentPrice)}</div>
-                  <div className="mt-0.5 text-[11px] text-muted">
-                    FV {formatIdr(item.valuation.fairValue.moderate)}
-                  </div>
+                <div className="shrink-0">
+                  <IntradayPriceCell
+                    currentPrice={item.currentPrice}
+                    openPrice={item.openPrice}
+                    dailyChange={item.dailyChange}
+                    dailyChangePct={item.dailyChangePct}
+                    size="md"
+                    fairValueModerate={item.valuation.fairValue.moderate}
+                  />
                 </div>
               </div>
 
@@ -203,12 +207,12 @@ export function RadarResultsList({
       <div className="hidden w-full overflow-x-auto md:block">
         <table className="w-full min-w-[960px] table-fixed border-collapse text-left text-sm">
           <colgroup>
-            <col className="w-[21%]" />
-            <col className="w-[12%]" />
+            <col className="w-[20%]" />
+            <col className="w-[14%]" />
             <col className="w-[14%]" />
             <col className="w-[10%]" />
             <col className="w-[18%]" />
-            <col className="w-[15%]" />
+            <col className="w-[14%]" />
             <col className="w-[10%]" />
           </colgroup>
           <thead>
@@ -275,12 +279,15 @@ export function RadarResultsList({
                     </div>
                   </td>
 
-                  {/* Price / Fair Value */}
-                  <td className="px-3 py-3.5 text-right align-middle font-mono tabular-nums whitespace-nowrap">
-                    <div className="text-sm font-bold text-ink">{formatIdr(item.currentPrice)}</div>
-                    <div className="mt-0.5 text-[11px] text-muted">
-                      FV {formatIdr(item.valuation.fairValue.moderate)}
-                    </div>
+                  {/* Price / Open / Today Change / Fair Value */}
+                  <td className="px-3 py-3.5 text-right align-middle">
+                    <IntradayPriceCell
+                      currentPrice={item.currentPrice}
+                      openPrice={item.openPrice}
+                      dailyChange={item.dailyChange}
+                      dailyChangePct={item.dailyChangePct}
+                      fairValueModerate={item.valuation.fairValue.moderate}
+                    />
                   </td>
 
                   {/* Margin of Safety & Value Trap */}

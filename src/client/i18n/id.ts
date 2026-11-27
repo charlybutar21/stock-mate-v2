@@ -42,6 +42,9 @@ export const id: I18nDictionary = {
     filterTag: 'Filter',
     activeTag: 'Aktif',
     perPageShort: 'per hal',
+    openLabel: 'Buka',
+    todayChangeLabel: 'Hari Ini',
+    autoSyncBadge: 'Auto-sync 5 mnt',
   },
   glossary: {
     marginOfSafety:
@@ -336,6 +339,10 @@ export const id: I18nDictionary = {
     toastSyncFailed: 'Gagal memperbarui data pasar saat ini. Silakan coba lagi.',
     valuationFilterLabel: 'Valuasi',
     valuationAll: 'Semua',
+    qualityFilterLabel: 'Kualitas (FQS)',
+    qualityAll: 'Semua',
+    moreNumericFilters: 'Rentang Diskon & Skor',
+    minFqsPlaceholder: 'Min Skor',
     mosFilterLabel: 'Margin of Safety',
     mosPresetAny: 'Semua MoS',
     mosPreset50: '≥ 50%',

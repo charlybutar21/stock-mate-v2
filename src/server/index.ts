@@ -46,7 +46,7 @@ const JSON_BODY_FREE_POST_PATHS = new Set([
   '/api/v1/watchlist/sync-all',
   '/api/v1/watchlist/catalog/sync',
 ]);
-const EDGE_SNAPSHOT_CACHE_CONTROL = 'public, max-age=60, s-maxage=300, stale-while-revalidate=600';
+const EDGE_SNAPSHOT_CACHE_CONTROL = 'public, max-age=60, s-maxage=120, stale-while-revalidate=300';
 
 function extractOriginFromReferer(referer: string | undefined): string | null {
   if (!referer) return null;

@@ -1445,7 +1445,7 @@ describe('Stock-Mate v2 API Integration', () => {
     // 5. Public Edge-cached /api/v1/catalog/snapshot returns Cache-Control + ETag + 304 Not Modified
     const snap1 = await app.request('http://localhost/api/v1/catalog/snapshot', {}, { DB: d1 });
     expect(snap1.status).toBe(200);
-    expect(snap1.headers.get('cache-control')).toContain('s-maxage=300');
+    expect(snap1.headers.get('cache-control')).toContain('s-maxage=120');
     const etag = snap1.headers.get('etag');
     expect(etag).toBeTruthy();
     const snapJson = (await snap1.json()) as { items: Array<{ ticker: string }> };

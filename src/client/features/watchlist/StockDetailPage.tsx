@@ -363,6 +363,30 @@ export function StockDetailPage() {
                 <div className="font-mono text-xl font-bold text-ink tabular-nums">
                   {formatIdr(item.currentPrice)}
                 </div>
+                {(item.dailyChange !== null || item.dailyChangePct !== null) && (
+                  <div
+                    className={`mt-0.5 font-mono text-xs font-semibold tabular-nums ${
+                      (item.dailyChange ?? item.dailyChangePct ?? 0) > 0
+                        ? 'text-positive-700'
+                        : (item.dailyChange ?? item.dailyChangePct ?? 0) < 0
+                          ? 'text-negative-600'
+                          : 'text-muted'
+                    }`}
+                  >
+                    {item.dailyChange !== null
+                      ? `${item.dailyChange > 0 ? '+' : item.dailyChange < 0 ? '-' : ''}${formatIdr(Math.abs(item.dailyChange))}`
+                      : ''}
+                    {item.dailyChange !== null && item.dailyChangePct !== null ? ' ' : ''}
+                    {item.dailyChangePct !== null
+                      ? `(${formatPercent(item.dailyChangePct, true)})`
+                      : ''}
+                  </div>
+                )}
+                {item.openPrice !== null && (
+                  <div className="mt-0.5 font-mono text-[11px] text-muted tabular-nums">
+                    {t.common.openLabel}: {formatIdr(item.openPrice)}
+                  </div>
+                )}
               </div>
               <div>
                 <div className="text-[11px] font-medium tracking-wide text-muted uppercase">

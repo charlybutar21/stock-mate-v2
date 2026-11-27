@@ -201,4 +201,29 @@ describe('TradingViewIdxProvider parser', () => {
     });
     expect(parsed.success).toBe(true);
   });
+
+  it('parses intraday openPrice, dailyChange, and dailyChangePct from extended 32-column row', () => {
+    const row = [
+      'BBCA',
+      'PT Bank Central Asia Tbk',
+      9150,
+      'Finance',
+      483,
+      2307,
+      336,
+      21.2,
+      0.02,
+      4.1,
+      ...Array(19).fill(null),
+      9000, // open
+      150, // change_abs
+      1.6667, // change %
+    ];
+    const dto = parseTradingViewRowToDto({ s: 'IDX:BBCA', d: row });
+    expect(dto).not.toBeNull();
+    expect(dto!.currentPrice).toBe(9150);
+    expect(dto!.openPrice).toBe(9000);
+    expect(dto!.dailyChange).toBe(150);
+    expect(dto!.dailyChangePct).toBe(1.67);
+  });
 });

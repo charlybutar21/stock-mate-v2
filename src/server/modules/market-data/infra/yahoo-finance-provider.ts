@@ -32,6 +32,9 @@ interface YahooQuoteSummaryResponse {
         longName?: string;
         shortName?: string;
         regularMarketPrice?: YahooRawField;
+        regularMarketOpen?: YahooRawField;
+        regularMarketChange?: YahooRawField;
+        regularMarketChangePercent?: YahooRawField;
         marketCap?: YahooRawField;
       };
       assetProfile?: {
@@ -210,6 +213,21 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
     }
 
     const currentPrice = Math.max(MIN_IDX_PRICE, Math.round(item.price.regularMarketPrice.raw));
+    const rawOpen = item.price.regularMarketOpen?.raw;
+    const openPrice =
+      rawOpen !== undefined && Number.isFinite(rawOpen) && rawOpen > 0
+        ? Math.max(MIN_IDX_PRICE, Math.round(rawOpen))
+        : null;
+    const rawDailyChange = item.price.regularMarketChange?.raw;
+    const dailyChange =
+      rawDailyChange !== undefined && Number.isFinite(rawDailyChange)
+        ? Math.round(rawDailyChange)
+        : null;
+    const rawDailyChangePct = item.price.regularMarketChangePercent?.raw;
+    const dailyChangePct =
+      rawDailyChangePct !== undefined && Number.isFinite(rawDailyChangePct)
+        ? round2(rawDailyChangePct * 100)
+        : null;
     const companyName = (
       item.price.longName ??
       item.price.shortName ??
@@ -354,6 +372,9 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
       companyName,
       sector,
       currentPrice,
+      openPrice,
+      dailyChange,
+      dailyChangePct,
       periodLabel: 'TTM (Yahoo Finance)',
       fundamentals: {
         eps,

@@ -5,7 +5,6 @@ import {
   ChevronRight,
   Clock,
   Radar as RadarIcon,
-  RefreshCw,
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
@@ -31,7 +30,6 @@ import {
   useCustomWatchlists,
   useEnsureWatchlistItem,
   useIdxCatalog,
-  useSyncIdxCatalog,
 } from '@/client/features/watchlist/useWatchlist';
 import { QualityBreakdownCard } from './QualityBreakdownCard';
 import {
@@ -147,7 +145,6 @@ export function RadarPage() {
 
   const { data: catalogData, isLoading, isFetching, isError } = useIdxCatalog(catalogQuery, true);
   const { data: customGroups = [] } = useCustomWatchlists();
-  const syncCatalog = useSyncIdxCatalog();
   const ensureWatchlistItem = useEnsureWatchlistItem();
 
   const applyPreset = (id: Exclude<RadarPresetId, 'custom'>) => {
@@ -167,7 +164,6 @@ export function RadarPage() {
   };
 
   const activeAdvancedCount = [
-    filters.qualityGrade,
     filters.minProfitability,
     filters.minGrowth,
     filters.minHealth,
@@ -183,18 +179,12 @@ export function RadarPage() {
       filters.search ||
         filters.sector ||
         filters.valuationStatus ||
+        filters.qualityGrade ||
         filters.qarpQuadrant ||
         filters.minMos ||
         filters.minFqs ||
         activeAdvancedCount > 0,
     );
-
-  const handleSyncCatalog = () => {
-    syncCatalog.mutate(undefined, {
-      onSuccess: () => showToast(t.watchlist.toastSyncDone, 'success'),
-      onError: () => showToast(t.watchlist.toastSyncFailed, 'error'),
-    });
-  };
 
   const handleOpenDetail = async (stock: MarketStockDto) => {
     if (stock.watchlistItemId) {
@@ -254,24 +244,16 @@ export function RadarPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-positive-600/30 bg-positive-50 px-2.5 py-1 text-[11px] font-semibold text-positive-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-positive-600" aria-hidden="true" />
+            {t.common.autoSyncBadge}
+          </span>
           {summary?.lastSyncedAt && (
             <span className="inline-flex items-center gap-1 text-xs text-muted">
               <Clock className="h-3.5 w-3.5" aria-hidden="true" />
               {t.watchlist.lastSyncedPrefix}: {formatShortDate(summary.lastSyncedAt, lang)}
             </span>
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleSyncCatalog}
-            disabled={syncCatalog.isPending}
-          >
-            <RefreshCw
-              className={cn('h-3.5 w-3.5', syncCatalog.isPending && 'animate-spin')}
-              aria-hidden="true"
-            />
-            {syncCatalog.isPending ? t.watchlist.syncingIhsg : t.watchlist.syncIhsgBtn}
-          </Button>
         </div>
       </div>
 
