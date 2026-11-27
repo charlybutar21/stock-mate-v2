@@ -4,6 +4,7 @@ import type { AuthRepository, PasswordHasher } from '@/server/modules/auth/domai
 import { createAuthMiddleware } from '@/server/shared/http/auth-mw';
 import { zodToValidationError } from '@/server/shared/http/problem';
 import { createRateLimitMiddleware } from '@/server/shared/http/rate-limit-mw';
+import type { SessionRevocationStore } from '@/server/shared/http/session-token';
 import type { AppEnv } from '@/server/shared/types';
 import type { IdxMarketDataProvider } from '../domain/market-data.types';
 
@@ -22,6 +23,7 @@ export function createMarketDataRoutes(
   ) => {
     authRepo: AuthRepository;
     hasher: PasswordHasher;
+    revocationStore: SessionRevocationStore;
     marketDataProvider: IdxMarketDataProvider;
   },
 ): Hono<AppEnv> {

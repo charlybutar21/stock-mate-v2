@@ -1,10 +1,11 @@
 import { Check, Plus, Search } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { CustomWatchlistGroupDto, MarketStockDto } from '@/shared/contracts';
-import { Button, Card, cn, Input, RolePill } from '@/client/components/ui/primitives';
+import { Button, Card, cn, Input } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { ApiClientError } from '@/client/lib/apiClient';
 import { formatIdr, formatPercent } from '@/client/lib/formatters';
+import { useToast } from '@/client/lib/useToast';
 import { useAddStockToCustomWatchlist, useIdxCatalogSearch } from './useWatchlist';
 
 interface CustomWatchlistQuickAddProps {
@@ -13,6 +14,7 @@ interface CustomWatchlistQuickAddProps {
 
 export function CustomWatchlistQuickAdd({ group }: CustomWatchlistQuickAddProps) {
   const { t } = useI18n();
+  const { showToast } = useToast();
   const [query, setQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +60,7 @@ export function CustomWatchlistQuickAdd({ group }: CustomWatchlistQuickAddProps)
       });
       setQuery('');
       setDropdownOpen(false);
+      showToast(`${clean} → ${group.name}`, 'success');
     } catch (err) {
       if (err instanceof ApiClientError) {
         setError(err.message);
@@ -91,7 +94,6 @@ export function CustomWatchlistQuickAdd({ group }: CustomWatchlistQuickAddProps)
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-ink">{t.watchlist.quickAddLabel}</span>
-          <RolePill role="editable" label={t.common.editableTag} />
           <span className="hidden text-xs text-muted xl:inline">·</span>
           <span className="hidden text-xs text-muted xl:inline">
             {t.watchlist.quickAddCustomHint}
@@ -159,9 +161,9 @@ export function CustomWatchlistQuickAdd({ group }: CustomWatchlistQuickAddProps)
                               className={cn(
                                 'font-mono text-[11px] font-semibold tabular-nums',
                                 stock.valuation.mosPct >= 30
-                                  ? 'text-positive-600'
+                                  ? 'text-positive-700'
                                   : stock.valuation.mosPct >= 0
-                                    ? 'text-warning-600'
+                                    ? 'text-warning-700'
                                     : 'text-negative-600',
                               )}
                             >

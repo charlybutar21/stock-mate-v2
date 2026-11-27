@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import type { CustomWatchlistGroupDto } from '@/shared/contracts';
 import { cn } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
+import { useToast } from '@/client/lib/useToast';
 import {
   useAddStockToCustomWatchlist,
   useRemoveStockFromCustomWatchlist,
@@ -23,6 +24,7 @@ export function AddToWatchlistMenu({
   onCreateWithTicker,
 }: AddToWatchlistMenuProps) {
   const { t } = useI18n();
+  const { showToast } = useToast();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -85,10 +87,16 @@ export function AddToWatchlistMenu({
 
   const handleToggleGroup = async (group: CustomWatchlistGroupDto) => {
     const isMember = memberGroupIds.includes(group.id);
-    if (isMember) {
-      await removeMutation.mutateAsync({ groupId: group.id, ticker });
-    } else {
-      await addMutation.mutateAsync({ groupId: group.id, payload: { ticker } });
+    try {
+      if (isMember) {
+        await removeMutation.mutateAsync({ groupId: group.id, ticker });
+        showToast(`${ticker} — ${t.watchlist.toastSavedToWatchlist}`, 'info');
+      } else {
+        await addMutation.mutateAsync({ groupId: group.id, payload: { ticker } });
+        showToast(`${ticker} → ${group.name}`, 'success');
+      }
+    } catch {
+      showToast(t.common.unexpectedError, 'error');
     }
   };
 
@@ -103,7 +111,7 @@ export function AddToWatchlistMenu({
         aria-label={isInAny ? `${t.watchlist.inWatchlistsCount} (${memberGroupIds.length})` : t.watchlist.addToWatchlist}
         title={isInAny ? `${t.watchlist.inWatchlistsCount} (${memberGroupIds.length})` : t.watchlist.addToWatchlist}
         className={cn(
-          'inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors cursor-pointer',
+          'inline-flex h-9 w-9 md:h-7 md:w-7 items-center justify-center rounded-md transition-colors cursor-pointer',
           isInAny
             ? 'border border-brand-600/35 bg-brand-50 text-brand-700 hover:bg-brand-100'
             : 'text-muted hover:bg-subtle hover:text-ink',

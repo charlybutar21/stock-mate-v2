@@ -15,7 +15,10 @@ interface RateBucket {
   resetAtMs: number;
 }
 
-function resolveClientIdentifier(c: Parameters<MiddlewareHandler<AppEnv>>[0], keyBy: 'ip' | 'userOrIp'): string {
+function resolveClientIdentifier(
+  c: Parameters<MiddlewareHandler<AppEnv>>[0],
+  keyBy: 'ip' | 'userOrIp',
+): string {
   if (keyBy === 'userOrIp') {
     const userId = c.get('user')?.id;
     if (userId) return `u:${userId}`;
@@ -23,16 +26,13 @@ function resolveClientIdentifier(c: Parameters<MiddlewareHandler<AppEnv>>[0], ke
   const cfIp = c.req.header('cf-connecting-ip')?.trim();
   if (cfIp && cfIp.length <= 64) return `ip:${cfIp}`;
 
-  const forwarded = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
-  if (forwarded && forwarded.length <= 64) return `ip:${forwarded}`;
-
   return 'ip:local';
 }
 
 /**
- * Bounded in-memory fixed-window rate limiter for Cloudflare Worker isolates.
- * Protects authentication and external-fetch endpoints against brute-force and abuse
- * while bounding internal Map size to prevent memory-exhaustion DoS.
+ * Distributed-ready fixed-window rate limiter:
+ * - Uses Cloudflare KV (STOCK_MATE_KV) when bound for cross-PoP enforcement.
+ * - Gracefully falls back to a memory-bounded per-isolate Map when KV is unbound (dev/tests).
  */
 export function createRateLimitMiddleware(
   options: RateLimitOptions,
@@ -41,6 +41,7 @@ export function createRateLimitMiddleware(
   const maxTrackedKeys = options.maxTrackedKeys ?? 2000;
   const keyBy = options.keyBy ?? 'ip';
   const keyPrefix = options.keyPrefix ?? '';
+  const windowSec = Math.max(1, Math.ceil(options.windowMs / 1000));
 
   const pruneExpired = (nowMs: number) => {
     for (const [key, bucket] of buckets) {
@@ -60,27 +61,52 @@ export function createRateLimitMiddleware(
     const clientId = resolveClientIdentifier(c, keyBy);
     const scope = keyPrefix || new URL(c.req.url).pathname;
     const key = `${clientId}:${scope}`;
+    const kv = c.env.STOCK_MATE_KV;
 
-    let bucket = buckets.get(key);
-    if (!bucket || bucket.resetAtMs <= nowMs) {
-      if (buckets.size >= maxTrackedKeys) {
-        pruneExpired(nowMs);
+    let count = 0;
+    let retryAfterSec = windowSec;
+
+    if (kv) {
+      const windowBucket = Math.floor(nowMs / options.windowMs);
+      const kvKey = `rl:${scope}:${clientId}:${windowBucket}`;
+      const resetAtMs = (windowBucket + 1) * options.windowMs;
+      retryAfterSec = Math.max(1, Math.ceil((resetAtMs - nowMs) / 1000));
+
+      try {
+        const currentRaw = await kv.get(kvKey);
+        const current = currentRaw ? Number.parseInt(currentRaw, 10) : 0;
+        count = (Number.isFinite(current) ? current : 0) + 1;
+        await kv.put(kvKey, String(count), {
+          expirationTtl: Math.max(60, windowSec + 10),
+        });
+      } catch {
+        // Fallback to local bucket if KV temporarily fails
+        count = 0;
       }
-      bucket = {
-        count: 0,
-        resetAtMs: nowMs + options.windowMs,
-      };
-      buckets.set(key, bucket);
     }
 
-    bucket.count += 1;
-    const remaining = Math.max(0, options.maxRequests - bucket.count);
-    const retryAfterSec = Math.max(1, Math.ceil((bucket.resetAtMs - nowMs) / 1000));
+    if (count === 0) {
+      let bucket = buckets.get(key);
+      if (!bucket || bucket.resetAtMs <= nowMs) {
+        if (buckets.size >= maxTrackedKeys) {
+          pruneExpired(nowMs);
+        }
+        bucket = {
+          count: 0,
+          resetAtMs: nowMs + options.windowMs,
+        };
+        buckets.set(key, bucket);
+      }
+      bucket.count += 1;
+      count = bucket.count;
+      retryAfterSec = Math.max(1, Math.ceil((bucket.resetAtMs - nowMs) / 1000));
+    }
 
+    const remaining = Math.max(0, options.maxRequests - count);
     c.header('X-RateLimit-Limit', String(options.maxRequests));
     c.header('X-RateLimit-Remaining', String(remaining));
 
-    if (bucket.count > options.maxRequests) {
+    if (count > options.maxRequests) {
       c.header('Retry-After', String(retryAfterSec));
       throw tooManyRequestsError(
         `Too many requests. Please wait ${retryAfterSec} seconds before retrying.`,

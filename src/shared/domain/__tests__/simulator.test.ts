@@ -429,7 +429,26 @@ describe('simulator engine', () => {
       expect(plan.stages[2]?.allocationWeightPct).toBe(50);
       expect(plan.plannedTranches.length).toBeGreaterThan(0);
       expect(plan.totalCashUsed).toBeLessThanOrEqual(20_000_000);
+      expect(plan.totalCashUsed).toBe(plan.simulation.plannedCashRequired);
       expect(plan.simulation.valid).toBe(true);
+    }
+
+    // With stamp duty enabled (> Rp 10M budget): totalCashUsed matches simulation.plannedCashRequired and never exceeds budget
+    const planWithStamp = planPyramidingAllocation({
+      existingLots: 10,
+      existingAvgPrice: 5000,
+      totalCashBudget: 20_000_000,
+      referencePrice: 4500,
+      stepDiscountPct: 5,
+      strategy: 'PYRAMID_20_30_50',
+      targetSellPrice: 5000,
+      includeStampDuty: true,
+    });
+    expect(planWithStamp.valid).toBe(true);
+    if (planWithStamp.valid) {
+      expect(planWithStamp.simulation.stampDutyBuy).toBe(10_000);
+      expect(planWithStamp.totalCashUsed).toBe(planWithStamp.simulation.plannedCashRequired);
+      expect(planWithStamp.totalCashUsed).toBeLessThanOrEqual(20_000_000);
     }
 
     // Fresh position (existingLots = 0) with tiny stage 1 budget (0 lots in stage 1)

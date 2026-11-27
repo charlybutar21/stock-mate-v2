@@ -84,6 +84,15 @@ export interface WatchlistRepository {
     }>,
     fundamentalsPatch?: Partial<Omit<FundamentalsRecord, 'id' | 'watchlistItemId'>>,
   ): Promise<void>;
+  batchUpdateMarketData?(
+    userId: string,
+    updates: Array<{
+      id: string;
+      currentPrice: number;
+      updatedAt: number;
+      fundamentalsPatch: Partial<Omit<FundamentalsRecord, 'id' | 'watchlistItemId'>>;
+    }>,
+  ): Promise<void>;
   softDelete(id: string, userId: string, deletedAtMs: number): Promise<boolean>;
 }
 

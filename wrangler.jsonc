@@ -10,6 +10,18 @@
   "observability": {
     "enabled": true
   },
+  // Background IHSG catalog sync during IDX trading hours (08:00-17:45 WIB Mon-Fri) + nightly EOD
+  "triggers": {
+    "crons": ["*/15 1-10 * * 1-5", "0 15 * * *"]
+  },
+  // Edge KV binding for 100k concurrent users (zero-D1 catalog snapshots, revocation & distributed rate limiting)
+  "kv_namespaces": [
+    {
+      "binding": "STOCK_MATE_KV",
+      "id": "29e912121fd9485b9ce94e312639483d",
+      "preview_id": "4b17fe8fd1f048169c045e9e6881c633"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

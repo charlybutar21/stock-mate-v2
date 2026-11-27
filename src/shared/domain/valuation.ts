@@ -216,7 +216,7 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
     eps !== null && eps > 0 && targetPer !== null && targetPer > 0
       ? {
           method: 'relativePer',
-          fairValue: Math.round(eps * targetPer),
+          fairValue: Math.max(1, Math.round(eps * targetPer)),
           status: 'VALID',
         }
       : {
@@ -231,7 +231,7 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
     bvps !== null && bvps > 0 && targetPbv !== null && targetPbv > 0
       ? {
           method: 'relativePbv',
-          fairValue: Math.round(bvps * targetPbv),
+          fairValue: Math.max(1, Math.round(bvps * targetPbv)),
           status: 'VALID',
         }
       : {
@@ -245,8 +245,16 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
   const r = discountRatePct / 100;
   const gt = terminalGrowthPct / 100;
   let simpleDcf: ValuationMethodResult;
-  if (eps !== null && eps > 0 && epsGrowthPct !== null && r > gt && projectionYears >= 1) {
-    const gEff = Math.min(epsGrowthPct / 100, 0.2);
+  if (
+    eps !== null &&
+    eps > 0 &&
+    epsGrowthPct !== null &&
+    epsGrowthPct > -100 &&
+    r > gt &&
+    projectionYears >= 1
+  ) {
+    // Clamp effective growth to [-20%, +20%] so severe earnings swings cannot invert DCF sign
+    const gEff = Math.max(-0.2, Math.min(epsGrowthPct / 100, 0.2));
     let pvCashFlows = 0;
     for (let t = 1; t <= projectionYears; t++) {
       pvCashFlows += (eps * Math.pow(1 + gEff, t)) / Math.pow(1 + r, t);
@@ -256,7 +264,7 @@ export function calculateValuation(input: ValuationInput): ValuationSummary {
       (terminalEps * (1 + gt)) / ((r - gt) * Math.pow(1 + r, projectionYears));
     simpleDcf = {
       method: 'simpleDcf',
-      fairValue: Math.round(pvCashFlows + pvTerminal),
+      fairValue: Math.max(1, Math.round(pvCashFlows + pvTerminal)),
       status: 'VALID',
     };
   } else {

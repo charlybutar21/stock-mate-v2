@@ -300,11 +300,62 @@ export class D1WatchlistRepository implements WatchlistRepository {
     }
   }
 
-  async softDelete(id: string, userId: string, deletedAtMs: number): Promise<boolean> {
-    const existing = await this.findByIdForUser(id, userId);
-    if (!existing) return false;
+  async batchUpdateMarketData(
+    userId: string,
+    updates: Array<{
+      id: string;
+      currentPrice: number;
+      updatedAt: number;
+      fundamentalsPatch: Partial<Omit<FundamentalsRecord, 'id' | 'watchlistItemId'>>;
+    }>,
+  ): Promise<void> {
+    if (updates.length === 0) return;
 
-    await this.db
+    // 25 items = 50 statements per D1 batch (eliminates N+1 sequential round-trips)
+    const CHUNK_SIZE = 25;
+    for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
+      const slice = updates.slice(i, i + CHUNK_SIZE);
+      const statements = slice.flatMap((entry) => {
+        const ownedItemSubquery = this.db
+          .select({ id: schema.watchlistItems.id })
+          .from(schema.watchlistItems)
+          .where(
+            and(
+              eq(schema.watchlistItems.id, entry.id),
+              eq(schema.watchlistItems.userId, userId),
+              isNull(schema.watchlistItems.deletedAt),
+            ),
+          );
+
+        return [
+          this.db
+            .update(schema.watchlistItems)
+            .set({
+              currentPrice: entry.currentPrice,
+              updatedAt: entry.updatedAt,
+            })
+            .where(
+              and(
+                eq(schema.watchlistItems.id, entry.id),
+                eq(schema.watchlistItems.userId, userId),
+                isNull(schema.watchlistItems.deletedAt),
+              ),
+            ),
+          this.db
+            .update(schema.stockFundamentals)
+            .set(entry.fundamentalsPatch)
+            .where(inArray(schema.stockFundamentals.watchlistItemId, ownedItemSubquery)),
+        ];
+      });
+
+      if (statements.length > 0) {
+        await this.db.batch(statements as [typeof statements[0], ...typeof statements]);
+      }
+    }
+  }
+
+  async softDelete(id: string, userId: string, deletedAtMs: number): Promise<boolean> {
+    const updated = await this.db
       .update(schema.watchlistItems)
       .set({
         deletedAt: deletedAtMs,
@@ -316,8 +367,9 @@ export class D1WatchlistRepository implements WatchlistRepository {
           eq(schema.watchlistItems.userId, userId),
           isNull(schema.watchlistItems.deletedAt),
         ),
-      );
+      )
+      .returning({ id: schema.watchlistItems.id });
 
-    return true;
+    return updated.length > 0;
   }
 }

@@ -26,7 +26,6 @@ import {
   Card,
   Field,
   Input,
-  RolePill,
   SectionHeader,
   Skeleton,
   TermTooltip,
@@ -39,13 +38,14 @@ import {
   formatPercent,
   formatShortDate,
 } from '@/client/lib/formatters';
+import { useToast } from '@/client/lib/useToast';
 import { FairValueRangeBar } from './FairValueRangeBar';
 import {
   HoldingTranchesEditor,
   type EditableHoldingRow,
 } from './HoldingTranchesEditor';
 import { StockFormModal } from './StockFormModal';
-import { statusTone } from './WatchlistPage';
+import { statusTone } from '@/client/lib/valuationTone';
 import { useFetchIdxQuote, useUpdateWatchlistItem, useWatchlistItem } from './useWatchlist';
 import { QualityBreakdownCard } from '@/client/features/radar/QualityBreakdownCard';
 
@@ -73,6 +73,7 @@ function shieldTone(level: ValueTrapRiskLevel): BadgeTone {
 export function StockDetailPage() {
   const { id } = useParams();
   const { t, lang } = useI18n();
+  const { showToast } = useToast();
   const { data: item, isLoading, isError } = useWatchlistItem(id);
   const updateMutation = useUpdateWatchlistItem();
   const fetchQuoteMutation = useFetchIdxQuote();
@@ -103,15 +104,20 @@ export function StockDetailPage() {
       }))
       .filter((r) => r.lots >= 1 && r.buyPrice >= 1);
 
-    await updateMutation.mutateAsync({
-      id: item.id,
-      payload: {
-        holdingTranches: validTranches,
-      },
-    });
-    setHoldingDraft(null);
-    setPositionSavedNotice(true);
-    setTimeout(() => setPositionSavedNotice(false), 3000);
+    try {
+      await updateMutation.mutateAsync({
+        id: item.id,
+        payload: {
+          holdingTranches: validTranches,
+        },
+      });
+      setHoldingDraft(null);
+      setPositionSavedNotice(true);
+      showToast(t.detail.positionSaved, 'success');
+      setTimeout(() => setPositionSavedNotice(false), 3000);
+    } catch {
+      showToast(t.common.unexpectedError, 'error');
+    }
   };
 
   const handleSyncData = async () => {
@@ -154,9 +160,10 @@ export function StockDetailPage() {
         },
       });
       setSyncNotice(t.watchlist.syncSuccess);
+      showToast(t.watchlist.syncSuccess, 'success');
       setTimeout(() => setSyncNotice(null), 3000);
     } catch {
-      // Handled gracefully
+      showToast(t.watchlist.toastSyncFailed, 'error');
     }
   };
 
@@ -207,19 +214,24 @@ export function StockDetailPage() {
   const saveWhatIf = async () => {
     if (!item) return;
     setSavedNotice(false);
-    await updateMutation.mutateAsync({
-      id: item.id,
-      payload: {
-        fundamentals: {
-          targetPer: targetPer.trim() ? Number(targetPer) : null,
-          targetPbv: targetPbv.trim() ? Number(targetPbv) : null,
-          discountRatePct: Number(discountRatePct),
+    try {
+      await updateMutation.mutateAsync({
+        id: item.id,
+        payload: {
+          fundamentals: {
+            targetPer: targetPer.trim() ? Number(targetPer) : null,
+            targetPbv: targetPbv.trim() ? Number(targetPbv) : null,
+            discountRatePct: Number(discountRatePct),
+          },
         },
-      },
-    });
-    setDraft({});
-    setSavedNotice(true);
-    setTimeout(() => setSavedNotice(false), 3000);
+      });
+      setDraft({});
+      setSavedNotice(true);
+      showToast(t.detail.savedNotice, 'success');
+      setTimeout(() => setSavedNotice(false), 3000);
+    } catch {
+      showToast(t.common.unexpectedError, 'error');
+    }
   };
 
   if (isLoading) {
@@ -519,7 +531,6 @@ export function StockDetailPage() {
               <h3 className="font-display text-sm font-bold text-ink">
                 {t.detail.myPositionTitle}
               </h3>
-              <RolePill role="editable" label={t.common.editableTag} />
             </div>
             <div className="flex items-center gap-2">
               {positionSavedNotice && (
@@ -579,10 +590,8 @@ export function StockDetailPage() {
                         definition={t.glossary[m.method]}
                       />
                     </span>
-                    {isPrimaryBankPbv ? (
+                    {isPrimaryBankPbv && (
                       <Badge tone="info">{t.detail.primaryBankRef}</Badge>
-                    ) : (
-                      <RolePill role="calculated" label={t.common.calculatedTag} />
                     )}
                   </div>
                   <p className="mt-1 text-[11px] text-muted">
@@ -628,7 +637,6 @@ export function StockDetailPage() {
                   <h3 className="font-display text-sm font-bold text-ink">
                     {t.detail.whatIfTitle}
                   </h3>
-                  <RolePill role="editable" label={t.common.editableTag} />
                 </div>
                 <p className="mt-0.5 text-xs text-muted">{t.detail.whatIfSubtitle}</p>
               </div>
@@ -712,7 +720,6 @@ export function StockDetailPage() {
                   <h3 className="font-display text-sm font-bold text-ink">
                     {t.detail.thesisTitle}
                   </h3>
-                  <RolePill role="display" label={t.common.displayTag} />
                 </div>
                 <Button
                   variant="ghost"

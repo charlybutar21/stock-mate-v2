@@ -1,4 +1,4 @@
-import { Calculator, LogOut, Moon, Radar, Star, Sun, TrendingUp } from 'lucide-react';
+import { Calculator, Info, LogOut, Moon, Radar, Star, Sun, TrendingUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useI18n } from '@/client/i18n/useI18n';
@@ -18,7 +18,7 @@ export function ThemeSwitcher() {
       title={isDark ? t.nav.switchToLight : t.nav.switchToDark}
       aria-label={isDark ? t.nav.switchToLight : t.nav.switchToDark}
       aria-pressed={isDark}
-      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-xs font-semibold text-ink transition-colors hover:border-brand-600/50 hover:bg-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 cursor-pointer"
+      className="inline-flex h-9 min-w-[36px] items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-xs font-semibold text-ink transition-colors hover:border-brand-600/50 hover:bg-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 sm:h-8 cursor-pointer"
     >
       {isDark ? (
         <>
@@ -46,8 +46,9 @@ export function LanguageSwitcher() {
       <button
         type="button"
         onClick={() => setLang('en')}
+        aria-pressed={lang === 'en'}
         className={cn(
-          'rounded-md px-2.5 py-1 transition-all cursor-pointer',
+          'rounded-md px-2.5 py-1.5 transition-all sm:py-1 cursor-pointer',
           lang === 'en' ? 'bg-brand-solid text-white shadow-2xs' : 'text-muted hover:text-ink',
         )}
       >
@@ -56,8 +57,9 @@ export function LanguageSwitcher() {
       <button
         type="button"
         onClick={() => setLang('id')}
+        aria-pressed={lang === 'id'}
         className={cn(
-          'rounded-md px-2.5 py-1 transition-all cursor-pointer',
+          'rounded-md px-2.5 py-1.5 transition-all sm:py-1 cursor-pointer',
           lang === 'id' ? 'bg-brand-solid text-white shadow-2xs' : 'text-muted hover:text-ink',
         )}
       >
@@ -87,8 +89,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     .join('');
 
   return (
-    <div className="min-h-screen bg-surface text-ink transition-colors duration-150">
-      <header className="sticky top-0 z-30 border-b border-border bg-panel">
+    <div className="flex min-h-screen flex-col bg-surface text-ink transition-colors duration-150">
+      <header className="sticky top-0 z-30 border-b border-border bg-panel/95 backdrop-blur-xs">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6">
           <div className="flex h-full items-center gap-4 sm:gap-6">
             <Link to="/watchlist" className="flex items-center gap-2 text-ink">
@@ -100,7 +102,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               </span>
             </Link>
 
-            <nav className="flex h-full items-center gap-1" aria-label="Main navigation">
+            {/* Desktop Primary Navigation (mobile uses ergonomic Bottom Tab Bar below) */}
+            <nav className="hidden h-full items-center gap-1 md:flex" aria-label="Main navigation">
               {navItems.map((item) => {
                 const active = location.pathname.startsWith(item.to);
                 const Icon = item.icon;
@@ -110,7 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     to={item.to}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'relative inline-flex h-full items-center gap-1.5 px-2.5 text-xs font-semibold transition-colors sm:px-3.5 sm:text-sm',
+                      'relative inline-flex h-full items-center gap-1.5 px-3.5 text-sm font-semibold transition-colors',
                       active
                         ? 'text-brand-700 after:absolute after:right-2 after:bottom-0 after:left-2 after:h-[2.5px] after:rounded-t-full after:bg-brand-600'
                         : 'text-muted hover:text-ink',
@@ -128,7 +131,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <ThemeSwitcher />
             <LanguageSwitcher />
             {user && (
-              <div className="hidden items-center gap-2 border-l border-border pl-2.5 md:flex">
+              <div className="hidden items-center gap-2 border-l border-border pl-2.5 lg:flex">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full border border-brand-600/25 bg-brand-50 text-xs font-bold text-brand-700">
                   {initials}
                 </span>
@@ -143,6 +146,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               onClick={() => logout.mutate()}
               disabled={logout.isPending}
               aria-label={t.nav.logout}
+              className="h-9 px-2.5 sm:h-8"
             >
               <LogOut className="h-4 w-4" aria-hidden="true" />
               <span className="hidden sm:inline">{t.nav.logout}</span>
@@ -151,7 +155,50 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 pt-6 pb-12 sm:px-6">{children}</main>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-5 pb-24 sm:px-6 md:pt-6 md:pb-12">
+        {children}
+
+        <footer className="mt-10 border-t border-border/70 pt-4 text-center">
+          <p className="inline-flex items-center justify-center gap-1.5 text-[11px] leading-relaxed text-muted">
+            <Info className="h-3.5 w-3.5 shrink-0 text-muted/80" aria-hidden="true" />
+            <span>{t.common.disclaimer}</span>
+          </p>
+        </footer>
+      </main>
+
+      {/* Mobile Bottom Navigation Bar (Stockbit / Ajaib Ergonomics, >= 48px tap targets) */}
+      <nav
+        aria-label="Mobile navigation"
+        className="fixed right-0 bottom-0 left-0 z-40 border-t border-border bg-panel/95 backdrop-blur-md md:hidden"
+      >
+        <div className="grid h-16 grid-cols-3 px-2">
+          {navItems.map((item) => {
+            const active = location.pathname.startsWith(item.to);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold transition-colors',
+                  active ? 'text-brand-700' : 'text-muted hover:text-ink',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-7 w-12 items-center justify-center rounded-full transition-colors',
+                    active && 'bg-brand-50 text-brand-700',
+                  )}
+                >
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }

@@ -1,9 +1,15 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { csrf } from 'hono/csrf';
 import { HTTPException } from 'hono/http-exception';
 import { secureHeaders } from 'hono/secure-headers';
 import * as schema from './shared/db/schema';
+import {
+  ACCESS_COOKIE_NAME,
+  HOST_ACCESS_COOKIE_NAME,
+  HOST_SESSION_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+} from './shared/http/auth-mw';
 import { MAX_JSON_BODY_BYTES } from './shared/http/json-body';
 import {
   AppError,
@@ -13,14 +19,17 @@ import {
   problemResponse,
   unsupportedMediaTypeError,
 } from './shared/http/problem';
+import { SessionRevocationStore } from './shared/http/session-token';
 import { logJson } from './shared/logger';
-import type { AppEnv } from './shared/types';
+import type { AppBindings, AppEnv } from './shared/types';
 import { D1AuthRepository } from './modules/auth/infra/d1-auth-repository';
 import { WebCryptoHasher } from './modules/auth/infra/web-crypto-hasher';
 import { createAuthRoutes } from './modules/auth/infra/auth-routes';
 import { D1WatchlistRepository } from './modules/watchlist/infra/d1-watchlist-repository';
 import { D1IdxCatalogRepository } from './modules/watchlist/infra/d1-idx-catalog-repository';
 import { D1CustomWatchlistRepository } from './modules/watchlist/infra/d1-custom-watchlist-repository';
+import { CatalogSnapshotStore } from './modules/watchlist/infra/catalog-snapshot-store';
+import { SyncIdxCatalogUseCase } from './modules/watchlist/application/watchlist-catalog-use-cases';
 import { createWatchlistRoutes } from './modules/watchlist/infra/watchlist-routes';
 import type { IdxMarketDataProvider } from './modules/market-data/domain/market-data.types';
 import {
@@ -37,11 +46,31 @@ const JSON_BODY_FREE_POST_PATHS = new Set([
   '/api/v1/watchlist/sync-all',
   '/api/v1/watchlist/catalog/sync',
 ]);
+const EDGE_SNAPSHOT_CACHE_CONTROL = 'public, max-age=60, s-maxage=300, stale-while-revalidate=600';
 
 function extractOriginFromReferer(referer: string | undefined): string | null {
   if (!referer) return null;
   try {
     return new URL(referer).origin;
+  } catch {
+    return null;
+  }
+}
+
+function hasAuthCookie(cookieHeader: string | undefined): boolean {
+  if (!cookieHeader) return false;
+  return (
+    cookieHeader.includes(`${SESSION_COOKIE_NAME}=`) ||
+    cookieHeader.includes(`${HOST_SESSION_COOKIE_NAME}=`) ||
+    cookieHeader.includes(`${ACCESS_COOKIE_NAME}=`) ||
+    cookieHeader.includes(`${HOST_ACCESS_COOKIE_NAME}=`)
+  );
+}
+
+function getEdgeCache(): Cache | null {
+  try {
+    const cfCaches = (globalThis as unknown as { caches?: { default?: Cache } }).caches;
+    return cfCaches?.default ?? null;
   } catch {
     return null;
   }
@@ -54,6 +83,8 @@ export function createApp(options?: {
 }) {
   const app = new Hono<AppEnv>();
   const hasher = new WebCryptoHasher();
+  const revocationStore = new SessionRevocationStore();
+  const snapshotStore = new CatalogSnapshotStore();
   const tradingViewProvider = new TradingViewIdxProvider();
   const yahooProvider = new YahooFinanceIdxProvider();
   const defaultFreeProvider = new CompositeIdxMarketDataProvider(
@@ -78,6 +109,8 @@ export function createApp(options?: {
       idxCatalogRepo: new D1IdxCatalogRepository(db),
       customWatchlistRepo: new D1CustomWatchlistRepository(db),
       hasher,
+      revocationStore,
+      snapshotStore,
       marketDataProvider,
     };
   };
@@ -105,12 +138,14 @@ export function createApp(options?: {
     });
   });
 
-  // 2. Hardened Security Headers (HSTS, CSP, X-Frame-Options: DENY, nosniff, Permissions-Policy)
+  // 2. Hardened Security Headers (HSTS, CSP, COOP, CORP, X-Frame-Options: DENY, nosniff, Permissions-Policy)
   app.use(
     '/api/*',
     secureHeaders({
       xFrameOptions: 'DENY',
       referrerPolicy: 'strict-origin-when-cross-origin',
+      crossOriginOpenerPolicy: 'same-origin',
+      crossOriginResourcePolicy: 'same-origin',
       strictTransportSecurity: 'max-age=31536000; includeSubDomains',
       permissionsPolicy: {
         camera: [],
@@ -133,7 +168,7 @@ export function createApp(options?: {
     }),
   );
 
-  // 3. Defense-in-Depth Same-Origin CSRF (Origin + Referer + Fetch Metadata), Size & Media-Type Guard
+  // 3. Defense-in-Depth Same-Origin CSRF (Origin + Referer + Fetch Metadata + Custom Header), Size & Media-Type Guard
   app.use('/api/*', async (c, next) => {
     const method = c.req.method.toUpperCase();
     const isMutating =
@@ -144,6 +179,7 @@ export function createApp(options?: {
       const originHeader = c.req.header('origin');
       const refererOrigin = extractOriginFromReferer(c.req.header('referer'));
       const fetchSite = c.req.header('sec-fetch-site')?.toLowerCase();
+      const requestedWith = c.req.header('x-requested-with');
 
       if (originHeader && originHeader !== expectedOrigin) {
         throw forbiddenError('Cross-origin state-changing request blocked by CSRF policy.');
@@ -158,6 +194,20 @@ export function createApp(options?: {
         await csrf({
           origin: (origin) => origin === expectedOrigin,
         })(c, async () => {});
+      }
+
+      // Close headerless CSRF gap on cookie-authenticated mutating requests (e.g. body-free POST /logout)
+      if (hasAuthCookie(c.req.header('cookie'))) {
+        const hasSameOriginProof =
+          originHeader === expectedOrigin ||
+          refererOrigin === expectedOrigin ||
+          fetchSite === 'same-origin' ||
+          requestedWith === 'StockMate';
+        if (!hasSameOriginProof) {
+          throw forbiddenError(
+            'Missing same-origin verification header on cookie-authenticated mutating request.',
+          );
+        }
       }
     }
 
@@ -182,8 +232,13 @@ export function createApp(options?: {
     await next();
   });
 
-  // Health Check (Liveness & D1 Readiness)
-  app.get('/api/v1/health', async (c) => {
+  // Liveness Check (Zero D1 hit — safe for high-frequency probes)
+  app.get('/api/v1/health/live', (c) => {
+    return c.json({ status: 'ok' }, 200);
+  });
+
+  // Readiness Check (D1 connectivity)
+  const handleReadiness = async (c: Context<AppEnv>) => {
     try {
       await c.env.DB.prepare('SELECT 1').first();
       return c.json({ status: 'ok', db: 'ok' }, 200);
@@ -198,6 +253,104 @@ export function createApp(options?: {
         }),
       );
     }
+  };
+
+  app.get('/api/v1/health', handleReadiness);
+  app.get('/api/v1/health/ready', handleReadiness);
+
+  // Shared Edge-Cached IHSG Catalog Snapshot (0 D1 hits at 100k concurrent users)
+  app.get('/api/v1/catalog/snapshot', async (c) => {
+    const edgeCache = getEdgeCache();
+    const cacheKey = new Request(new URL('/api/v1/catalog/snapshot', c.req.url).toString(), {
+      method: 'GET',
+    });
+
+    if (edgeCache) {
+      const cachedRes = await edgeCache.match(cacheKey);
+      if (cachedRes) {
+        const cachedEtag = cachedRes.headers.get('etag');
+        if (cachedEtag && c.req.header('if-none-match') === cachedEtag) {
+          return new Response(null, {
+            status: 304,
+            headers: {
+              ETag: cachedEtag,
+              'Cache-Control': EDGE_SNAPSHOT_CACHE_CONTROL,
+              'X-Catalog-Cache': 'EDGE-HIT',
+            },
+          });
+        }
+        const cloned = new Response(cachedRes.body, cachedRes);
+        cloned.headers.set('X-Catalog-Cache', 'EDGE-HIT');
+        return cloned;
+      }
+    }
+
+    const { idxCatalogRepo, snapshotStore: store } = getDeps(c.env.DB, c.env);
+    const { snapshot, cacheStatus } = await store.getSnapshot({
+      kv: c.env.STOCK_MATE_KV,
+      loadFromD1: async () => {
+        const [stocks, latestSyncedAt] = await Promise.all([
+          idxCatalogRepo.listAll(),
+          idxCatalogRepo.getLatestSyncedAt(),
+        ]);
+        return { stocks, latestSyncedAt };
+      },
+    });
+
+    if (!snapshot) {
+      return c.json(
+        {
+          version: 1,
+          syncedAt: null,
+          summary: {
+            totalStocks: 0,
+            undervalued: 0,
+            fairlyValued: 0,
+            overvalued: 0,
+            insufficientData: 0,
+            qualityScored: 0,
+            eliteQuality: 0,
+            strongQuality: 0,
+            primeOpportunities: 0,
+            lastSyncedAt: null,
+          },
+          items: [],
+        },
+        200,
+        {
+          'Cache-Control': 'public, max-age=15, s-maxage=30',
+          'X-Catalog-Cache': 'EMPTY',
+        },
+      );
+    }
+
+    if (c.req.header('if-none-match') === snapshot.etag) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          ETag: snapshot.etag,
+          'Cache-Control': EDGE_SNAPSHOT_CACHE_CONTROL,
+          'X-Catalog-Cache': `${cacheStatus}-304`,
+        },
+      });
+    }
+
+    const response = c.json(snapshot, 200, {
+      ETag: snapshot.etag,
+      'Cache-Control': EDGE_SNAPSHOT_CACHE_CONTROL,
+      'X-Catalog-Cache': cacheStatus,
+    });
+
+    if (edgeCache) {
+      const putPromise = edgeCache.put(cacheKey, response.clone());
+      try {
+        c.executionCtx.waitUntil(putPromise);
+      } catch {
+        // Ignore when running outside Workers ExecutionContext (tests)
+      }
+    }
+
+    return response;
   });
 
   // Module Routes
@@ -264,4 +417,43 @@ export function createApp(options?: {
 
 const app = createApp();
 
-export default app;
+export async function runScheduledCatalogSync(env: AppBindings): Promise<void> {
+  const correlationId = `cron_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  const start = Date.now();
+  const db = drizzle(env.DB, { schema });
+  const tradingViewProvider = new TradingViewIdxProvider();
+  const yahooProvider = new YahooFinanceIdxProvider();
+  const freeProvider = new CompositeIdxMarketDataProvider(tradingViewProvider, yahooProvider);
+  const marketDataProvider: IdxMarketDataProvider = env.SECTORS_API_KEY
+    ? new CompositeIdxMarketDataProvider(new SectorsIdxProvider(env.SECTORS_API_KEY), freeProvider)
+    : freeProvider;
+
+  const snapshotStore = new CatalogSnapshotStore();
+  const useCase = new SyncIdxCatalogUseCase(
+    new D1IdxCatalogRepository(db),
+    new D1WatchlistRepository(db),
+    marketDataProvider,
+    snapshotStore,
+  );
+
+  try {
+    const result = await useCase.execute(undefined, env.STOCK_MATE_KV);
+    logJson('info', 'cron_catalog_sync_completed', correlationId, {
+      syncedCount: result.syncedCount,
+      durationMs: Date.now() - start,
+      kvEnabled: Boolean(env.STOCK_MATE_KV),
+    });
+  } catch (err) {
+    logJson('error', 'cron_catalog_sync_failed', correlationId, {
+      errorName: err instanceof Error ? err.name : 'UnknownError',
+      durationMs: Date.now() - start,
+    });
+  }
+}
+
+export default {
+  fetch: app.fetch,
+  scheduled(_controller: ScheduledController, env: AppBindings, ctx: ExecutionContext) {
+    ctx.waitUntil(runScheduledCatalogSync(env));
+  },
+} satisfies ExportedHandler<AppBindings>;

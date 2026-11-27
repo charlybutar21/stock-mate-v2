@@ -4,12 +4,23 @@ const REDACTED_KEYS = new Set([
   'password_hash',
   'email',
   'sm_session',
+  '__host-sm_session',
+  'sm_at',
+  '__host-sm_at',
   'cookie',
   'set-cookie',
   'authorization',
   'token',
   'tokenhash',
   'token_hash',
+  'apikey',
+  'api_key',
+  'sectors_api_key',
+  'jwt_secret',
+  'catalog_sync_secret',
+  'cf-connecting-ip',
+  'ip',
+  'clientip',
 ]);
 
 function sanitizeMeta(value: unknown): unknown {

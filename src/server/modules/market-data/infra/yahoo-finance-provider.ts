@@ -2,6 +2,7 @@ import type { IdxMarketQuoteDto } from '@/shared/contracts';
 import { MIN_IDX_PRICE, round2 } from '@/shared/domain';
 import { BoundedTtlCache } from '@/server/shared/cache/bounded-ttl-cache';
 import { AppError, notFoundError } from '@/server/shared/http/problem';
+import { CircuitBreaker } from '@/server/shared/resilience/circuit-breaker';
 import {
   mapYahooSectorToIdx,
   SECTOR_BENCHMARK_MULTIPLES,
@@ -71,6 +72,16 @@ interface YahooQuoteSummaryResponse {
 
 let cachedCrumb: CrumbSession | null = null;
 const quoteCache = new BoundedTtlCache<string, IdxMarketQuoteDto>(QUOTE_CACHE_TTL_MS, 500);
+const yahooCircuitBreaker = new CircuitBreaker(3, 60_000);
+
+function yahooCircuitOpenError(): AppError {
+  return new AppError({
+    status: 503,
+    type: 'https://stock-mate-v2/errors/upstream-circuit-open',
+    title: 'Market Data Temporarily Paused',
+    detail: 'Yahoo Finance upstream circuit breaker is open. Please retry shortly.',
+  });
+}
 
 function extractCookieHeader(headers: Headers): string {
   const getSetCookie = (headers as unknown as { getSetCookie?: () => string[] }).getSetCookie;
@@ -151,45 +162,48 @@ export class YahooFinanceIdxProvider implements IdxMarketDataProvider {
       return cached;
     }
 
-    const session = await getYahooCrumb();
-    const modules = 'price,summaryDetail,defaultKeyStatistics,financialData,assetProfile';
-    const buildUrl = (crumb: string) =>
-      `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(cleanTicker)}.JK?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
+    const payload = await yahooCircuitBreaker.execute(async () => {
+      const session = await getYahooCrumb();
+      const modules = 'price,summaryDetail,defaultKeyStatistics,financialData,assetProfile';
+      const buildUrl = (crumb: string) =>
+        `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(cleanTicker)}.JK?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
 
-    let res = await fetch(buildUrl(session.crumb), {
-      headers: {
-        'User-Agent': USER_AGENT,
-        ...(session.cookie ? { Cookie: session.cookie } : {}),
-      },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-
-    // Retry once if crumb expired on upstream
-    if (res.status === 401 || res.status === 403) {
-      const freshSession = await getYahooCrumb(true);
-      res = await fetch(buildUrl(freshSession.crumb), {
+      let res = await fetch(buildUrl(session.crumb), {
         headers: {
           'User-Agent': USER_AGENT,
-          ...(freshSession.cookie ? { Cookie: freshSession.cookie } : {}),
+          ...(session.cookie ? { Cookie: session.cookie } : {}),
         },
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });
-    }
 
-    if (res.status === 404) {
-      throw notFoundError(`IDX ticker ${cleanTicker} was not found.`);
-    }
+      // Retry once if crumb expired on upstream
+      if (res.status === 401 || res.status === 403) {
+        const freshSession = await getYahooCrumb(true);
+        res = await fetch(buildUrl(freshSession.crumb), {
+          headers: {
+            'User-Agent': USER_AGENT,
+            ...(freshSession.cookie ? { Cookie: freshSession.cookie } : {}),
+          },
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        });
+      }
 
-    if (!res.ok) {
-      throw new AppError({
-        status: 502,
-        type: 'https://stock-mate-v2/errors/upstream-unavailable',
-        title: 'Market Data Unavailable',
-        detail: `Market data provider returned status ${res.status}. You can still enter fundamentals manually.`,
-      });
-    }
+      if (res.status === 404) {
+        throw notFoundError(`IDX ticker ${cleanTicker} was not found.`);
+      }
 
-    const payload = (await res.json()) as YahooQuoteSummaryResponse;
+      if (!res.ok) {
+        throw new AppError({
+          status: 502,
+          type: 'https://stock-mate-v2/errors/upstream-unavailable',
+          title: 'Market Data Unavailable',
+          detail: `Market data provider returned status ${res.status}. You can still enter fundamentals manually.`,
+        });
+      }
+
+      return (await res.json()) as YahooQuoteSummaryResponse;
+    }, yahooCircuitOpenError, (err) => !(err instanceof AppError && err.status === 404));
+
     const item = payload.quoteSummary?.result?.[0];
     if (!item || !item.price?.regularMarketPrice?.raw) {
       throw notFoundError(`IDX ticker ${cleanTicker} was not found or has no market price.`);

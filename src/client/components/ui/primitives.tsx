@@ -3,6 +3,7 @@ import { BarChart3, ChevronDown, ChevronUp, Eye, HelpCircle, PencilLine, X } fro
 import {
   forwardRef,
   useEffect,
+  useId,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -151,7 +152,7 @@ export function IdxPriceInput({
           disabled={disabled || validNum <= MIN_IDX_PRICE}
           aria-label={`${stepDownLabel}${downDelta > 0 ? ` (-${downDelta})` : ''}`}
           title={downDelta > 0 ? `-${downDelta} (${tickHintLabel})` : stepDownLabel}
-          className="flex w-7 shrink-0 items-center justify-center border-r border-input-border bg-subtle/60 text-muted transition-colors hover:bg-subtle hover:text-ink active:bg-brand-50 active:text-brand-700 disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
+          className="flex w-9 shrink-0 items-center justify-center border-r border-input-border bg-subtle/60 text-muted transition-colors hover:bg-subtle hover:text-ink active:bg-brand-50 active:text-brand-700 disabled:cursor-not-allowed disabled:opacity-35 sm:w-8 cursor-pointer"
         >
           <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
@@ -178,7 +179,7 @@ export function IdxPriceInput({
           disabled={disabled}
           aria-label={`${stepUpLabel} (+${upDelta})`}
           title={`+${upDelta} (${tickHintLabel})`}
-          className="flex w-7 shrink-0 items-center justify-center border-l border-input-border bg-subtle/60 text-muted transition-colors hover:bg-subtle hover:text-ink active:bg-brand-50 active:text-brand-700 disabled:cursor-not-allowed disabled:opacity-35 cursor-pointer"
+          className="flex w-9 shrink-0 items-center justify-center border-l border-input-border bg-subtle/60 text-muted transition-colors hover:bg-subtle hover:text-ink active:bg-brand-50 active:text-brand-700 disabled:cursor-not-allowed disabled:opacity-35 sm:w-8 cursor-pointer"
         >
           <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
@@ -236,8 +237,8 @@ export const Textarea = forwardRef<
 Textarea.displayName = 'Textarea';
 
 /**
- * Portal-rendered accessible hover/focus tooltip for financial terminology.
- * Never clipped by overflow-hidden tables or modals.
+ * Portal-rendered accessible hover/focus/tap tooltip for financial terminology.
+ * Works on both desktop hover/keyboard and mobile touch tap, never clipped by overflow containers.
  */
 export function TermTooltip({
   label,
@@ -248,38 +249,101 @@ export function TermTooltip({
   definition: string;
   className?: string;
 }) {
+  const tooltipId = useId();
   const triggerRef = useRef<HTMLSpanElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number; placeBelow: boolean } | null>(
     null,
   );
+  const [pinned, setPinned] = useState(false);
 
-  const show = () => {
+  const computeCoords = () => {
     const el = triggerRef.current;
-    if (!el) return;
+    if (!el) return null;
     const rect = el.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
-    const clampedX = Math.max(150, Math.min(window.innerWidth - 150, centerX));
-    const placeBelow = rect.top < 115;
-    setCoords({
+    const clampedX = Math.max(160, Math.min(window.innerWidth - 160, centerX));
+    const placeBelow = rect.top < 130;
+    return {
       top: placeBelow ? rect.bottom + 8 : rect.top - 8,
       left: clampedX,
       placeBelow,
-    });
+    };
   };
 
-  const hide = () => setCoords(null);
+  const show = () => {
+    const next = computeCoords();
+    if (next) setCoords(next);
+  };
+
+  const hide = () => {
+    if (!pinned) setCoords(null);
+  };
+
+  const toggleTap = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    if (pinned) {
+      setPinned(false);
+      setCoords(null);
+    } else {
+      const next = computeCoords();
+      if (next) {
+        setPinned(true);
+        setCoords(next);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!pinned) return;
+    const onOutside = (e: MouseEvent | TouchEvent) => {
+      if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
+        setPinned(false);
+        setCoords(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPinned(false);
+        setCoords(null);
+      }
+    };
+    window.addEventListener('mousedown', onOutside);
+    window.addEventListener('touchstart', onOutside, { passive: true });
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onOutside);
+      window.removeEventListener('touchstart', onOutside);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [pinned]);
 
   return (
     <>
       <span
         ref={triggerRef}
         tabIndex={0}
+        role="button"
+        aria-expanded={Boolean(coords)}
+        aria-describedby={coords ? tooltipId : undefined}
         onMouseEnter={show}
         onMouseLeave={hide}
         onFocus={show}
-        onBlur={hide}
+        onBlur={() => {
+          setPinned(false);
+          setCoords(null);
+        }}
+        onClick={toggleTap}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleTap(e);
+          } else if (e.key === 'Escape') {
+            setPinned(false);
+            setCoords(null);
+          }
+        }}
         className={cn(
-          'inline-flex items-center gap-1 cursor-help border-b border-dotted border-muted/50 hover:border-brand-600 hover:text-ink transition-colors',
+          'inline-flex items-center gap-1 cursor-help border-b border-dotted border-muted/50 hover:border-brand-600 hover:text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
           className,
         )}
       >
@@ -291,6 +355,7 @@ export function TermTooltip({
         typeof document !== 'undefined' &&
         createPortal(
           <div
+            id={tooltipId}
             role="tooltip"
             style={{
               position: 'fixed',
@@ -490,13 +555,42 @@ export function Modal({
   children: ReactNode;
   maxWidthClass?: string;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!open) return;
+    const prevActive = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0]!;
+        const last = focusables[focusables.length - 1]!;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
+
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      prevActive?.focus?.();
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -512,18 +606,19 @@ export function Modal({
       }}
     >
       <div
+        ref={dialogRef}
         className={cn(
           'flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-editable-border bg-panel shadow-2xl animate-fade-up',
           maxWidthClass,
         )}
       >
-        <div className="flex items-center justify-between border-b border-border bg-editable-header px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-border bg-editable-header px-5 py-3">
           <h2 className="font-display text-base font-bold tracking-tight text-ink">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1 text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-subtle hover:text-ink cursor-pointer"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>

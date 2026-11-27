@@ -13,9 +13,11 @@ import type { AuthRepository, PasswordHasher } from '@/server/modules/auth/domai
 import type { IdxMarketDataProvider } from '@/server/modules/market-data/domain/market-data.types';
 import { createAuthMiddleware } from '@/server/shared/http/auth-mw';
 import { parseJsonBody } from '@/server/shared/http/json-body';
-import { notFoundError, zodToValidationError } from '@/server/shared/http/problem';
+import { forbiddenError, notFoundError, zodToValidationError } from '@/server/shared/http/problem';
 import { createRateLimitMiddleware } from '@/server/shared/http/rate-limit-mw';
+import type { SessionRevocationStore } from '@/server/shared/http/session-token';
 import type { AppEnv } from '@/server/shared/types';
+import type { CatalogSnapshotStore } from './catalog-snapshot-store';
 import {
   AddStockToCustomWatchlistUseCase,
   CreateCustomWatchlistUseCase,
@@ -67,10 +69,12 @@ export function createWatchlistRoutes(
   ) => {
     authRepo: AuthRepository;
     hasher: PasswordHasher;
+    revocationStore: SessionRevocationStore;
     watchlistRepo: WatchlistRepository;
     idxCatalogRepo: IdxCatalogRepository;
     customWatchlistRepo: CustomWatchlistRepository;
     marketDataProvider: IdxMarketDataProvider;
+    snapshotStore: CatalogSnapshotStore;
   },
 ): Hono<AppEnv> {
   const router = new Hono<AppEnv>();
@@ -123,8 +127,8 @@ export function createWatchlistRoutes(
 
   router.post('/sync-all', syncAllRateLimiter, async (c) => {
     const user = c.get('user')!;
-    const { watchlistRepo, marketDataProvider } = getDeps(c.env.DB, c.env);
-    const useCase = new SyncAllWatchlistUseCase(watchlistRepo, marketDataProvider);
+    const { watchlistRepo, idxCatalogRepo, marketDataProvider } = getDeps(c.env.DB, c.env);
+    const useCase = new SyncAllWatchlistUseCase(watchlistRepo, marketDataProvider, idxCatalogRepo);
     const result = await useCase.execute(user.id);
 
     return c.json(result, 200);
@@ -174,26 +178,49 @@ export function createWatchlistRoutes(
     }
 
     const user = c.get('user')!;
-    const { idxCatalogRepo, watchlistRepo, customWatchlistRepo, marketDataProvider } = getDeps(
-      c.env.DB,
-      c.env,
-    );
+    const {
+      idxCatalogRepo,
+      watchlistRepo,
+      customWatchlistRepo,
+      marketDataProvider,
+      snapshotStore,
+    } = getDeps(c.env.DB, c.env);
     const useCase = new ListCatalogStocksUseCase(
       idxCatalogRepo,
       watchlistRepo,
       customWatchlistRepo,
       marketDataProvider,
+      snapshotStore,
     );
-    const result = await useCase.execute(user.id, parsed.data);
+    const result = await useCase.execute(user.id, parsed.data, c.env.STOCK_MATE_KV);
 
     return c.json(result, 200);
   });
 
   router.post('/catalog/sync', catalogSyncRateLimiter, async (c) => {
+    // When CATALOG_SYNC_SECRET is configured in production, restrict global TradingView scrape
+    // to background Cron/Admin callers to eliminate public write-amplification DoS.
+    if (c.env.CATALOG_SYNC_SECRET) {
+      const authHeader = c.req.header('authorization') ?? '';
+      if (authHeader !== `Bearer ${c.env.CATALOG_SYNC_SECRET}`) {
+        throw forbiddenError(
+          'Global IHSG catalog sync runs automatically in background. Admin authorization required.',
+        );
+      }
+    }
+
     const user = c.get('user')!;
-    const { idxCatalogRepo, watchlistRepo, marketDataProvider } = getDeps(c.env.DB, c.env);
-    const useCase = new SyncIdxCatalogUseCase(idxCatalogRepo, watchlistRepo, marketDataProvider);
-    const result = await useCase.execute(user.id);
+    const { idxCatalogRepo, watchlistRepo, marketDataProvider, snapshotStore } = getDeps(
+      c.env.DB,
+      c.env,
+    );
+    const useCase = new SyncIdxCatalogUseCase(
+      idxCatalogRepo,
+      watchlistRepo,
+      marketDataProvider,
+      snapshotStore,
+    );
+    const result = await useCase.execute(user.id, c.env.STOCK_MATE_KV);
 
     return c.json(result, 200);
   });

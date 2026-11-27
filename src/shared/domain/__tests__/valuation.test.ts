@@ -200,4 +200,36 @@ describe('Core-3 2026 valuation engine', () => {
       warnings: ['SHRINKING_EARNINGS_TRAP', 'HIGH_LEVERAGE_TRAP'],
     });
   });
+
+  it('prevents DCF sign inversion and false-positive MoS on extreme negative epsGrowthPct', () => {
+    // Severe decline <= -100% -> DCF marked N/A, never produces negative fairValue or positive MoS
+    const extremeDrop = calculateValuation({
+      sector: 'INDUSTRIALS',
+      currentPrice: 500,
+      eps: 100,
+      epsGrowthPct: -120,
+    });
+    const dcf = extremeDrop.methods.find((m) => m.method === 'simpleDcf');
+    expect(dcf).toEqual({
+      method: 'simpleDcf',
+      fairValue: null,
+      status: 'NA',
+      reasonCode: 'REQUIRES_POSITIVE_EPS_AND_VALID_DCF_RATES',
+    });
+    expect(extremeDrop.fairValue.moderate).toBeNull();
+    expect(extremeDrop.mosPct).toBeNull();
+    expect(extremeDrop.valuationStatus).toBe('INSUFFICIENT_DATA');
+
+    // Moderate negative growth (-45%) -> clamped to -20% floor, strictly positive fair value
+    const clampedNeg = calculateValuation({
+      sector: 'INDUSTRIALS',
+      currentPrice: 500,
+      eps: 100,
+      epsGrowthPct: -45,
+    });
+    const clampedDcf = clampedNeg.methods.find((m) => m.method === 'simpleDcf');
+    expect(clampedDcf?.status).toBe('VALID');
+    expect(clampedDcf?.fairValue).toBeGreaterThan(0);
+    expect(clampedNeg.fairValue.moderate).toBeGreaterThan(0);
+  });
 });

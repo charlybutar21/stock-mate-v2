@@ -3,14 +3,34 @@ import { createApp } from '../index';
 import { createTestD1 } from './d1-test-helper';
 
 function extractSessionCookie(res: Response): string {
-  const setCookie = res.headers.get('set-cookie');
-  expect(setCookie).toBeTruthy();
-  expect(setCookie).toContain('HttpOnly');
-  expect(setCookie).toContain('SameSite=Lax');
-  const match = setCookie!.match(/sm_session=([^;]+)/);
+  const getSetCookie = (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie;
+  const cookies =
+    typeof getSetCookie === 'function'
+      ? getSetCookie.call(res.headers)
+      : [res.headers.get('set-cookie') ?? ''];
+  const joined = cookies.join('; ');
+  expect(joined).toBeTruthy();
+  expect(joined).toContain('HttpOnly');
+  expect(joined).toContain('SameSite=Lax');
+  const match = joined.match(/sm_session=([^;]+)/);
   expect(match?.[1]).toBeTruthy();
   return `sm_session=${match![1]}`;
 }
+
+function extractAllAuthCookies(res: Response): string {
+  const getSetCookie = (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie;
+  const cookies =
+    typeof getSetCookie === 'function'
+      ? getSetCookie.call(res.headers)
+      : (res.headers.get('set-cookie') ?? '').split(/,(?=\s*[A-Za-z0-9_-]+=)/);
+  const pairs = cookies
+    .map((c) => c.split(';')[0]?.trim())
+    .filter((p): p is string => Boolean(p && (p.startsWith('sm_session=') || p.startsWith('sm_at='))));
+  expect(pairs.length).toBeGreaterThanOrEqual(2);
+  return pairs.join('; ');
+}
+
+const CSRF_OK = { 'X-Requested-With': 'StockMate' } as const;
 
 describe('Stock-Mate v2 API Integration', () => {
   it('returns healthy status on GET /api/v1/health', async () => {
@@ -59,7 +79,7 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(sessionRow.token_hash).not.toBe(rawToken);
     expect(sessionRow.token_hash).toHaveLength(64);
 
-    // Duplicate email (case-insensitive) -> 409 RFC 7807
+    // Duplicate email (case-insensitive) -> neutral 400 RFC 7807 (anti-account-enumeration)
     const dupRes = await app.request(
       'http://localhost/api/v1/auth/register',
       {
@@ -73,8 +93,10 @@ describe('Stock-Mate v2 API Integration', () => {
       },
       { DB: d1 },
     );
-    expect(dupRes.status).toBe(409);
+    expect(dupRes.status).toBe(400);
     expect(dupRes.headers.get('content-type')).toContain('application/problem+json');
+    const dupBody = (await dupRes.json()) as { detail: string };
+    expect(dupBody.detail).not.toMatch(/already exists/i);
 
     // GET /me authenticated
     const meRes = await app.request(
@@ -115,19 +137,20 @@ describe('Stock-Mate v2 API Integration', () => {
       { DB: d1 },
     );
     expect(loginRes.status).toBe(200);
-    const loginCookie = extractSessionCookie(loginRes);
+    extractSessionCookie(loginRes);
 
-    // Logout -> 204 and session invalidated
+    // Logout -> 204 and both session & stateless access token invalidated immediately
+    const loginAllCookies = extractAllAuthCookies(loginRes);
     const logoutRes = await app.request(
       'http://localhost/api/v1/auth/logout',
-      { method: 'POST', headers: { Cookie: loginCookie } },
+      { method: 'POST', headers: { Cookie: loginAllCookies, ...CSRF_OK } },
       { DB: d1 },
     );
     expect(logoutRes.status).toBe(204);
 
     const afterLogoutMe = await app.request(
       'http://localhost/api/v1/auth/me',
-      { headers: { Cookie: loginCookie } },
+      { headers: { Cookie: loginAllCookies } },
       { DB: d1 },
     );
     expect(afterLogoutMe.status).toBe(401);
@@ -165,7 +188,7 @@ describe('Stock-Mate v2 API Integration', () => {
       'http://localhost/api/v1/watchlist',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({
           ticker: 'icbp',
           companyName: 'Indofood CBP Sukses Makmur',
@@ -215,7 +238,7 @@ describe('Stock-Mate v2 API Integration', () => {
       'http://localhost/api/v1/watchlist',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({
           ticker: 'ICBP',
           companyName: 'Duplicate',
@@ -232,7 +255,7 @@ describe('Stock-Mate v2 API Integration', () => {
       'http://localhost/api/v1/watchlist',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({
           ticker: 'PENY',
           companyName: 'Penny Stock IDX',
@@ -256,7 +279,7 @@ describe('Stock-Mate v2 API Integration', () => {
       `http://localhost/api/v1/watchlist/${created.item.id}`,
       {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieB },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieB, ...CSRF_OK },
         body: JSON.stringify({ currentPrice: 100 }),
       },
       { DB: d1 },
@@ -265,7 +288,7 @@ describe('Stock-Mate v2 API Integration', () => {
 
     const idorDelete = await app.request(
       `http://localhost/api/v1/watchlist/${created.item.id}`,
-      { method: 'DELETE', headers: { Cookie: cookieB } },
+      { method: 'DELETE', headers: { Cookie: cookieB, ...CSRF_OK } },
       { DB: d1 },
     );
     expect(idorDelete.status).toBe(404);
@@ -275,7 +298,7 @@ describe('Stock-Mate v2 API Integration', () => {
       `http://localhost/api/v1/watchlist/${created.item.id}`,
       {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({
           currentPrice: 5000,
           holdingTranches: [{ lots: 25, buyPrice: 8425.67 }],
@@ -306,7 +329,7 @@ describe('Stock-Mate v2 API Integration', () => {
     // Soft delete ICBP -> 204, hidden from list, re-adding ICBP succeeds
     const delRes = await app.request(
       `http://localhost/api/v1/watchlist/${created.item.id}`,
-      { method: 'DELETE', headers: { Cookie: cookieA } },
+      { method: 'DELETE', headers: { Cookie: cookieA, ...CSRF_OK } },
       { DB: d1 },
     );
     expect(delRes.status).toBe(204);
@@ -325,7 +348,7 @@ describe('Stock-Mate v2 API Integration', () => {
       'http://localhost/api/v1/watchlist',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({
           ticker: 'ICBP',
           companyName: 'Indofood CBP Re-added',
@@ -574,6 +597,7 @@ describe('Stock-Mate v2 API Integration', () => {
           'Content-Type': 'application/json',
           Cookie: firstCookie,
           'cf-connecting-ip': '10.0.0.1',
+          ...CSRF_OK,
         },
         body: JSON.stringify({
           email: 'sec@example.com',
@@ -615,6 +639,7 @@ describe('Stock-Mate v2 API Integration', () => {
         headers: {
           'Content-Type': 'application/json',
           Cookie: rotatedCookie,
+          ...CSRF_OK,
         },
         body: JSON.stringify({
           ticker: 'OVER',
@@ -876,7 +901,7 @@ describe('Stock-Mate v2 API Integration', () => {
       'http://localhost/api/v1/watchlist/ensure',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({ ticker: 'bbri' }),
       },
       { DB: d1 },
@@ -889,7 +914,7 @@ describe('Stock-Mate v2 API Integration', () => {
       'http://localhost/api/v1/watchlist/ensure',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({ ticker: 'BBRI' }),
       },
       { DB: d1 },
@@ -902,7 +927,7 @@ describe('Stock-Mate v2 API Integration', () => {
       `http://localhost/api/v1/watchlist/${ensuredItem.id}`,
       {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({
           holdingTranches: [{ lots: 10, buyPrice: 2950 }],
           fundamentals: { targetPbv: 2.8 },
@@ -919,7 +944,7 @@ describe('Stock-Mate v2 API Integration', () => {
 
     const syncRes = await app.request(
       'http://localhost/api/v1/watchlist/catalog/sync',
-      { method: 'POST', headers: { Cookie: cookieA } },
+      { method: 'POST', headers: { Cookie: cookieA, ...CSRF_OK } },
       { DB: d1 },
     );
     expect(syncRes.status).toBe(200);
@@ -947,7 +972,7 @@ describe('Stock-Mate v2 API Integration', () => {
       'http://localhost/api/v1/watchlist/groups',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({
           name: 'Big Banks',
           description: 'Core banking watchlist',
@@ -969,7 +994,7 @@ describe('Stock-Mate v2 API Integration', () => {
       'http://localhost/api/v1/watchlist/groups',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({ name: 'big banks' }),
       },
       { DB: d1 },
@@ -981,7 +1006,7 @@ describe('Stock-Mate v2 API Integration', () => {
       `http://localhost/api/v1/watchlist/groups/${createdGroup.id}/stocks`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({ ticker: 'tlkm' }),
       },
       { DB: d1 },
@@ -994,7 +1019,7 @@ describe('Stock-Mate v2 API Integration', () => {
       `http://localhost/api/v1/watchlist/groups/${createdGroup.id}/stocks`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({ ticker: 'BBCA' }),
       },
       { DB: d1 },
@@ -1017,7 +1042,7 @@ describe('Stock-Mate v2 API Integration', () => {
     // Remove BBRI from custom watchlist -> 204, user's owned position in watchlist_items remains untouched!
     const removeStockRes = await app.request(
       `http://localhost/api/v1/watchlist/groups/${createdGroup.id}/stocks/BBRI`,
-      { method: 'DELETE', headers: { Cookie: cookieA } },
+      { method: 'DELETE', headers: { Cookie: cookieA, ...CSRF_OK } },
       { DB: d1 },
     );
     expect(removeStockRes.status).toBe(204);
@@ -1042,7 +1067,7 @@ describe('Stock-Mate v2 API Integration', () => {
       `http://localhost/api/v1/watchlist/groups/${createdGroup.id}`,
       {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieB },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieB, ...CSRF_OK },
         body: JSON.stringify({ name: 'Hijacked' }),
       },
       { DB: d1 },
@@ -1051,7 +1076,7 @@ describe('Stock-Mate v2 API Integration', () => {
 
     const idorGroupDelete = await app.request(
       `http://localhost/api/v1/watchlist/groups/${createdGroup.id}`,
-      { method: 'DELETE', headers: { Cookie: cookieB } },
+      { method: 'DELETE', headers: { Cookie: cookieB, ...CSRF_OK } },
       { DB: d1 },
     );
     expect(idorGroupDelete.status).toBe(404);
@@ -1061,7 +1086,7 @@ describe('Stock-Mate v2 API Integration', () => {
       `http://localhost/api/v1/watchlist/groups/${createdGroup.id}`,
       {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({ name: 'Dividend Core' }),
       },
       { DB: d1 },
@@ -1071,7 +1096,7 @@ describe('Stock-Mate v2 API Integration', () => {
 
     const delGroupRes = await app.request(
       `http://localhost/api/v1/watchlist/groups/${createdGroup.id}`,
-      { method: 'DELETE', headers: { Cookie: cookieA } },
+      { method: 'DELETE', headers: { Cookie: cookieA, ...CSRF_OK } },
       { DB: d1 },
     );
     expect(delGroupRes.status).toBe(204);
@@ -1080,7 +1105,7 @@ describe('Stock-Mate v2 API Integration', () => {
       'http://localhost/api/v1/watchlist/groups',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookieA },
+        headers: { 'Content-Type': 'application/json', Cookie: cookieA, ...CSRF_OK },
         body: JSON.stringify({ name: 'Dividend Core' }),
       },
       { DB: d1 },
@@ -1291,5 +1316,147 @@ describe('Stock-Mate v2 API Integration', () => {
     expect(piotroskiRes.status).toBe(200);
     const piotroskiBody = (await piotroskiRes.json()) as { items: Array<{ ticker: string }> };
     expect(piotroskiBody.items.map((i) => i.ticker)).toEqual(['ICBP']);
+  });
+
+  it('enforces P0 scalability & ASVS controls: /health/live, Edge /catalog/snapshot ETag 304, headerless CSRF block, admin sync guard, and max-5 session cap', async () => {
+    const { d1, sqlite } = createTestD1();
+    const nowIso = new Date().toISOString();
+    let fetchAllCalls = 0;
+
+    const app = createApp({
+      authRateLimitMax: 20,
+      marketDataProvider: {
+        async fetchIdxQuote(ticker) {
+          return {
+            ticker,
+            companyName: `PT ${ticker} Tbk`,
+            sector: 'FINANCIALS',
+            currentPrice: 9000,
+            periodLabel: 'TTM (TradingView)',
+            fundamentals: {
+              eps: 500,
+              bvps: 2500,
+              dps: 300,
+              roePct: 20,
+              der: null,
+              epsGrowthPct: 10,
+              targetPer: 15,
+              targetPbv: 2.5,
+            },
+            source: 'tradingview',
+            fetchedAt: nowIso,
+          };
+        },
+        async fetchAllIdxStocks() {
+          fetchAllCalls += 1;
+          return [
+            {
+              ticker: 'BBCA',
+              companyName: 'PT Bank Central Asia Tbk',
+              sector: 'FINANCIALS',
+              currentPrice: 9000,
+              periodLabel: 'TTM (TradingView)',
+              fundamentals: {
+                eps: 500,
+                bvps: 2500,
+                dps: 300,
+                roePct: 20,
+                der: null,
+                epsGrowthPct: 10,
+                targetPer: 15,
+                targetPbv: 2.5,
+              },
+              source: 'tradingview',
+              fetchedAt: nowIso,
+            },
+          ];
+        },
+      },
+    });
+
+    // 1. Liveness endpoint + COOP/CORP headers
+    const liveRes = await app.request('http://localhost/api/v1/health/live', {}, { DB: d1 });
+    expect(liveRes.status).toBe(200);
+    expect(await liveRes.json()).toEqual({ status: 'ok' });
+    expect(liveRes.headers.get('cross-origin-opener-policy')).toBe('same-origin');
+    expect(liveRes.headers.get('cross-origin-resource-policy')).toBe('same-origin');
+
+    // 2. Register user & test headerless cookie CSRF rejection on body-free POST /logout
+    const reg = await app.request(
+      'http://localhost/api/v1/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'p0@example.com', name: 'P0 User', password: 'Password123' }),
+      },
+      { DB: d1 },
+    );
+    expect(reg.status).toBe(201);
+    const allCookies = extractAllAuthCookies(reg);
+
+    const headerlessCsrf = await app.request(
+      'http://localhost/api/v1/auth/logout',
+      { method: 'POST', headers: { Cookie: allCookies } },
+      { DB: d1 },
+    );
+    expect(headerlessCsrf.status).toBe(403);
+
+    // 3. Max 5 active sessions cap on repeated logins
+    for (let i = 0; i < 6; i++) {
+      const loginAttempt = await app.request(
+        'http://localhost/api/v1/auth/login',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'p0@example.com', password: 'Password123' }),
+        },
+        { DB: d1 },
+      );
+      expect(loginAttempt.status).toBe(200);
+    }
+    const sessionCountRow = sqlite.prepare('SELECT COUNT(*) as cnt FROM sessions').get() as {
+      cnt: number;
+    };
+    expect(sessionCountRow.cnt).toBeLessThanOrEqual(5);
+
+    // 4. CATALOG_SYNC_SECRET restricts user-triggered global sync (403 without secret, 200 with secret)
+    const deniedSync = await app.request(
+      'http://localhost/api/v1/watchlist/catalog/sync',
+      { method: 'POST', headers: { Cookie: allCookies, ...CSRF_OK } },
+      { DB: d1, CATALOG_SYNC_SECRET: 'super-secret-cron-token' },
+    );
+    expect(deniedSync.status).toBe(403);
+
+    const allowedSync = await app.request(
+      'http://localhost/api/v1/watchlist/catalog/sync',
+      {
+        method: 'POST',
+        headers: {
+          Cookie: allCookies,
+          Authorization: 'Bearer super-secret-cron-token',
+          ...CSRF_OK,
+        },
+      },
+      { DB: d1, CATALOG_SYNC_SECRET: 'super-secret-cron-token' },
+    );
+    expect(allowedSync.status).toBe(200);
+    expect(fetchAllCalls).toBe(1);
+
+    // 5. Public Edge-cached /api/v1/catalog/snapshot returns Cache-Control + ETag + 304 Not Modified
+    const snap1 = await app.request('http://localhost/api/v1/catalog/snapshot', {}, { DB: d1 });
+    expect(snap1.status).toBe(200);
+    expect(snap1.headers.get('cache-control')).toContain('s-maxage=300');
+    const etag = snap1.headers.get('etag');
+    expect(etag).toBeTruthy();
+    const snapJson = (await snap1.json()) as { items: Array<{ ticker: string }> };
+    expect(snapJson.items.map((i) => i.ticker)).toEqual(['BBCA']);
+
+    const snap304 = await app.request(
+      'http://localhost/api/v1/catalog/snapshot',
+      { headers: { 'If-None-Match': etag! } },
+      { DB: d1 },
+    );
+    expect(snap304.status).toBe(304);
+    expect(fetchAllCalls).toBe(1); // Never re-triggers TradingView on read
   });
 });

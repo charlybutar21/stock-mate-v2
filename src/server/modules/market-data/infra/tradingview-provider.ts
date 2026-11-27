@@ -2,6 +2,7 @@ import type { IdxMarketQuoteDto } from '@/shared/contracts';
 import { MIN_IDX_PRICE, round2 } from '@/shared/domain';
 import { BoundedTtlCache } from '@/server/shared/cache/bounded-ttl-cache';
 import { AppError, notFoundError } from '@/server/shared/http/problem';
+import { CircuitBreaker } from '@/server/shared/resilience/circuit-breaker';
 import {
   mapYahooSectorToIdx,
   SECTOR_BENCHMARK_MULTIPLES,
@@ -56,6 +57,16 @@ interface TradingViewScanResponse {
 }
 
 const tvQuoteCache = new BoundedTtlCache<string, IdxMarketQuoteDto>(QUOTE_CACHE_TTL_MS, 500);
+const tvCircuitBreaker = new CircuitBreaker(3, 60_000);
+
+function tvCircuitOpenError(): AppError {
+  return new AppError({
+    status: 503,
+    type: 'https://stock-mate-v2/errors/upstream-circuit-open',
+    title: 'Market Data Temporarily Paused',
+    detail: 'TradingView upstream circuit breaker is open. Serving fallback or cached data.',
+  });
+}
 
 function asFinite(val: unknown): number | null {
   return typeof val === 'number' && Number.isFinite(val) ? val : null;
@@ -257,31 +268,34 @@ export class TradingViewIdxProvider implements IdxMarketDataProvider {
       return result;
     }
 
-    const res = await fetch(TV_SCANNER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        symbols: {
-          tickers: missing.map((t) => `IDX:${t}`),
+    const payload = await tvCircuitBreaker.execute(async () => {
+      const res = await fetch(TV_SCANNER_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
-        columns: [...TV_COLUMNS],
-      }),
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-
-    if (!res.ok) {
-      throw new AppError({
-        status: 502,
-        type: 'https://stock-mate-v2/errors/upstream-unavailable',
-        title: 'Market Data Unavailable',
-        detail: `TradingView scanner returned status ${res.status}.`,
+        body: JSON.stringify({
+          symbols: {
+            tickers: missing.map((t) => `IDX:${t}`),
+          },
+          columns: [...TV_COLUMNS],
+        }),
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });
-    }
 
-    const payload = (await res.json()) as TradingViewScanResponse;
+      if (!res.ok) {
+        throw new AppError({
+          status: 502,
+          type: 'https://stock-mate-v2/errors/upstream-unavailable',
+          title: 'Market Data Unavailable',
+          detail: `TradingView scanner returned status ${res.status}.`,
+        });
+      }
+
+      return (await res.json()) as TradingViewScanResponse;
+    }, tvCircuitOpenError);
+
     for (const row of payload.data ?? []) {
       const dto = parseTradingViewRowToDto(row, now);
       if (dto) {
@@ -303,40 +317,43 @@ export class TradingViewIdxProvider implements IdxMarketDataProvider {
    */
   async fetchAllIdxStocks(): Promise<IdxMarketQuoteDto[]> {
     const now = Date.now();
-    const res = await fetch(TV_SCANNER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        filter: [
-          { left: 'exchange', operation: 'equal', right: 'IDX' },
-          { left: 'type', operation: 'equal', right: 'stock' },
-          { left: 'subtype', operation: 'equal', right: 'common' },
-          { left: 'is_primary', operation: 'equal', right: true },
-          { left: 'active_symbol', operation: 'equal', right: true },
-          { left: 'market_cap_basic', operation: 'greater', right: 0 },
-          { left: 'close', operation: 'greater', right: 0 },
-        ],
-        options: { lang: 'en' },
-        range: [0, 1500],
-        sort: { sortBy: 'market_cap_basic', sortOrder: 'desc' },
-        columns: [...TV_COLUMNS],
-      }),
-      signal: AbortSignal.timeout(UNIVERSE_TIMEOUT_MS),
-    });
-
-    if (!res.ok) {
-      throw new AppError({
-        status: 502,
-        type: 'https://stock-mate-v2/errors/upstream-unavailable',
-        title: 'Market Data Unavailable',
-        detail: `TradingView scanner returned status ${res.status}.`,
+    const payload = await tvCircuitBreaker.execute(async () => {
+      const res = await fetch(TV_SCANNER_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          filter: [
+            { left: 'exchange', operation: 'equal', right: 'IDX' },
+            { left: 'type', operation: 'equal', right: 'stock' },
+            { left: 'subtype', operation: 'equal', right: 'common' },
+            { left: 'is_primary', operation: 'equal', right: true },
+            { left: 'active_symbol', operation: 'equal', right: true },
+            { left: 'market_cap_basic', operation: 'greater', right: 0 },
+            { left: 'close', operation: 'greater', right: 0 },
+          ],
+          options: { lang: 'en' },
+          range: [0, 1500],
+          sort: { sortBy: 'market_cap_basic', sortOrder: 'desc' },
+          columns: [...TV_COLUMNS],
+        }),
+        signal: AbortSignal.timeout(UNIVERSE_TIMEOUT_MS),
       });
-    }
 
-    const payload = (await res.json()) as TradingViewScanResponse;
+      if (!res.ok) {
+        throw new AppError({
+          status: 502,
+          type: 'https://stock-mate-v2/errors/upstream-unavailable',
+          title: 'Market Data Unavailable',
+          detail: `TradingView scanner returned status ${res.status}.`,
+        });
+      }
+
+      return (await res.json()) as TradingViewScanResponse;
+    }, tvCircuitOpenError);
+
     const byTicker = new Map<string, IdxMarketQuoteDto>();
 
     for (const row of payload.data ?? []) {

@@ -1,20 +1,25 @@
 import type { AuthUserDto, LoginRequest, RegisterRequest } from '@/shared/contracts';
-import { conflictError, unauthorizedError } from '@/server/shared/http/problem';
+import { unauthorizedError, validationError } from '@/server/shared/http/problem';
 import type { AuthRepository, PasswordHasher } from '../domain/auth.types';
 
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days (604800s)
 export const SESSION_TTL_MS = SESSION_TTL_SECONDS * 1000;
+export const MAX_ACTIVE_SESSIONS_PER_USER = 5;
+
+const NEUTRAL_REGISTRATION_ERROR_DETAIL =
+  'Unable to complete registration. Please check your details or sign in if you already have an account.';
 
 /**
  * Valid dummy PBKDF2-SHA256 hash (100,000 iterations) used when an email is not found
- * so LoginUseCase always performs identical 100k-iteration cryptographic work,
- * preventing timing-based account enumeration.
+ * (or already exists during registration) so auth use cases always perform identical
+ * cryptographic work, preventing timing-based account enumeration.
  */
 const DUMMY_PBKDF2_HASH =
   'pbkdf2_sha256$100000$000102030405060708090a0b0c0d0e0f$9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
 
 export interface AuthSessionResult {
   user: AuthUserDto;
+  sessionId: string;
   rawSessionToken: string;
 }
 
@@ -31,7 +36,9 @@ export class RegisterUseCase {
     const normalizedEmail = input.email.trim().toLowerCase();
     const existing = await this.authRepo.findActiveUserByEmail(normalizedEmail);
     if (existing) {
-      throw conflictError('An account with this email already exists.');
+      // Equalize timing & return neutral message to prevent email enumeration
+      await this.hasher.verify(input.password, DUMMY_PBKDF2_HASH);
+      throw validationError(NEUTRAL_REGISTRATION_ERROR_DETAIL);
     }
 
     const now = Date.now();
@@ -50,7 +57,7 @@ export class RegisterUseCase {
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('UNIQUE') || msg.includes('unique')) {
-        throw conflictError('An account with this email already exists.');
+        throw validationError(NEUTRAL_REGISTRATION_ERROR_DETAIL);
       }
       throw err;
     }
@@ -59,11 +66,12 @@ export class RegisterUseCase {
       await this.authRepo.deleteSessionByTokenHash(existingTokenHash);
     }
 
+    const sessionId = crypto.randomUUID();
     const rawSessionToken = this.hasher.generateSessionToken();
     const tokenHash = await this.hasher.hashToken(rawSessionToken);
 
     await this.authRepo.createSession({
-      id: crypto.randomUUID(),
+      id: sessionId,
       userId,
       tokenHash,
       expiresAt: now + SESSION_TTL_MS,
@@ -76,6 +84,7 @@ export class RegisterUseCase {
         email: normalizedEmail,
         name: input.name.trim(),
       },
+      sessionId,
       rawSessionToken,
     };
   }
@@ -110,16 +119,21 @@ export class LoginUseCase {
     }
     await this.authRepo.deleteExpiredSessionsForUser(user.id, now);
 
+    const sessionId = crypto.randomUUID();
     const rawSessionToken = this.hasher.generateSessionToken();
     const tokenHash = await this.hasher.hashToken(rawSessionToken);
 
     await this.authRepo.createSession({
-      id: crypto.randomUUID(),
+      id: sessionId,
       userId: user.id,
       tokenHash,
       expiresAt: now + SESSION_TTL_MS,
       createdAt: now,
     });
+
+    if (this.authRepo.pruneExcessSessionsForUser) {
+      await this.authRepo.pruneExcessSessionsForUser(user.id, MAX_ACTIVE_SESSIONS_PER_USER);
+    }
 
     return {
       user: {
@@ -127,6 +141,7 @@ export class LoginUseCase {
         email: user.email,
         name: user.name,
       },
+      sessionId,
       rawSessionToken,
     };
   }

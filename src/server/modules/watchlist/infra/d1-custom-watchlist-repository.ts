@@ -170,10 +170,7 @@ export class D1CustomWatchlistRepository implements CustomWatchlistRepository {
   }
 
   async softDelete(id: string, userId: string, deletedAtMs: number): Promise<boolean> {
-    const existing = await this.findByIdForUser(id, userId);
-    if (!existing) return false;
-
-    await this.db
+    const updated = await this.db
       .update(schema.customWatchlists)
       .set({
         deletedAt: deletedAtMs,
@@ -185,9 +182,10 @@ export class D1CustomWatchlistRepository implements CustomWatchlistRepository {
           eq(schema.customWatchlists.userId, userId),
           isNull(schema.customWatchlists.deletedAt),
         ),
-      );
+      )
+      .returning({ id: schema.customWatchlists.id });
 
-    return true;
+    return updated.length > 0;
   }
 
   async addTicker(watchlistId: string, ticker: string, addedAtMs: number): Promise<boolean> {

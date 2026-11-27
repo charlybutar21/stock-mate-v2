@@ -577,6 +577,7 @@ export class SyncAllWatchlistUseCase {
   constructor(
     private readonly repo: WatchlistRepository,
     private readonly marketDataProvider: IdxMarketDataProvider,
+    private readonly catalogRepo?: IdxCatalogRepository,
   ) {}
 
   async execute(userId: string): Promise<{ updatedCount: number }> {
@@ -586,24 +587,75 @@ export class SyncAllWatchlistUseCase {
     }
 
     const tickers = records.map((r) => r.ticker);
-    const quotesMap = this.marketDataProvider.fetchIdxQuotesBatch
-      ? await this.marketDataProvider.fetchIdxQuotesBatch(tickers)
-      : new Map();
+    const catalogByTicker = new Map<string, Awaited<ReturnType<IdxCatalogRepository['findByTickers']>>[number]>();
+    if (this.catalogRepo) {
+      const catRows = await this.catalogRepo.findByTickers(tickers);
+      for (const row of catRows) {
+        catalogByTicker.set(row.ticker, row);
+      }
+    }
+
+    const missingFromCatalog = tickers.filter((t) => !catalogByTicker.has(t));
+    const quotesMap =
+      missingFromCatalog.length > 0 && this.marketDataProvider.fetchIdxQuotesBatch
+        ? await this.marketDataProvider.fetchIdxQuotesBatch(missingFromCatalog)
+        : new Map();
 
     const now = Date.now();
-    let updatedCount = 0;
+    const batchPayload: Array<{
+      id: string;
+      currentPrice: number;
+      updatedAt: number;
+      fundamentalsPatch: Partial<Omit<FundamentalsRecord, 'id' | 'watchlistItemId'>>;
+    }> = [];
 
     for (const record of records) {
+      const cat = catalogByTicker.get(record.ticker);
+      if (cat) {
+        batchPayload.push({
+          id: record.id,
+          currentPrice: cat.currentPrice,
+          updatedAt: now,
+          fundamentalsPatch: {
+            periodLabel: cat.periodLabel,
+            eps: cat.eps,
+            bvps: cat.bvps,
+            dps: cat.dps,
+            roeBps: cat.roeBps,
+            derX100: cat.derX100,
+            epsGrowthBps: cat.epsGrowthBps,
+            marketCapIdr: cat.marketCapIdr,
+            adtvIdr: cat.adtvIdr,
+            roaBps: cat.roaBps,
+            roicBps: cat.roicBps,
+            operatingMarginBps: cat.operatingMarginBps,
+            netMarginBps: cat.netMarginBps,
+            revenueGrowthBps: cat.revenueGrowthBps,
+            netIncomeGrowthBps: cat.netIncomeGrowthBps,
+            currentRatioX100: cat.currentRatioX100,
+            netDebtToEbitdaX100: cat.netDebtToEbitdaX100,
+            equityToAssetsBps: cat.equityToAssetsBps,
+            wholesaleDerX100: cat.wholesaleDerX100,
+            cfoToNiX100: cat.cfoToNiX100,
+            fcfMarginBps: cat.fcfMarginBps,
+            fcfYieldBps: cat.fcfYieldBps,
+            cfoPositive: cat.cfoPositive,
+            fcfPositive: cat.fcfPositive,
+            piotroskiFScore: cat.piotroskiFScore,
+            altmanZX100: cat.altmanZX100,
+            updatedAt: now,
+          },
+        });
+        continue;
+      }
+
       const quote = quotesMap.get(record.ticker);
       if (!quote) continue;
-      await this.repo.update(
-        record.id,
-        userId,
-        {
-          currentPrice: quote.currentPrice,
-          updatedAt: now,
-        },
-        {
+      batchPayload.push({
+        id: record.id,
+        currentPrice: quote.currentPrice,
+        updatedAt: now,
+        fundamentalsPatch: {
           periodLabel: quote.periodLabel,
           eps: quote.fundamentals.eps,
           bvps: quote.fundamentals.bvps,
@@ -614,10 +666,22 @@ export class SyncAllWatchlistUseCase {
           ...extractQualityColumnsFromInput(quote.fundamentals),
           updatedAt: now,
         },
-      );
-      updatedCount += 1;
+      });
     }
 
-    return { updatedCount };
+    if (this.repo.batchUpdateMarketData) {
+      await this.repo.batchUpdateMarketData(userId, batchPayload);
+    } else {
+      for (const entry of batchPayload) {
+        await this.repo.update(
+          entry.id,
+          userId,
+          { currentPrice: entry.currentPrice, updatedAt: entry.updatedAt },
+          entry.fundamentalsPatch,
+        );
+      }
+    }
+
+    return { updatedCount: batchPayload.length };
   }
 }

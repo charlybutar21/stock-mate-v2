@@ -13,6 +13,7 @@ import {
 import { useI18n } from '@/client/i18n/useI18n';
 import { ApiClientError } from '@/client/lib/apiClient';
 import { formatIdr, formatPercent } from '@/client/lib/formatters';
+import { useToast } from '@/client/lib/useToast';
 import {
   useCreateCustomWatchlist,
   useIdxCatalogSearch,
@@ -71,6 +72,7 @@ function CustomWatchlistModalBody({
   onCreated?: (group: CustomWatchlistGroupDto) => void;
 }) {
   const { t } = useI18n();
+  const { showToast } = useToast();
   const createMutation = useCreateCustomWatchlist();
   const updateMutation = useUpdateCustomWatchlist();
 
@@ -143,12 +145,14 @@ function CustomWatchlistModalBody({
             description: description.trim() || null,
           },
         });
+        showToast(t.watchlist.toastSavedToWatchlist, 'success');
       } else {
         const created = await createMutation.mutateAsync({
           name: cleanName,
           description: description.trim() || null,
           tickers: selectedTickers.map((s) => s.ticker),
         });
+        showToast(t.watchlist.toastSavedToWatchlist, 'success');
         onCreated?.(created);
       }
       onClose();
@@ -284,9 +288,9 @@ function CustomWatchlistModalBody({
                             className={cn(
                               'font-mono text-[11px] font-semibold tabular-nums',
                               stock.valuation.mosPct >= 30
-                                ? 'text-positive-600'
+                                ? 'text-positive-700'
                                 : stock.valuation.mosPct >= 0
-                                  ? 'text-warning-600'
+                                  ? 'text-warning-700'
                                   : 'text-negative-600',
                             )}
                           >

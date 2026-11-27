@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Production Dependency Security Audit
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -38,6 +41,9 @@ jobs:
 
       - name: Production Build
         run: npm run build
+
+      - name: Client Bundle Size Gate (< 250 kB entry)
+        run: npm run check:bundle
 
   deploy:
     name: Migrate D1 & Deploy to Cloudflare Workers
@@ -84,7 +90,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npm run deploy
 
-      - name: Smoke Test Production Health Endpoint
+      - name: Smoke Test Production Readiness & Edge Snapshot
         if: steps.check_secrets.outputs.configured == 'true'
         run: |
-          curl --fail --silent --show-error https://stock-mate-v2.charlymicolas21.workers.dev/api/v1/health | grep -q '"status":"ok"'
+          curl --fail --silent --show-error https://stock-mate-v2.charlymicolas21.workers.dev/api/v1/health/ready | grep -q '"status":"ok"'
+          curl --fail --silent --show-error https://stock-mate-v2.charlymicolas21.workers.dev/api/v1/catalog/snapshot > /dev/null

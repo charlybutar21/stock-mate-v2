@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, lte } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lte } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import * as schema from '@/server/shared/db/schema';
 import type {
@@ -102,5 +102,17 @@ export class D1AuthRepository implements AuthRepository {
       .where(
         and(eq(schema.sessions.userId, userId), lte(schema.sessions.expiresAt, nowMs)),
       );
+  }
+
+  async pruneExcessSessionsForUser(userId: string, maxActiveSessions: number): Promise<void> {
+    const activeRows = await this.db
+      .select({ id: schema.sessions.id })
+      .from(schema.sessions)
+      .where(eq(schema.sessions.userId, userId))
+      .orderBy(desc(schema.sessions.createdAt));
+
+    if (activeRows.length <= maxActiveSessions) return;
+    const idsToDelete = activeRows.slice(maxActiveSessions).map((r) => r.id);
+    await this.db.delete(schema.sessions).where(inArray(schema.sessions.id, idsToDelete));
   }
 }

@@ -1,5 +1,5 @@
 import { ArrowUpRight, Info, Layers, Plus, Target, TrendingDown } from 'lucide-react';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { DEFAULT_BUY_FEE_PCT, DEFAULT_SELL_FEE_PCT } from '@/shared/domain';
 import {
@@ -14,13 +14,20 @@ import {
   TermTooltip,
 } from '@/client/components/ui/primitives';
 import { useWatchlist } from '@/client/features/watchlist/useWatchlist';
-import { statusTone } from '@/client/features/watchlist/WatchlistPage';
+import { statusTone } from '@/client/lib/valuationTone';
 import { useI18n } from '@/client/i18n/useI18n';
 import { formatIdr, formatPercent } from '@/client/lib/formatters';
 import { ForwardTab } from './ForwardTab';
-import { GoalSeekTab } from './GoalSeekTab';
-import { PyramidingTab } from './PyramidingTab';
-import { TakeProfitTab } from './TakeProfitTab';
+
+const GoalSeekTab = lazy(() =>
+  import('./GoalSeekTab').then((m) => ({ default: m.GoalSeekTab })),
+);
+const PyramidingTab = lazy(() =>
+  import('./PyramidingTab').then((m) => ({ default: m.PyramidingTab })),
+);
+const TakeProfitTab = lazy(() =>
+  import('./TakeProfitTab').then((m) => ({ default: m.TakeProfitTab })),
+);
 
 type SimulatorTabMode = 'forward' | 'pyramiding' | 'takeProfit' | 'goalSeek';
 
@@ -267,34 +274,36 @@ export function SimulatorPage() {
         />
       )}
 
-      {linkedStock && activeTab === 'pyramiding' && (
-        <PyramidingTab
-          key={`pyr-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
-          linkedStock={linkedStock}
-          buyFeePct={Number(buyFeePct || 0)}
-          sellFeePct={Number(sellFeePct || 0)}
-          includeStampDuty={includeStampDuty}
-        />
-      )}
+      <Suspense fallback={<Skeleton className="h-72 w-full" />}>
+        {linkedStock && activeTab === 'pyramiding' && (
+          <PyramidingTab
+            key={`pyr-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
+            linkedStock={linkedStock}
+            buyFeePct={Number(buyFeePct || 0)}
+            sellFeePct={Number(sellFeePct || 0)}
+            includeStampDuty={includeStampDuty}
+          />
+        )}
 
-      {linkedStock && activeTab === 'takeProfit' && (
-        <TakeProfitTab
-          key={`tp-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
-          linkedStock={linkedStock}
-          buyFeePct={Number(buyFeePct || 0)}
-          sellFeePct={Number(sellFeePct || 0)}
-          includeStampDuty={includeStampDuty}
-        />
-      )}
+        {linkedStock && activeTab === 'takeProfit' && (
+          <TakeProfitTab
+            key={`tp-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
+            linkedStock={linkedStock}
+            buyFeePct={Number(buyFeePct || 0)}
+            sellFeePct={Number(sellFeePct || 0)}
+            includeStampDuty={includeStampDuty}
+          />
+        )}
 
-      {linkedStock && activeTab === 'goalSeek' && (
-        <GoalSeekTab
-          key={`gs-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
-          linkedStock={linkedStock}
-          buyFeePct={Number(buyFeePct || 0)}
-          includeStampDuty={includeStampDuty}
-        />
-      )}
+        {linkedStock && activeTab === 'goalSeek' && (
+          <GoalSeekTab
+            key={`gs-${linkedStock.id}-${linkedStock.ownedLots}-${linkedStock.avgBuyPrice ?? ''}`}
+            linkedStock={linkedStock}
+            buyFeePct={Number(buyFeePct || 0)}
+            includeStampDuty={includeStampDuty}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

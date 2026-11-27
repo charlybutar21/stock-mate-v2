@@ -1,10 +1,9 @@
-import { TrendingUp } from 'lucide-react';
+import { Eye, EyeOff, TrendingUp } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { z } from 'zod';
 import { registerRequestSchema } from '@/shared/contracts';
 import { LanguageSwitcher, ThemeSwitcher } from '@/client/components/ui/AppShell';
-import { Button, Card, Field, Input, RolePill } from '@/client/components/ui/primitives';
+import { Button, Card, Field, Input } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
 import { ApiClientError } from '@/client/lib/apiClient';
 import { useRegister } from './useAuth';
@@ -18,6 +17,7 @@ export function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -29,9 +29,18 @@ export function RegisterPage() {
     const parsed = registerRequestSchema.safeParse({ name, email, password });
     const next: Record<string, string> = {};
     if (!parsed.success) {
-      const flat = z.flattenError(parsed.error);
-      for (const [k, v] of Object.entries(flat.fieldErrors)) {
-        if (v?.[0]) next[k] = v[0];
+      for (const issue of parsed.error.issues) {
+        const key = String(issue.path[0] ?? '');
+        if (key === 'name' && !next.name) {
+          next.name = t.auth.errors.nameTooShort;
+        } else if (key === 'email' && !next.email) {
+          next.email = t.auth.errors.invalidEmail;
+        } else if (key === 'password' && !next.password) {
+          if (issue.message.includes('8')) next.password = t.auth.errors.passwordMin;
+          else if (issue.message.includes('letter')) next.password = t.auth.errors.passwordLetter;
+          else if (issue.message.includes('digit')) next.password = t.auth.errors.passwordDigit;
+          else next.password = t.auth.errors.passwordMin;
+        }
       }
     }
     if (password !== confirmPassword) {
@@ -78,13 +87,10 @@ export function RegisterPage() {
         </div>
       </div>
 
-      <Card variant="editable" className="w-full max-w-md p-6">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="font-display text-xl font-bold tracking-tight text-ink">
-            {t.auth.registerTitle}
-          </h1>
-          <RolePill role="editable" label={t.common.editableTag} />
-        </div>
+      <Card variant="default" className="w-full max-w-md p-6">
+        <h1 className="font-display text-xl font-bold tracking-tight text-ink">
+          {t.auth.registerTitle}
+        </h1>
         <p className="mt-1 text-sm text-muted">{t.auth.registerSubtitle}</p>
 
         {formError && (
@@ -105,6 +111,7 @@ export function RegisterPage() {
               placeholder={t.auth.namePlaceholder}
               value={name}
               onChange={(e) => setName(e.target.value)}
+              className="h-10"
             />
           </Field>
 
@@ -116,18 +123,34 @@ export function RegisterPage() {
               placeholder={t.auth.emailPlaceholder}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              className="h-10"
             />
           </Field>
 
           <Field label={t.auth.passwordLabel} htmlFor="reg-password" error={fieldErrors.password}>
-            <Input
-              id="reg-password"
-              type="password"
-              autoComplete="new-password"
-              placeholder={t.auth.passwordPlaceholder}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="relative">
+              <Input
+                id="reg-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                placeholder={t.auth.passwordPlaceholder}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-10 pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? t.auth.hidePassword : t.auth.showPassword}
+                className="absolute top-0 right-0 flex h-10 w-10 items-center justify-center text-muted transition-colors hover:text-ink cursor-pointer"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
           </Field>
 
           <Field
@@ -137,11 +160,12 @@ export function RegisterPage() {
           >
             <Input
               id="reg-confirm"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               autoComplete="new-password"
               placeholder={t.auth.confirmPasswordPlaceholder}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              className="h-10"
             />
           </Field>
 
@@ -152,11 +176,15 @@ export function RegisterPage() {
 
         <p className="mt-5 text-center text-xs text-muted">
           {t.auth.hasAccount}{' '}
-          <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
+          <Link to="/login" className="font-semibold text-brand-700 hover:underline">
             {t.auth.goLogin}
           </Link>
         </p>
       </Card>
+
+      <p className="mt-5 max-w-md text-center text-[11px] leading-relaxed text-muted">
+        {t.common.disclaimer}
+      </p>
     </div>
   );
 }

@@ -134,7 +134,8 @@ export function useEnsureWatchlistItem() {
     },
     onSuccess: (item) => {
       queryClient.setQueryData(['watchlist', 'detail', item.id], item);
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'group-stocks'] });
     },
   });
 }
@@ -178,7 +179,9 @@ export function useCreateCustomWatchlist() {
       return res.group;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'group-stocks'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'catalog'] });
     },
   });
 }
@@ -197,7 +200,8 @@ export function useUpdateCustomWatchlist() {
       return res.group;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'group-stocks'] });
     },
   });
 }
@@ -210,7 +214,9 @@ export function useDeleteCustomWatchlist() {
         method: 'DELETE',
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'group-stocks'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'catalog'] });
     },
   });
 }
@@ -234,8 +240,10 @@ export function useAddStockToCustomWatchlist() {
       );
       return res.item;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'group-stocks', vars.groupId] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'catalog'] });
     },
   });
 }
@@ -250,8 +258,10 @@ export function useRemoveStockFromCustomWatchlist() {
           method: 'DELETE',
         },
       ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'groups'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'group-stocks', vars.groupId] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'catalog'] });
     },
   });
 }
@@ -265,7 +275,8 @@ export function useCreateWatchlistItem() {
         body: JSON.stringify(payload),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'group-stocks'] });
     },
   });
 }
@@ -280,7 +291,8 @@ export function useUpdateWatchlistItem() {
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(['watchlist', 'detail', data.item.id], data.item);
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'group-stocks'] });
     },
   });
 }
@@ -293,7 +305,8 @@ export function useDeleteWatchlistItem() {
         method: 'DELETE',
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'group-stocks'] });
     },
   });
 }

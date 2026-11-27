@@ -17,6 +17,9 @@ export async function apiRequest<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const headers = new Headers(options.headers);
+  if (!headers.has('X-Requested-With')) {
+    headers.set('X-Requested-With', 'StockMate');
+  }
   if (options.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }

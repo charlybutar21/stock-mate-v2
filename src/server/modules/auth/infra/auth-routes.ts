@@ -1,5 +1,4 @@
-import { Hono, type Context } from 'hono';
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { Hono } from 'hono';
 import { loginRequestSchema, registerRequestSchema } from '@/shared/contracts';
 import {
   LoginUseCase,
@@ -9,33 +8,24 @@ import {
 } from '../application/auth-use-cases';
 import type { AuthRepository, PasswordHasher } from '../domain/auth.types';
 import {
+  clearAuthCookies,
   createAuthMiddleware,
+  getAccessCookieToken,
+  getSessionCookieToken,
   isValidSessionTokenFormat,
-  SESSION_COOKIE_NAME,
+  setAuthCookies,
 } from '@/server/shared/http/auth-mw';
 import { parseJsonBody } from '@/server/shared/http/json-body';
 import { createRateLimitMiddleware } from '@/server/shared/http/rate-limit-mw';
+import { verifyAccessToken, type SessionRevocationStore } from '@/server/shared/http/session-token';
 import type { AppEnv } from '@/server/shared/types';
 
-function isSecureRequest(c: Context<AppEnv>): boolean {
-  return (
-    c.req.url.startsWith('https://') ||
-    c.req.header('x-forwarded-proto')?.toLowerCase() === 'https'
-  );
-}
-
-function setSessionCookie(c: Context<AppEnv>, rawSessionToken: string): void {
-  setCookie(c, SESSION_COOKIE_NAME, rawSessionToken, {
-    httpOnly: true,
-    secure: isSecureRequest(c),
-    sameSite: 'Lax',
-    path: '/',
-    maxAge: SESSION_TTL_SECONDS,
-  });
-}
-
 export function createAuthRoutes(
-  getDeps: (db: D1Database) => { authRepo: AuthRepository; hasher: PasswordHasher },
+  getDeps: (db: D1Database) => {
+    authRepo: AuthRepository;
+    hasher: PasswordHasher;
+    revocationStore: SessionRevocationStore;
+  },
   options?: { rateLimitMaxRequests?: number; rateLimitWindowMs?: number },
 ): Hono<AppEnv> {
   const router = new Hono<AppEnv>();
@@ -47,49 +37,72 @@ export function createAuthRoutes(
 
   router.post('/register', authRateLimiter, async (c) => {
     const input = await parseJsonBody(c, registerRequestSchema);
-    const { authRepo, hasher } = getDeps(c.env.DB);
-    const priorRawCookie = getCookie(c, SESSION_COOKIE_NAME);
+    const { authRepo, hasher, revocationStore } = getDeps(c.env.DB);
+    const priorRawCookie = getSessionCookieToken(c);
     const priorTokenHash = isValidSessionTokenFormat(priorRawCookie)
       ? await hasher.hashToken(priorRawCookie)
       : undefined;
+    const priorAccessCookie = getAccessCookieToken(c);
+    if (priorAccessCookie) {
+      const priorClaims = await verifyAccessToken(priorAccessCookie, c.env.JWT_SECRET);
+      if (priorClaims) {
+        await revocationStore.revoke(priorClaims.sid, c.env.STOCK_MATE_KV);
+      }
+    }
 
     const useCase = new RegisterUseCase(authRepo, hasher);
-    const { user, rawSessionToken } = await useCase.execute(input, priorTokenHash);
+    const { user, sessionId, rawSessionToken } = await useCase.execute(input, priorTokenHash);
 
-    setSessionCookie(c, rawSessionToken);
+    await setAuthCookies(c, {
+      user,
+      sessionId,
+      rawSessionToken,
+      sessionTtlSeconds: SESSION_TTL_SECONDS,
+    });
     return c.json({ user }, 201);
   });
 
   router.post('/login', authRateLimiter, async (c) => {
     const input = await parseJsonBody(c, loginRequestSchema);
-    const { authRepo, hasher } = getDeps(c.env.DB);
-    const priorRawCookie = getCookie(c, SESSION_COOKIE_NAME);
+    const { authRepo, hasher, revocationStore } = getDeps(c.env.DB);
+    const priorRawCookie = getSessionCookieToken(c);
     const priorTokenHash = isValidSessionTokenFormat(priorRawCookie)
       ? await hasher.hashToken(priorRawCookie)
       : undefined;
+    const priorAccessCookie = getAccessCookieToken(c);
+    if (priorAccessCookie) {
+      const priorClaims = await verifyAccessToken(priorAccessCookie, c.env.JWT_SECRET);
+      if (priorClaims) {
+        await revocationStore.revoke(priorClaims.sid, c.env.STOCK_MATE_KV);
+      }
+    }
 
     const useCase = new LoginUseCase(authRepo, hasher);
-    const { user, rawSessionToken } = await useCase.execute(input, priorTokenHash);
+    const { user, sessionId, rawSessionToken } = await useCase.execute(input, priorTokenHash);
 
-    setSessionCookie(c, rawSessionToken);
+    await setAuthCookies(c, {
+      user,
+      sessionId,
+      rawSessionToken,
+      sessionTtlSeconds: SESSION_TTL_SECONDS,
+    });
     return c.json({ user }, 200);
   });
 
   router.post('/logout', requireAuth, async (c) => {
     const tokenHash = c.get('sessionTokenHash');
+    const sessionId = c.get('sessionId');
+    const { authRepo, revocationStore } = getDeps(c.env.DB);
+
+    if (sessionId) {
+      await revocationStore.revoke(sessionId, c.env.STOCK_MATE_KV);
+    }
     if (tokenHash) {
-      const { authRepo } = getDeps(c.env.DB);
       const useCase = new LogoutUseCase(authRepo);
       await useCase.execute(tokenHash);
     }
 
-    deleteCookie(c, SESSION_COOKIE_NAME, {
-      httpOnly: true,
-      secure: isSecureRequest(c),
-      sameSite: 'Lax',
-      path: '/',
-    });
-
+    clearAuthCookies(c);
     return c.body(null, 204);
   });
 

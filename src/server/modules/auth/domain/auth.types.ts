@@ -39,4 +39,5 @@ export interface AuthRepository {
   findValidSessionByTokenHash(tokenHash: string, nowMs: number): Promise<SessionWithUser | null>;
   deleteSessionByTokenHash(tokenHash: string): Promise<void>;
   deleteExpiredSessionsForUser(userId: string, nowMs: number): Promise<void>;
+  pruneExcessSessionsForUser?(userId: string, maxActiveSessions: number): Promise<void>;
 }

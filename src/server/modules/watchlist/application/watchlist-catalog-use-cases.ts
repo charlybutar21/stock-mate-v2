@@ -1,15 +1,11 @@
 import type {
-  AddCustomWatchlistStockRequest,
   CatalogQuery,
   CatalogResponseDto,
   CatalogSortOption,
   CatalogSummaryDto,
   CatalogSyncResponseDto,
-  CreateCustomWatchlistRequest,
-  CustomWatchlistGroupDto,
   IdxMarketQuoteDto,
   MarketStockDto,
-  UpdateCustomWatchlistRequest,
   WatchlistItemDto,
 } from '@/shared/contracts';
 import {
@@ -21,17 +17,19 @@ import {
   DEFAULT_TERMINAL_GROWTH_PCT,
   isStaleTimestamp,
 } from '@/shared/domain';
-import { conflictError, notFoundError, validationError } from '@/server/shared/http/problem';
+import { validationError } from '@/server/shared/http/problem';
 import type { IdxMarketDataProvider } from '@/server/modules/market-data/domain/market-data.types';
 import type {
   CustomWatchlistRecord,
   CustomWatchlistRepository,
+  FundamentalsRecord,
   IdxCatalogRepository,
   IdxStockRecord,
   QualityMetricColumnsRecord,
   WatchlistItemRecord,
   WatchlistRepository,
 } from '../domain/watchlist.types';
+import type { CatalogSnapshotStore } from '../infra/catalog-snapshot-store';
 import {
   extractQualityColumnsFromInput,
   fromBoolInt,
@@ -43,8 +41,6 @@ import {
   toX100,
 } from './watchlist-use-cases';
 
-export const MAX_CUSTOM_WATCHLISTS_PER_USER = 30;
-export const MAX_TICKERS_PER_CUSTOM_WATCHLIST = 100;
 export const CATALOG_AUTO_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const ONE_BILLION_IDR = 1_000_000_000;
 
@@ -227,7 +223,7 @@ export function mapWatchlistRecordToMarketDto(
   };
 }
 
-function buildTickerMembershipMap(groups: CustomWatchlistRecord[]): Map<string, string[]> {
+export function buildTickerMembershipMap(groups: CustomWatchlistRecord[]): Map<string, string[]> {
   const map = new Map<string, string[]>();
   for (const group of groups) {
     for (const ticker of group.tickers) {
@@ -237,18 +233,6 @@ function buildTickerMembershipMap(groups: CustomWatchlistRecord[]): Map<string, 
     }
   }
   return map;
-}
-
-function mapGroupRecordToDto(record: CustomWatchlistRecord): CustomWatchlistGroupDto {
-  return {
-    id: record.id,
-    name: record.name,
-    description: record.description,
-    tickers: record.tickers,
-    stockCount: record.tickers.length,
-    createdAt: new Date(record.createdAt).toISOString(),
-    updatedAt: new Date(record.updatedAt).toISOString(),
-  };
 }
 
 export type MarketStockFilterQuery = Pick<
@@ -482,9 +466,10 @@ export class SyncIdxCatalogUseCase {
     private readonly catalogRepo: IdxCatalogRepository,
     private readonly watchlistRepo: WatchlistRepository,
     private readonly marketDataProvider: IdxMarketDataProvider,
+    private readonly snapshotStore?: CatalogSnapshotStore,
   ) {}
 
-  async execute(userId?: string): Promise<CatalogSyncResponseDto> {
+  async execute(userId?: string, kv?: KVNamespace): Promise<CatalogSyncResponseDto> {
     const now = Date.now();
     const quotes = this.marketDataProvider.fetchAllIdxStocks
       ? await this.marketDataProvider.fetchAllIdxStocks()
@@ -493,23 +478,30 @@ export class SyncIdxCatalogUseCase {
     if (quotes.length > 0) {
       const records = quotes.map((q) => quoteToIdxStockRecord(q, now));
       await this.catalogRepo.upsertMany(records, now);
+      if (this.snapshotStore) {
+        await this.snapshotStore.publishSnapshot(records, now, kv);
+      }
     }
 
     let updatedUserItemsCount = 0;
     if (userId && quotes.length > 0) {
       const quoteByTicker = new Map(quotes.map((q) => [q.ticker.toUpperCase(), q]));
       const userRecords = await this.watchlistRepo.listByUser(userId);
+      const batchUpdates: Array<{
+        id: string;
+        currentPrice: number;
+        updatedAt: number;
+        fundamentalsPatch: Partial<Omit<FundamentalsRecord, 'id' | 'watchlistItemId'>>;
+      }> = [];
+
       for (const record of userRecords) {
         const quote = quoteByTicker.get(record.ticker);
         if (!quote) continue;
-        await this.watchlistRepo.update(
-          record.id,
-          userId,
-          {
-            currentPrice: quote.currentPrice,
-            updatedAt: now,
-          },
-          {
+        batchUpdates.push({
+          id: record.id,
+          currentPrice: quote.currentPrice,
+          updatedAt: now,
+          fundamentalsPatch: {
             periodLabel: quote.periodLabel,
             eps: quote.fundamentals.eps,
             bvps: quote.fundamentals.bvps,
@@ -520,9 +512,22 @@ export class SyncIdxCatalogUseCase {
             ...extractQualityColumnsFromInput(quote.fundamentals),
             updatedAt: now,
           },
-        );
-        updatedUserItemsCount += 1;
+        });
       }
+
+      if (this.watchlistRepo.batchUpdateMarketData) {
+        await this.watchlistRepo.batchUpdateMarketData(userId, batchUpdates);
+      } else {
+        for (const entry of batchUpdates) {
+          await this.watchlistRepo.update(
+            entry.id,
+            userId,
+            { currentPrice: entry.currentPrice, updatedAt: entry.updatedAt },
+            entry.fundamentalsPatch,
+          );
+        }
+      }
+      updatedUserItemsCount = batchUpdates.length;
     }
 
     return {
@@ -534,42 +539,80 @@ export class SyncIdxCatalogUseCase {
 }
 
 export class ListCatalogStocksUseCase {
+  private static inFlightBootstrap: Promise<void> | null = null;
+
   constructor(
     private readonly catalogRepo: IdxCatalogRepository,
     private readonly watchlistRepo: WatchlistRepository,
     private readonly customWatchlistRepo: CustomWatchlistRepository,
     private readonly marketDataProvider: IdxMarketDataProvider,
+    private readonly snapshotStore?: CatalogSnapshotStore,
   ) {}
 
-  async execute(userId: string, query: CatalogQuery): Promise<CatalogResponseDto> {
+  async execute(
+    userId: string,
+    query: CatalogQuery,
+    kv?: KVNamespace,
+  ): Promise<CatalogResponseDto> {
     const now = Date.now();
-    const [initialLatestSyncedAt, hasQuality] = await Promise.all([
-      this.catalogRepo.getLatestSyncedAt(),
-      this.catalogRepo.hasQualityMetrics(),
-    ]);
-    let latestSyncedAt = initialLatestSyncedAt;
 
-    const needsAutoSync =
-      latestSyncedAt === null || now - latestSyncedAt > CATALOG_AUTO_SYNC_TTL_MS || !hasQuality;
+    let snapshot = this.snapshotStore
+      ? (
+          await this.snapshotStore.getSnapshot({
+            kv,
+            loadFromD1: async () => {
+              const [stocks, latestSyncedAt] = await Promise.all([
+                this.catalogRepo.listAll(),
+                this.catalogRepo.getLatestSyncedAt(),
+              ]);
+              return { stocks, latestSyncedAt };
+            },
+          })
+        ).snapshot
+      : null;
 
-    if (needsAutoSync && this.marketDataProvider.fetchAllIdxStocks) {
-      try {
-        const quotes = await this.marketDataProvider.fetchAllIdxStocks();
-        if (quotes.length > 0) {
-          const syncTs = Date.now();
-          await this.catalogRepo.upsertMany(
-            quotes.map((q) => quoteToIdxStockRecord(q, syncTs)),
-            syncTs,
-          );
-          latestSyncedAt = syncTs;
-        }
-      } catch {
-        // Gracefully serve existing D1 catalog rows if upstream is temporarily unavailable
+    // Anti-Thundering Herd: NEVER trigger upstream TradingView sync on TTL expiry inside user requests
+    // (Cron Trigger refreshes the snapshot in background). Only perform a single-flight cold bootstrap
+    // when the catalog is completely empty (initial deploy or clean test DB).
+    if (!snapshot && this.marketDataProvider.fetchAllIdxStocks) {
+      if (!ListCatalogStocksUseCase.inFlightBootstrap) {
+        ListCatalogStocksUseCase.inFlightBootstrap = (async () => {
+          try {
+            const quotes = await this.marketDataProvider.fetchAllIdxStocks!();
+            if (quotes.length > 0) {
+              const syncTs = Date.now();
+              const records = quotes.map((q) => quoteToIdxStockRecord(q, syncTs));
+              await this.catalogRepo.upsertMany(records, syncTs);
+              if (this.snapshotStore) {
+                await this.snapshotStore.publishSnapshot(records, syncTs, kv);
+              }
+            }
+          } catch {
+            // Gracefully fall back to empty/user items if upstream is temporarily unavailable
+          }
+        })().finally(() => {
+          ListCatalogStocksUseCase.inFlightBootstrap = null;
+        });
+      }
+      await ListCatalogStocksUseCase.inFlightBootstrap;
+
+      if (this.snapshotStore) {
+        snapshot = (
+          await this.snapshotStore.getSnapshot({
+            kv,
+            loadFromD1: async () => {
+              const [stocks, latestSyncedAt] = await Promise.all([
+                this.catalogRepo.listAll(),
+                this.catalogRepo.getLatestSyncedAt(),
+              ]);
+              return { stocks, latestSyncedAt };
+            },
+          })
+        ).snapshot;
       }
     }
 
-    const [catalogStocks, userItems, customGroups] = await Promise.all([
-      this.catalogRepo.listAll(),
+    const [userItems, customGroups] = await Promise.all([
       this.watchlistRepo.listByUser(userId),
       this.customWatchlistRepo.listByUser(userId),
     ]);
@@ -577,23 +620,27 @@ export class ListCatalogStocksUseCase {
     const membershipMap = buildTickerMembershipMap(customGroups);
     const userItemByTicker = new Map(userItems.map((item) => [item.ticker, item]));
 
-    // Build unified All Stocks list from synced IHSG constituents, overlaying user's personal
-    // position, thesis, and custom valuation benchmarks while backfilling quality metrics from catalog.
+    // Reuse precomputed MarketStockDto items from Edge/KV snapshot (0 recomputation for unmodified stocks!)
+    // and only overlay user's personal positions, custom benchmarks, and custom watchlist memberships.
     const merged: MarketStockDto[] = [];
     const seenTickers = new Set<string>();
+    const baseItems = snapshot?.items ?? [];
 
-    for (const stock of catalogStocks) {
-      seenTickers.add(stock.ticker);
-      const userRecord = userItemByTicker.get(stock.ticker);
-      const customIds = membershipMap.get(stock.ticker) ?? [];
+    for (const base of baseItems) {
+      seenTickers.add(base.ticker);
+      const userRecord = userItemByTicker.get(base.ticker);
+      const customIds = membershipMap.get(base.ticker) ?? [];
       if (userRecord) {
-        merged.push(mapWatchlistRecordToMarketDto(userRecord, customIds, now, stock));
+        const fallbackQuality = extractQualityColumnsFromInput(base.fundamentals);
+        merged.push(mapWatchlistRecordToMarketDto(userRecord, customIds, now, fallbackQuality));
+      } else if (customIds.length > 0) {
+        merged.push({ ...base, customWatchlistIds: customIds });
       } else {
-        merged.push(mapIdxStockToMarketDto(stock, customIds, now));
+        merged.push(base);
       }
     }
 
-    if (catalogStocks.length === 0) {
+    if (baseItems.length === 0) {
       for (const userRecord of userItems) {
         if (seenTickers.has(userRecord.ticker)) continue;
         seenTickers.add(userRecord.ticker);
@@ -602,32 +649,38 @@ export class ListCatalogStocksUseCase {
       }
     }
 
-    const summary: CatalogSummaryDto = {
-      totalStocks: merged.length,
-      undervalued: 0,
-      fairlyValued: 0,
-      overvalued: 0,
-      insufficientData: 0,
-      qualityScored: 0,
-      eliteQuality: 0,
-      strongQuality: 0,
-      primeOpportunities: 0,
-      lastSyncedAt: latestSyncedAt !== null ? new Date(latestSyncedAt).toISOString() : null,
-    };
+    // Fast-path: reuse precomputed summary if user has no personal valuation overrides
+    let summary: CatalogSummaryDto;
+    if (snapshot && userItems.length === 0) {
+      summary = snapshot.summary;
+    } else {
+      summary = {
+        totalStocks: merged.length,
+        undervalued: 0,
+        fairlyValued: 0,
+        overvalued: 0,
+        insufficientData: 0,
+        qualityScored: 0,
+        eliteQuality: 0,
+        strongQuality: 0,
+        primeOpportunities: 0,
+        lastSyncedAt: snapshot?.syncedAt ?? null,
+      };
 
-    for (const item of merged) {
-      if (item.valuation.valuationStatus === 'UNDERVALUED') summary.undervalued += 1;
-      else if (item.valuation.valuationStatus === 'FAIRLY_VALUED') summary.fairlyValued += 1;
-      else if (item.valuation.valuationStatus === 'OVERVALUED') summary.overvalued += 1;
-      else summary.insufficientData += 1;
+      for (const item of merged) {
+        if (item.valuation.valuationStatus === 'UNDERVALUED') summary.undervalued += 1;
+        else if (item.valuation.valuationStatus === 'FAIRLY_VALUED') summary.fairlyValued += 1;
+        else if (item.valuation.valuationStatus === 'OVERVALUED') summary.overvalued += 1;
+        else summary.insufficientData += 1;
 
-      if (item.quality.score !== null) {
-        summary.qualityScored += 1;
-        if (item.quality.grade === 'A') summary.eliteQuality += 1;
-        else if (item.quality.grade === 'B') summary.strongQuality += 1;
-      }
-      if (item.quality.qarpQuadrant === 'PRIME_OPPORTUNITY') {
-        summary.primeOpportunities += 1;
+        if (item.quality.score !== null) {
+          summary.qualityScored += 1;
+          if (item.quality.grade === 'A') summary.eliteQuality += 1;
+          else if (item.quality.grade === 'B') summary.strongQuality += 1;
+        }
+        if (item.quality.qarpQuadrant === 'PRIME_OPPORTUNITY') {
+          summary.primeOpportunities += 1;
+        }
       }
     }
 
@@ -761,286 +814,14 @@ export class EnsureWatchlistItemUseCase {
   }
 }
 
-export class ListCustomWatchlistsUseCase {
-  constructor(private readonly customWatchlistRepo: CustomWatchlistRepository) {}
-
-  async execute(userId: string): Promise<CustomWatchlistGroupDto[]> {
-    const groups = await this.customWatchlistRepo.listByUser(userId);
-    return groups.map(mapGroupRecordToDto);
-  }
-}
-
-export class CreateCustomWatchlistUseCase {
-  constructor(
-    private readonly customWatchlistRepo: CustomWatchlistRepository,
-    private readonly catalogRepo: IdxCatalogRepository,
-    private readonly watchlistRepo: WatchlistRepository,
-    private readonly marketDataProvider: IdxMarketDataProvider,
-  ) {}
-
-  async execute(
-    userId: string,
-    input: CreateCustomWatchlistRequest,
-  ): Promise<CustomWatchlistGroupDto> {
-    const cleanName = input.name.trim();
-    const existing = await this.customWatchlistRepo.findActiveByUserAndName(userId, cleanName);
-    if (existing) {
-      throw conflictError(`Custom watchlist "${cleanName}" already exists.`);
-    }
-
-    const activeCount = await this.customWatchlistRepo.countActiveByUser(userId);
-    if (activeCount >= MAX_CUSTOM_WATCHLISTS_PER_USER) {
-      throw validationError(
-        `Custom watchlist limit reached (${MAX_CUSTOM_WATCHLISTS_PER_USER} watchlists maximum).`,
-      );
-    }
-
-    const uniqueTickers = Array.from(new Set(input.tickers.map((t) => t.trim().toUpperCase())));
-    if (uniqueTickers.length > MAX_TICKERS_PER_CUSTOM_WATCHLIST) {
-      throw validationError(
-        `Maximum ${MAX_TICKERS_PER_CUSTOM_WATCHLIST} stocks allowed per custom watchlist.`,
-      );
-    }
-
-    if (uniqueTickers.length > 0) {
-      const [foundInCatalog, userItems] = await Promise.all([
-        this.catalogRepo.findByTickers(uniqueTickers),
-        this.watchlistRepo.listByUser(userId),
-      ]);
-      const knownTickers = new Set<string>([
-        ...foundInCatalog.map((s) => s.ticker),
-        ...userItems.map((i) => i.ticker),
-      ]);
-      const missing = uniqueTickers.filter((t) => !knownTickers.has(t));
-
-      if (missing.length > 0) {
-        const nowSync = Date.now();
-        if (this.marketDataProvider.fetchIdxQuotesBatch) {
-          const quotesMap = await this.marketDataProvider.fetchIdxQuotesBatch(missing);
-          const toUpsert = Array.from(quotesMap.values()).map((q) =>
-            quoteToIdxStockRecord(q, nowSync),
-          );
-          if (toUpsert.length > 0) {
-            await this.catalogRepo.upsertMany(toUpsert);
-          }
-          const unresolved = missing.filter((t) => !quotesMap.has(t));
-          if (unresolved.length > 0) {
-            throw notFoundError(`IDX ticker not found: ${unresolved.join(', ')}.`);
-          }
-        } else {
-          for (const t of missing) {
-            const quote = await this.marketDataProvider.fetchIdxQuote(t);
-            await this.catalogRepo.upsertOne(quoteToIdxStockRecord(quote, nowSync));
-          }
-        }
-      }
-    }
-
-    const now = Date.now();
-    const record: Omit<CustomWatchlistRecord, 'deletedAt'> = {
-      id: crypto.randomUUID(),
-      userId,
-      name: cleanName,
-      description: input.description?.trim() || null,
-      createdAt: now,
-      updatedAt: now,
-      tickers: uniqueTickers,
-    };
-
-    try {
-      await this.customWatchlistRepo.create(record, now);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg.includes('UNIQUE') || msg.includes('unique')) {
-        throw conflictError(`Custom watchlist "${cleanName}" already exists.`);
-      }
-      throw err;
-    }
-
-    return mapGroupRecordToDto({ ...record, deletedAt: null });
-  }
-}
-
-export class UpdateCustomWatchlistUseCase {
-  constructor(private readonly customWatchlistRepo: CustomWatchlistRepository) {}
-
-  async execute(
-    userId: string,
-    id: string,
-    input: UpdateCustomWatchlistRequest,
-  ): Promise<CustomWatchlistGroupDto> {
-    const current = await this.customWatchlistRepo.findByIdForUser(id, userId);
-    if (!current) {
-      throw notFoundError('Custom watchlist not found.');
-    }
-
-    const patch: { name?: string; description?: string | null; updatedAt: number } = {
-      updatedAt: Date.now(),
-    };
-
-    if (input.name !== undefined) {
-      const cleanName = input.name.trim();
-      if (cleanName.toLowerCase() !== current.name.toLowerCase()) {
-        const conflict = await this.customWatchlistRepo.findActiveByUserAndName(userId, cleanName);
-        if (conflict && conflict.id !== id) {
-          throw conflictError(`Custom watchlist "${cleanName}" already exists.`);
-        }
-      }
-      patch.name = cleanName;
-    }
-
-    if (input.description !== undefined) {
-      patch.description = input.description?.trim() || null;
-    }
-
-    await this.customWatchlistRepo.update(id, userId, patch);
-
-    const updated = await this.customWatchlistRepo.findByIdForUser(id, userId);
-    if (!updated) {
-      throw notFoundError('Custom watchlist not found.');
-    }
-    return mapGroupRecordToDto(updated);
-  }
-}
-
-export class DeleteCustomWatchlistUseCase {
-  constructor(private readonly customWatchlistRepo: CustomWatchlistRepository) {}
-
-  async execute(userId: string, id: string): Promise<void> {
-    const deleted = await this.customWatchlistRepo.softDelete(id, userId, Date.now());
-    if (!deleted) {
-      throw notFoundError('Custom watchlist not found.');
-    }
-  }
-}
-
-export class ListCustomWatchlistStocksUseCase {
-  constructor(
-    private readonly customWatchlistRepo: CustomWatchlistRepository,
-    private readonly catalogRepo: IdxCatalogRepository,
-    private readonly watchlistRepo: WatchlistRepository,
-  ) {}
-
-  async execute(
-    userId: string,
-    groupId: string,
-    query: MarketStockFilterQuery,
-  ): Promise<{ group: CustomWatchlistGroupDto; items: MarketStockDto[] }> {
-    const group = await this.customWatchlistRepo.findByIdForUser(groupId, userId);
-    if (!group) {
-      throw notFoundError('Custom watchlist not found.');
-    }
-
-    if (group.tickers.length === 0) {
-      return { group: mapGroupRecordToDto(group), items: [] };
-    }
-
-    const [catalogStocks, userItems, allGroups] = await Promise.all([
-      this.catalogRepo.findByTickers(group.tickers),
-      this.watchlistRepo.listByUser(userId),
-      this.customWatchlistRepo.listByUser(userId),
-    ]);
-
-    const catalogByTicker = new Map(catalogStocks.map((s) => [s.ticker, s]));
-    const userItemByTicker = new Map(userItems.map((i) => [i.ticker, i]));
-    const membershipMap = buildTickerMembershipMap(allGroups);
-    const now = Date.now();
-
-    const resolved: MarketStockDto[] = [];
-    for (const ticker of group.tickers) {
-      const customIds = membershipMap.get(ticker) ?? [group.id];
-      const userRecord = userItemByTicker.get(ticker);
-      const catRecord = catalogByTicker.get(ticker);
-      if (userRecord) {
-        resolved.push(mapWatchlistRecordToMarketDto(userRecord, customIds, now, catRecord));
-        continue;
-      }
-      if (catRecord) {
-        resolved.push(mapIdxStockToMarketDto(catRecord, customIds, now));
-      }
-    }
-
-    const filtered = filterAndSortMarketStocks(resolved, query);
-    return {
-      group: mapGroupRecordToDto(group),
-      items: filtered,
-    };
-  }
-}
-
-export class AddStockToCustomWatchlistUseCase {
-  constructor(
-    private readonly customWatchlistRepo: CustomWatchlistRepository,
-    private readonly catalogRepo: IdxCatalogRepository,
-    private readonly watchlistRepo: WatchlistRepository,
-    private readonly marketDataProvider: IdxMarketDataProvider,
-  ) {}
-
-  async execute(
-    userId: string,
-    groupId: string,
-    input: AddCustomWatchlistStockRequest,
-  ): Promise<MarketStockDto> {
-    const group = await this.customWatchlistRepo.findByIdForUser(groupId, userId);
-    if (!group) {
-      throw notFoundError('Custom watchlist not found.');
-    }
-
-    const cleanTicker = input.ticker.trim().toUpperCase();
-    if (group.tickers.includes(cleanTicker)) {
-      throw conflictError(`Ticker ${cleanTicker} is already in "${group.name}".`);
-    }
-    if (group.tickers.length >= MAX_TICKERS_PER_CUSTOM_WATCHLIST) {
-      throw validationError(
-        `Maximum ${MAX_TICKERS_PER_CUSTOM_WATCHLIST} stocks allowed per custom watchlist.`,
-      );
-    }
-
-    const existingUserLink = await this.watchlistRepo.findActiveByUserAndTicker(userId, cleanTicker);
-    let catalogStock = await this.catalogRepo.findByTicker(cleanTicker);
-
-    if (!existingUserLink && !catalogStock) {
-      const quote = await this.marketDataProvider.fetchIdxQuote(cleanTicker);
-      catalogStock = quoteToIdxStockRecord(quote, Date.now());
-      await this.catalogRepo.upsertOne(catalogStock);
-    }
-
-    const now = Date.now();
-    const added = await this.customWatchlistRepo.addTicker(group.id, cleanTicker, now);
-    if (!added) {
-      throw conflictError(`Ticker ${cleanTicker} is already in "${group.name}".`);
-    }
-
-    const allGroups = await this.customWatchlistRepo.listByUser(userId);
-    const customIds = buildTickerMembershipMap(allGroups).get(cleanTicker) ?? [group.id];
-
-    if (existingUserLink) {
-      const full = await this.watchlistRepo.findByIdForUser(existingUserLink.id, userId);
-      if (full) {
-        return mapWatchlistRecordToMarketDto(full, customIds, now, catalogStock);
-      }
-    }
-
-    if (!catalogStock) {
-      throw notFoundError(`IDX ticker ${cleanTicker} not found.`);
-    }
-    return mapIdxStockToMarketDto(catalogStock, customIds, now);
-  }
-}
-
-export class RemoveStockFromCustomWatchlistUseCase {
-  constructor(private readonly customWatchlistRepo: CustomWatchlistRepository) {}
-
-  async execute(userId: string, groupId: string, ticker: string): Promise<void> {
-    const group = await this.customWatchlistRepo.findByIdForUser(groupId, userId);
-    if (!group) {
-      throw notFoundError('Custom watchlist not found.');
-    }
-
-    const cleanTicker = ticker.trim().toUpperCase();
-    const removed = await this.customWatchlistRepo.removeTicker(group.id, cleanTicker);
-    if (!removed) {
-      throw notFoundError(`Ticker ${cleanTicker} is not in "${group.name}".`);
-    }
-  }
-}
+export {
+  AddStockToCustomWatchlistUseCase,
+  CreateCustomWatchlistUseCase,
+  DeleteCustomWatchlistUseCase,
+  ListCustomWatchlistsUseCase,
+  ListCustomWatchlistStocksUseCase,
+  MAX_CUSTOM_WATCHLISTS_PER_USER,
+  MAX_TICKERS_PER_CUSTOM_WATCHLIST,
+  RemoveStockFromCustomWatchlistUseCase,
+  UpdateCustomWatchlistUseCase,
+} from './custom-watchlist-use-cases';

@@ -460,6 +460,9 @@ export interface PortfolioRiskSummary {
 export function analyzePortfolioRisk(
   holdings: PortfolioHoldingInput[],
   mode: PositionCalcMode = 'NET_AFTER_FEES',
+  buyFeePct: number = DEFAULT_BUY_FEE_PCT,
+  sellFeePct: number = DEFAULT_SELL_FEE_PCT,
+  includeStampDuty: boolean = false,
 ): PortfolioRiskSummary {
   const active = holdings
     .map((h) => ({
@@ -468,9 +471,10 @@ export function analyzePortfolioRisk(
         h.ownedLots,
         h.avgBuyPrice,
         h.currentPrice,
-        DEFAULT_BUY_FEE_PCT,
-        DEFAULT_SELL_FEE_PCT,
+        buyFeePct,
+        sellFeePct,
         mode,
+        includeStampDuty,
       ),
     }))
     .filter((entry) => entry.summary.ownedLots > 0 && entry.summary.costBasis > 0);
@@ -664,20 +668,22 @@ export function planPyramidingAllocation(
 
   const weights = PYRAMID_WEIGHTS[input.strategy];
   const fBuy = buyFeePct / 100;
+  const stampDutyReserve =
+    includeStampDuty && input.totalCashBudget > STAMP_DUTY_THRESHOLD_IDR ? STAMP_DUTY_IDR : 0;
+  const deployableBudget = input.totalCashBudget - stampDutyReserve;
 
   let runningLots = input.existingLots;
   let runningGross =
     input.existingLots > 0
       ? input.existingLots * SHARES_PER_LOT * input.existingAvgPrice
       : 0;
-  let totalCashUsed = 0;
 
   const stages: PyramidingStage[] = [];
   const plannedTranches: PlannedTranche[] = [];
 
   for (let i = 0; i < weights.length; i++) {
     const weightPct = weights[i]!;
-    const allocatedBudget = Math.floor((input.totalCashBudget * weightPct) / 100);
+    const allocatedBudget = Math.floor((deployableBudget * weightPct) / 100);
     const rawTrigger = input.referencePrice * (1 - (i * input.stepDiscountPct) / 100);
     const triggerPrice = floorToIdxTick(rawTrigger);
     const costPerLotWithFee = triggerPrice * SHARES_PER_LOT * (1 + fBuy);
@@ -691,7 +697,6 @@ export function planPyramidingAllocation(
     if (lots > 0) {
       runningLots += lots;
       runningGross += grossCost;
-      totalCashUsed += cashUsed;
       plannedTranches.push({ lots, buyPrice: triggerPrice });
     }
 
@@ -729,6 +734,8 @@ export function planPyramidingAllocation(
     fairValueModerate: input.fairValueModerate,
     referenceCurrentPrice: input.referencePrice,
   }) as ForwardSimulationResult;
+
+  const totalCashUsed = simOut.plannedCashRequired;
 
   return {
     valid: true,
