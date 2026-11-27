@@ -355,7 +355,7 @@ export function StockDetailPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-6 sm:text-right">
+            <div className="flex flex-wrap gap-5 sm:text-right">
               <div>
                 <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
                   {t.detail.currentPrice}
@@ -382,11 +382,22 @@ export function StockDetailPage() {
                       : ''}
                   </div>
                 )}
-                {item.openPrice !== null && (
-                  <div className="mt-0.5 font-mono text-[11px] text-muted tabular-nums">
-                    {t.common.openLabel}: {formatIdr(item.openPrice)}
-                  </div>
-                )}
+              </div>
+              <div>
+                <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+                  {t.common.openLabel}
+                </div>
+                <div className="font-mono text-xl font-semibold text-ink tabular-nums">
+                  {item.openPrice !== null ? formatIdr(item.openPrice) : '–'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-medium tracking-wide text-muted uppercase">
+                  {t.watchlist.colFairValue}
+                </div>
+                <div className="font-mono text-xl font-semibold text-ink tabular-nums">
+                  {formatIdr(liveValuation.fairValue.moderate)}
+                </div>
               </div>
               <div>
                 <div className="text-[11px] font-medium tracking-wide text-muted uppercase">

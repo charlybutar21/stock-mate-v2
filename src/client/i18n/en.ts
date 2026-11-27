@@ -42,6 +42,7 @@ export const en = {
     perPageShort: 'per page',
     openLabel: 'Open',
     todayChangeLabel: 'Today',
+    fairValueShort: 'Fair',
     autoSyncBadge: 'Auto-sync 5m',
   },
   glossary: {

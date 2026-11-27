@@ -1,6 +1,6 @@
 import { cn } from '@/client/components/ui/primitives';
 import { useI18n } from '@/client/i18n/useI18n';
-import { formatIdr, formatNumber, formatPercent } from '@/client/lib/formatters';
+import { formatIdr, formatPercent } from '@/client/lib/formatters';
 
 interface IntradayPriceCellProps {
   currentPrice: number;
@@ -37,7 +37,7 @@ export function IntradayPriceCell({
 
   const formattedDelta =
     dailyChange !== null
-      ? `${dailyChange > 0 ? '+' : dailyChange < 0 ? '-' : ''}${formatNumber(Math.abs(dailyChange))}`
+      ? `${dailyChange > 0 ? '+' : dailyChange < 0 ? '-' : ''}${formatIdr(Math.abs(dailyChange))}`
       : null;
 
   return (
@@ -47,6 +47,7 @@ export function IntradayPriceCell({
         align === 'right' ? 'items-end text-right' : 'items-start text-left',
       )}
     >
+      {/* 1. Current Price */}
       <div
         className={cn(
           'font-bold whitespace-nowrap',
@@ -57,23 +58,32 @@ export function IntradayPriceCell({
         {formatIdr(currentPrice)}
       </div>
 
-      {hasChange && (
-        <div className={cn('mt-0.5 text-[11px] font-semibold whitespace-nowrap', changeTone)}>
-          {formattedDelta !== null ? formattedDelta : ''}
-          {formattedDelta !== null && dailyChangePct !== null ? ' ' : ''}
-          {dailyChangePct !== null ? `(${formatPercent(dailyChangePct, true)})` : ''}
-        </div>
-      )}
+      {/* 2. Today's Price Change (Rp & %) */}
+      <div className={cn('mt-0.5 text-[11px] font-semibold whitespace-nowrap', changeTone)}>
+        {hasChange ? (
+          <>
+            {formattedDelta !== null ? formattedDelta : ''}
+            {formattedDelta !== null && dailyChangePct !== null ? ' ' : ''}
+            {dailyChangePct !== null ? `(${formatPercent(dailyChangePct, true)})` : ''}
+          </>
+        ) : (
+          <span className="font-normal text-muted">–</span>
+        )}
+      </div>
 
-      {openPrice !== null && (
-        <div className="mt-0.5 text-[10px] text-muted whitespace-nowrap">
-          {t.common.openLabel} {formatNumber(openPrice)}
-        </div>
-      )}
+      {/* 3. Opening Price Today */}
+      <div className="mt-0.5 text-[11px] text-muted whitespace-nowrap">
+        {t.common.openLabel}{' '}
+        <span className="font-medium text-ink/80">
+          {openPrice !== null ? formatIdr(openPrice) : '–'}
+        </span>
+      </div>
 
+      {/* 4. Optional Fair Value (used in Radar combined Price/FV column) */}
       {fairValueModerate !== undefined && (
         <div className="mt-0.5 text-[11px] text-muted whitespace-nowrap">
-          FV <span className="font-semibold text-ink">{formatIdr(fairValueModerate)}</span>
+          {t.common.fairValueShort}{' '}
+          <span className="font-semibold text-ink">{formatIdr(fairValueModerate)}</span>
         </div>
       )}
     </div>

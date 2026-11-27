@@ -44,6 +44,7 @@ export const id: I18nDictionary = {
     perPageShort: 'per hal',
     openLabel: 'Buka',
     todayChangeLabel: 'Hari Ini',
+    fairValueShort: 'Wajar',
     autoSyncBadge: 'Auto-sync 5 mnt',
   },
   glossary: {

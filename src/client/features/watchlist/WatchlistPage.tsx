@@ -121,7 +121,7 @@ export function WatchlistPage() {
   const [maxMosInput, setMaxMosInput] = useState('');
   const [sort, setSort] = useState<CatalogSortOption>('mos_desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(10);
 
   // Modals & action states
   const [stockModalOpen, setStockModalOpen] = useState(false);
@@ -165,7 +165,7 @@ export function WatchlistPage() {
     maxMos: activeTab.kind === 'all' ? debouncedMaxMos : undefined,
     sort: activeTab.kind === 'all' ? sort : 'mos_desc',
     page: activeTab.kind === 'all' ? page : 1,
-    pageSize: activeTab.kind === 'all' ? pageSize : 25,
+    pageSize: activeTab.kind === 'all' ? pageSize : 10,
   });
 
   const {
@@ -937,7 +937,7 @@ export function WatchlistPage() {
                     aria-label={t.watchlist.paginationPerPage}
                     className="h-8 w-32 px-2 text-xs"
                   >
-                    <option value="25">25 {t.common.perPageShort}</option>
+                    <option value="10">10 {t.common.perPageShort}</option>
                     <option value="50">50 {t.common.perPageShort}</option>
                     <option value="100">100 {t.common.perPageShort}</option>
                   </Select>

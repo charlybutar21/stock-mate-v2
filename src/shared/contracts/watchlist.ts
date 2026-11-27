@@ -253,7 +253,7 @@ export const catalogQuerySchema = z.object({
   excludeHighRiskTrap: optionalQueryBoolean,
   sort: z.enum(CATALOG_SORT_OPTIONS).optional().default('mos_desc'),
   page: optionalQueryInt(1, 500, 1),
-  pageSize: optionalQueryInt(10, 100, 50),
+  pageSize: optionalQueryInt(10, 100, 10),
 });
 
 export const ensureWatchlistStockSchema = z.object({

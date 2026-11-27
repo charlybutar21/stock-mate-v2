@@ -4,7 +4,7 @@ import type { IdxSector } from '@/shared/domain';
 import * as schema from '@/server/shared/db/schema';
 import type { IdxCatalogRepository, IdxStockRecord } from '../domain/watchlist.types';
 
-const BATCH_CHUNK_SIZE = 50;
+const BATCH_CHUNK_SIZE = 100;
 
 function mapRow(row: typeof schema.idxStocks.$inferSelect): IdxStockRecord {
   return {

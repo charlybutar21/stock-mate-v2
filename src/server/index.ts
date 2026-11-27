@@ -324,6 +324,19 @@ export function createApp(options?: {
       );
     }
 
+    // Stale-while-revalidate backup: if snapshot is >5m old or missing intraday openPrice,
+    // trigger a single KV-locked background refresh without blocking the user response.
+    const needsBgRefresh =
+      Date.now() - snapshot.syncedAtMs >= CATALOG_SWR_MAX_AGE_MS ||
+      (snapshot.items.length > 0 && snapshot.items[0]!.openPrice === null);
+    if (needsBgRefresh) {
+      try {
+        c.executionCtx.waitUntil(triggerGuardedBackgroundSync(c.env));
+      } catch {
+        // Test environment without Cloudflare ExecutionContext
+      }
+    }
+
     if (c.req.header('if-none-match') === snapshot.etag) {
       return new Response(null, {
         status: 304,
@@ -446,10 +459,31 @@ export async function runScheduledCatalogSync(env: AppBindings): Promise<void> {
   } catch (err) {
     logJson('error', 'cron_catalog_sync_failed', correlationId, {
       errorName: err instanceof Error ? err.name : 'UnknownError',
+      errorMessage: err instanceof Error ? err.message.slice(0, 160) : 'Unknown error',
       durationMs: Date.now() - start,
     });
   }
 }
+
+const CATALOG_SWR_MAX_AGE_MS = 5 * 60 * 1000;
+const CATALOG_SYNC_LOCK_KEY = 'catalog:sync:lock';
+
+async function triggerGuardedBackgroundSync(env: AppBindings): Promise<void> {
+  if (env.STOCK_MATE_KV) {
+    try {
+      const existingLock = await env.STOCK_MATE_KV.get(CATALOG_SYNC_LOCK_KEY);
+      if (existingLock) return;
+      await env.STOCK_MATE_KV.put(CATALOG_SYNC_LOCK_KEY, String(Date.now()), {
+        expirationTtl: 240,
+      });
+    } catch {
+      // Proceed even if KV lock read/write fails
+    }
+  }
+  await runScheduledCatalogSync(env);
+}
+
+export { CATALOG_SWR_MAX_AGE_MS, triggerGuardedBackgroundSync };
 
 export default {
   fetch: app.fetch,

@@ -115,7 +115,7 @@ export function RadarPage() {
   const [filters, setFilters] = useState<RadarFilterState>(DEFAULT_RADAR_FILTERS);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
   const [xrayStock, setXrayStock] = useState<MarketStockDto | null>(null);
   const [openingTicker, setOpeningTicker] = useState<string | null>(null);
   const [createGroupSeedTicker, setCreateGroupSeedTicker] = useState<string | null>(null);
@@ -447,7 +447,7 @@ export function RadarPage() {
                 className="h-8 w-auto py-0 text-xs"
                 aria-label={t.watchlist.paginationPerPage}
               >
-                <option value="25">25 {t.common.perPageShort}</option>
+                <option value="10">10 {t.common.perPageShort}</option>
                 <option value="50">50 {t.common.perPageShort}</option>
                 <option value="100">100 {t.common.perPageShort}</option>
               </Select>
